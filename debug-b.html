@@ -1,0 +1,23 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>bld debug</title>
+<style>body{margin:0;background:#3a5a3a;overflow:hidden}canvas{image-rendering:pixelated;display:block}</style></head>
+<body>
+<canvas id="c"></canvas>
+<script src="js/pixel.js"></script>
+<script src="js/font.js"></script>
+<script src="js/buildings.js"></script>
+<script>
+const S = 4;
+const c = document.getElementById("c");
+c.width = 1024; c.height = 600;
+const g = c.getContext("2d"); g.imageSmoothingEnabled = false;
+g.fillStyle = "#4a8548"; g.fillRect(0,0,c.width,c.height);
+let x = 4;
+for (const [type, team] of [["hall","blue"],["barracks","blue"],["tower","blue"],["citadel","red"]]) {
+  const b = PK.buildings.get(type);
+  g.drawImage(b.c, x, 10, b.w * 3, b.h * 3);
+  const bf = PK.buildings.banner(team);
+  for (const [bx, by] of b.banners) g.drawImage(bf[0], x + bx * 3, 10 + by * 3, bf[0].width * 3, bf[0].height * 3);
+  x += b.w * 3 + 8;
+}
+</script></body></html>

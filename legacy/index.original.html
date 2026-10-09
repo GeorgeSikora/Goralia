@@ -1,0 +1,2270 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pixelové království</title>
+<style>
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: #101318;
+    color: #eee6cd;
+    font-family: Verdana, Arial, sans-serif;
+  }
+
+  main {
+    max-width: 1010px;
+    margin: 18px auto;
+    padding: 0 12px;
+  }
+
+  h1 {
+    margin: 0 0 8px;
+    color: #f0d795;
+    font: bold 29px Georgia, serif;
+  }
+
+  p {
+    margin: 0 0 12px;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .game-wrap {
+    overflow-x: auto;
+    border: 3px solid #9c8050;
+    background: #17201d;
+    box-shadow: 0 8px 30px #0009;
+  }
+
+  canvas {
+    display: block;
+    width: 960px;
+    height: 620px;
+    image-rendering: pixelated;
+    touch-action: none;
+    cursor: crosshair;
+  }
+
+  button {
+    margin-top: 12px;
+    padding: 10px 18px;
+    border: 2px solid #ac8f55;
+    background: #34443e;
+    color: #fff0ca;
+    font: bold 14px Verdana, sans-serif;
+    cursor: pointer;
+  }
+
+  button:hover { background: #4d6456; }
+</style>
+</head>
+<body>
+<main>
+  <h1>⚔ Pixelové království</h1>
+  <p>
+    Levé kliknutí vybírá jednotky, tažení vybere skupinu.
+    Pravé kliknutí vydá rozkaz. Na telefonu použij tlačítko
+    <b>ROZKAZ</b> a potom klepni na cíl. Znič rudou pevnost.
+  </p>
+
+  <div class="game-wrap">
+    <canvas id="game" width="960" height="620"></canvas>
+  </div>
+
+  <button id="restart">Nová hra</button>
+  <p>
+    Klávesy: Q dělník · W voják · E lučištník · H hrdina ·
+    T věž · F kasárna · A ohnivá koule · S léčení · M rozkaz
+  </p>
+</main>
+
+<script>
+(() => {
+  "use strict";
+
+  const canvas = document.querySelector("#game");
+  const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = false;
+
+  const WIDTH = 960;
+  const MAP_HEIGHT = 480;
+  const HEIGHT = 620;
+
+  const costs = {
+    worker:   { gold: 50,  wood: 0 },
+    soldier:  { gold: 65,  wood: 15 },
+    archer:   { gold: 80,  wood: 30 },
+    hero:     { gold: 150, wood: 50 },
+    tower:    { gold: 90,  wood: 55 },
+    barracks: { gold: 125, wood: 70 }
+  };
+
+  const names = {
+    worker: "Dělník",
+    soldier: "Voják",
+    archer: "Lučištník",
+    hero: "Hrdina",
+    raider: "Nájezdník",
+    hall: "Radnice",
+    barracks: "Kasárna",
+    tower: "Strážní věž",
+    citadel: "Rudá pevnost"
+  };
+
+  /*
+   * Jednotky: Eldiran, OpenGameArt, CC0.
+   * Jeden statický snímek z jednotlivých řádků spritesheetu 32 × 32.
+   */
+  const spriteRows = {
+    worker: 2,
+    soldier: 4,
+    archer: 16,
+    hero: 13,
+    raider: 7
+  };
+
+  const assetPaths = {
+    castle: "assets/castle.png",
+    barracks: "assets/barracks.png",
+    tower: "assets/tower.png",
+    units: "assets/units.png",
+    tree: "assets/tree.png"
+  };
+
+  const images = {};
+  let preparedUnits = null;
+
+  for (const [name, path] of Object.entries(assetPaths)) {
+    const img = new Image();
+    images[name] = img;
+
+    img.onload = () => {
+      if (name === "units") prepareUnitSheet(img);
+    };
+
+    img.onerror = () => {
+      console.warn("Obrázek se nepodařilo načíst:", path);
+    };
+
+    img.src = path;
+  }
+
+  function imageReady(img) {
+    return !!img && img.complete && img.naturalWidth > 0;
+  }
+
+  /*
+   * Spritesheet jednotek má sytě růžové pozadí.
+   * Protože jde o místní soubor načtený ze stejného serveru,
+   * můžeme růžové pixely bezpečně změnit na průhledné.
+   */
+  function prepareUnitSheet(img) {
+    try {
+      const sheet = document.createElement("canvas");
+      sheet.width = img.naturalWidth;
+      sheet.height = img.naturalHeight;
+
+      const sctx = sheet.getContext("2d", {
+        willReadFrequently: true
+      });
+
+      sctx.drawImage(img, 0, 0);
+      const data = sctx.getImageData(
+        0, 0, sheet.width, sheet.height
+      );
+
+      for (let i = 0; i < data.data.length; i += 4) {
+        const red = data.data[i];
+        const green = data.data[i + 1];
+        const blue = data.data[i + 2];
+
+        if (red > 235 && green < 40 && blue > 235) {
+          data.data[i + 3] = 0;
+        }
+      }
+
+      sctx.putImageData(data, 0, 0);
+      preparedUnits = sheet;
+    } catch (err) {
+      console.warn("Spritesheet nelze upravit:", err);
+      preparedUnits = null;
+    }
+  }
+
+  let units;
+  let buildings;
+  let resources;
+  let effects;
+  let selected;
+  let terrain;
+
+  let gold;
+  let wood;
+  let elapsed;
+  let waveTimer;
+  let state;
+  let placement;
+  let commandMode;
+  let spellMode;
+  let message;
+  let messageTimer;
+  let nextId;
+
+  let pointerStart = null;
+  let pointerEnd = null;
+  let mouse = { x: -100, y: -100 };
+
+  const alive = entity => !!entity && entity.hp > 0;
+  const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+  const xpNeeded = level => level * 40;
+
+  function rect(x, y, w, h, color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(Math.round(x), Math.round(y), w, h);
+  }
+
+  function text(
+    value,
+    x,
+    y,
+    size = 13,
+    color = "#f5ecd4",
+    align = "left"
+  ) {
+    ctx.font = `bold ${size}px Verdana, Arial, sans-serif`;
+    ctx.textAlign = align;
+    ctx.textBaseline = "alphabetic";
+
+    ctx.fillStyle = "#101417";
+    ctx.fillText(value, Math.round(x) + 1, Math.round(y) + 1);
+
+    ctx.fillStyle = color;
+    ctx.fillText(value, Math.round(x), Math.round(y));
+
+    ctx.textAlign = "left";
+  }
+
+  function announce(value) {
+    message = value;
+    messageTimer = 3;
+  }
+
+  function createBuilding(type, x, y, team = "blue") {
+    const maxHp = {
+      hall: 500,
+      barracks: 290,
+      tower: 175,
+      citadel: 650
+    }[type];
+
+    const building = {
+      id: nextId++,
+      kind: "building",
+      type,
+      team,
+      x,
+      y,
+      hp: maxHp,
+      maxHp,
+      cooldown: 0
+    };
+
+    buildings.push(building);
+    return building;
+  }
+
+  function createUnit(type, x, y, team = "blue") {
+    // HP, rychlost, poškození, dosah a prodleva mezi útoky.
+    const stats = {
+      worker:  [65, 55, 6,  22, 0.85],
+      soldier: [110, 45, 15, 25, 0.72],
+      archer:  [70, 49, 11, 110, 1.04],
+      hero:    [210, 53, 23, 34, 0.68],
+      raider:  [85, 43, 12, 25, 0.90]
+    }[type];
+
+    const unit = {
+      id: nextId++,
+      kind: "unit",
+      type,
+      team,
+      x,
+      y,
+      hp: stats[0],
+      maxHp: stats[0],
+      speed: stats[1],
+      damage: stats[2],
+      range: stats[3],
+      attackDelay: stats[4],
+      cooldown: 0,
+      fireCooldown: 0,
+      healCooldown: 0,
+      order: null,
+      harvestTimer: 0,
+      carry: null,
+      level: 1,
+      xp: 0,
+      walkCycle: 0,
+      facing: team === "red" ? -1 : 1
+    };
+
+    units.push(unit);
+    return unit;
+  }
+
+  function makeTerrain() {
+    terrain = document.createElement("canvas");
+    terrain.width = WIDTH;
+    terrain.height = MAP_HEIGHT;
+
+    const t = terrain.getContext("2d");
+    t.fillStyle = "#496c3e";
+    t.fillRect(0, 0, WIDTH, MAP_HEIGHT);
+
+    for (let y = 0; y < MAP_HEIGHT; y += 12) {
+      for (let x = 0; x < WIDTH; x += 12) {
+        const value =
+          Math.sin(x * 18.31 + y * 42.71) * 43758.5453;
+        const random = value - Math.floor(value);
+
+        t.fillStyle =
+          random > 0.79 ? "#5b8148" :
+          random < 0.18 ? "#405f38" :
+          "#496c3e";
+
+        t.fillRect(x, y, 12, 12);
+
+        if (random > 0.85) {
+          t.fillStyle = "#91aa62";
+          t.fillRect(x + 3, y + 6, 2, 2);
+          t.fillRect(x + 8, y + 8, 2, 2);
+        }
+
+        if (random < 0.05) {
+          t.fillStyle = "#b4ae90";
+          t.fillRect(x + 5, y + 5, 4, 2);
+        }
+      }
+    }
+
+    t.fillStyle = "#887650";
+    t.fillRect(238, 234, 512, 44);
+    t.fillStyle = "#a38a5e";
+    t.fillRect(238, 240, 512, 30);
+
+    for (let x = 250; x < 745; x += 24) {
+      const y = 244 + (x % 4) * 5;
+      t.fillStyle = "#c5a979";
+      t.fillRect(x, y, 11, 3);
+    }
+
+    t.fillStyle = "#344c33";
+    t.fillRect(0, MAP_HEIGHT - 8, WIDTH, 8);
+  }
+
+  function reset() {
+    units = [];
+    buildings = [];
+    resources = [];
+    effects = [];
+    selected = [];
+
+    gold = 260;
+    wood = 120;
+    elapsed = 0;
+    waveTimer = 12;
+    state = "playing";
+    placement = null;
+    commandMode = false;
+    spellMode = null;
+    message = "";
+    messageTimer = 0;
+    nextId = 1;
+    pointerStart = null;
+    pointerEnd = null;
+
+    createBuilding("hall", 120, 238);
+    createBuilding("barracks", 191, 354);
+    createBuilding("citadel", 850, 234, "red");
+
+    createUnit("worker", 173, 194);
+    createUnit("worker", 164, 266);
+    createUnit("soldier", 259, 234);
+    createUnit("soldier", 280, 255);
+
+    createUnit("raider", 770, 254, "red");
+    createUnit("raider", 798, 299, "red");
+
+    resources.push(
+      { type: "gold", x: 320, y: 112, amount: Infinity },
+      { type: "gold", x: 390, y: 394, amount: Infinity }
+    );
+
+    const trees = [
+      [29,69], [64,53], [102,70], [143,48],
+      [192,78], [232,54], [32,382], [66,427],
+      [113,404], [164,430], [249,416], [434,69],
+      [466,98], [502,55], [520,397], [560,425],
+      [599,394], [631,423], [706,67], [754,88],
+      [919,80], [920,373], [890,421], [737,414]
+    ];
+
+    for (const [x, y] of trees) {
+      resources.push({
+        type: "wood",
+        x,
+        y,
+        amount: 100
+      });
+    }
+
+    makeTerrain();
+  }
+
+  function pay(type) {
+    const price = costs[type];
+
+    if (gold < price.gold || wood < price.wood) {
+      announce(
+        `Potřebuješ ${price.gold} zlata a ${price.wood} dřeva.`
+      );
+      return false;
+    }
+
+    gold -= price.gold;
+    wood -= price.wood;
+    return true;
+  }
+
+  function selectedHero() {
+    return selected.find(entity =>
+      entity.kind === "unit" &&
+      entity.type === "hero" &&
+      alive(entity)
+    );
+  }
+
+  function action(type) {
+    if (state !== "playing") return;
+
+    if (type === "command") {
+      commandMode = !commandMode;
+      placement = null;
+      spellMode = null;
+      announce(
+        commandMode
+          ? "Klepni na cíl rozkazu."
+          : "Rozkaz zrušen."
+      );
+      return;
+    }
+
+    if (type === "fire") {
+      const hero = selectedHero();
+
+      if (!hero) return announce("Nejdřív vyber hrdinu.");
+
+      if (hero.fireCooldown > 0) {
+        return announce(
+          `Ohnivá koule: ještě ${Math.ceil(hero.fireCooldown)} s.`
+        );
+      }
+
+      spellMode = "fire";
+      placement = null;
+      commandMode = false;
+      announce("Klikni na místo dopadu ohnivé koule.");
+      return;
+    }
+
+    if (type === "heal") {
+      const hero = selectedHero();
+
+      if (!hero) return announce("Nejdřív vyber hrdinu.");
+
+      if (hero.healCooldown > 0) {
+        return announce(
+          `Léčení: ještě ${Math.ceil(hero.healCooldown)} s.`
+        );
+      }
+
+      let healed = 0;
+      const amount = 42 + hero.level * 10;
+
+      for (const ally of units) {
+        if (
+          ally.team !== "blue" ||
+          !alive(ally) ||
+          distance(ally, hero) > 90 ||
+          ally.hp >= ally.maxHp
+        ) continue;
+
+        ally.hp = Math.min(ally.maxHp, ally.hp + amount);
+        healed++;
+      }
+
+      hero.healCooldown = 14;
+
+      effects.push({
+        kind: "ring",
+        x: hero.x,
+        y: hero.y,
+        radius: 90,
+        color: "#a5f7b1",
+        life: 0.55
+      });
+
+      announce(`Vyléčeno spojenců: ${healed}.`);
+      return;
+    }
+
+    if (type === "tower" || type === "barracks") {
+      const hasWorker = selected.some(entity =>
+        entity.kind === "unit" &&
+        entity.type === "worker" &&
+        alive(entity)
+      );
+
+      if (!hasWorker) {
+        return announce("Pro stavbu nejdřív vyber dělníka.");
+      }
+
+      placement = type;
+      spellMode = null;
+      commandMode = false;
+      announce("Klikni na volné místo ve vlastní části mapy.");
+      return;
+    }
+
+    const hall = buildings.find(building =>
+      building.type === "hall" && alive(building)
+    );
+
+    const barracks = buildings.find(building =>
+      building.type === "barracks" && alive(building)
+    );
+
+    const source = type === "worker" ? hall : barracks;
+
+    if (!source) {
+      return announce(
+        type === "worker"
+          ? "Potřebuješ radnici."
+          : "Potřebuješ kasárna."
+      );
+    }
+
+    if (
+      type === "hero" &&
+      units.some(unit =>
+        unit.team === "blue" &&
+        unit.type === "hero" &&
+        alive(unit)
+      )
+    ) {
+      return announce("Současně můžeš mít jen jednoho hrdinu.");
+    }
+
+    if (
+      units.filter(unit =>
+        unit.team === "blue" && alive(unit)
+      ).length >= 30
+    ) {
+      return announce("Maximum je 30 jednotek.");
+    }
+
+    if (pay(type)) {
+      const newUnit = createUnit(
+        type,
+        source.x + 58,
+        source.y + 29
+      );
+
+      selected = [newUnit];
+
+      if (type === "hero") {
+        announce(
+          "Hrdina připraven: A ohnivá koule, S léčení."
+        );
+      }
+    }
+  }
+
+  /*
+   * Příkazový panel vpravo dole.
+   * Tlačítka fungují myší i dotykem.
+   */
+  const buttons = [
+    { x: 675, y: 493, type: "worker",   key: "Q", title: "Dělník",    icon: "⛏" },
+    { x: 744, y: 493, type: "soldier",  key: "W", title: "Voják",     icon: "⚔" },
+    { x: 813, y: 493, type: "archer",   key: "E", title: "Lučištník", icon: "➶" },
+    { x: 882, y: 493, type: "hero",     key: "H", title: "Hrdina",    icon: "✦" },
+
+    { x: 675, y: 535, type: "tower",    key: "T", title: "Věž",       icon: "♜" },
+    { x: 744, y: 535, type: "barracks", key: "F", title: "Kasárna",   icon: "⌂" },
+    { x: 813, y: 535, type: "fire",     key: "A", title: "Oheň",      icon: "✹" },
+    { x: 882, y: 535, type: "heal",     key: "S", title: "Léčení",    icon: "+" },
+
+    { x: 675, y: 577, type: "command",  key: "M", title: "ROZKAZ",    icon: "➤" }
+  ];
+
+  function findEntity(x, y, list, radius) {
+    for (let i = list.length - 1; i >= 0; i--) {
+      const entity = list[i];
+
+      if (
+        alive(entity) &&
+        Math.hypot(entity.x - x, entity.y - y) < radius
+      ) {
+        return entity;
+      }
+    }
+
+    return null;
+  }
+
+  function selectAt(x, y) {
+    const friendlyUnit = findEntity(
+      x, y,
+      units.filter(unit => unit.team === "blue"),
+      19
+    );
+
+    const friendlyBuilding = findEntity(
+      x, y,
+      buildings.filter(building => building.team === "blue"),
+      42
+    );
+
+    selected = friendlyUnit
+      ? [friendlyUnit]
+      : friendlyBuilding
+        ? [friendlyBuilding]
+        : [];
+  }
+
+  function issueOrder(x, y) {
+    const enemy =
+      findEntity(
+        x, y,
+        units.filter(unit => unit.team === "red"),
+        20
+      ) ||
+      findEntity(
+        x, y,
+        buildings.filter(building => building.team === "red"),
+        46
+      );
+
+    const resource = resources.find(item =>
+      item.amount > 0 &&
+      Math.hypot(item.x - x, item.y - y) <
+        (item.type === "gold" ? 31 : 26)
+    );
+
+    for (const unit of selected) {
+      if (unit.kind !== "unit" || !alive(unit)) continue;
+
+      if (enemy) {
+        unit.order = { type: "attack", target: enemy };
+      } else if (resource && unit.type === "worker") {
+        unit.order = { type: "gather", target: resource };
+      } else {
+        unit.order = { type: "move", x, y };
+      }
+    }
+
+    commandMode = false;
+  }
+
+  function placeBuilding(x, y) {
+    if (
+      x < 45 ||
+      x > 715 ||
+      y < 85 ||
+      y > MAP_HEIGHT - 45
+    ) {
+      return announce(
+        "Stavět lze jen ve vlastní části mapy."
+      );
+    }
+
+    const collidesWithBuilding = buildings.some(building =>
+      alive(building) &&
+      distance(building, { x, y }) < 90
+    );
+
+    const collidesWithResource = resources.some(resource =>
+      resource.amount > 0 &&
+      distance(resource, { x, y }) < 48
+    );
+
+    if (collidesWithBuilding || collidesWithResource) {
+      return announce("Na tomto místě není dost prostoru.");
+    }
+
+    if (!pay(placement)) return;
+
+    const newBuilding = createBuilding(placement, x, y);
+    selected = [newBuilding];
+    placement = null;
+    announce("Stavba dokončena.");
+  }
+
+  function castFire(x, y) {
+    const hero = selectedHero();
+    spellMode = null;
+
+    if (!hero) {
+      return announce("Hrdina už není k dispozici.");
+    }
+
+    if (distance(hero, { x, y }) > 180) {
+      return announce("Cíl je příliš daleko od hrdiny.");
+    }
+
+    hero.fireCooldown = 10;
+
+    effects.push({
+      kind: "ring",
+      x,
+      y,
+      radius: 47,
+      color: "#ffb05c",
+      life: 0.55
+    });
+
+    let hits = 0;
+
+    for (const enemy of [...units, ...buildings]) {
+      if (!alive(enemy) || enemy.team !== "red") continue;
+
+      const radius =
+        enemy.kind === "building" ? 70 : 47;
+
+      if (distance(enemy, { x, y }) <= radius) {
+        damage(hero, enemy, 42 + hero.level * 10);
+        hits++;
+      }
+    }
+
+    announce(
+      hits
+        ? `Ohnivá koule zasáhla ${hits} cílů!`
+        : "Ohnivá koule minula."
+    );
+  }
+
+  function pointerPosition(event) {
+    const bounds = canvas.getBoundingClientRect();
+
+    return {
+      x: (event.clientX - bounds.left) *
+        WIDTH / bounds.width,
+      y: (event.clientY - bounds.top) *
+        HEIGHT / bounds.height
+    };
+  }
+
+  canvas.addEventListener("contextmenu", event => {
+    event.preventDefault();
+
+    if (state !== "playing") return;
+
+    if (placement || spellMode) {
+      placement = null;
+      spellMode = null;
+      announce("Akce zrušena.");
+      return;
+    }
+
+    const point = pointerPosition(event);
+
+    if (point.y < MAP_HEIGHT) {
+      issueOrder(point.x, point.y);
+    }
+  });
+
+  canvas.addEventListener("pointerdown", event => {
+    if (event.button !== 0) return;
+
+    canvas.setPointerCapture(event.pointerId);
+    pointerStart = pointerPosition(event);
+    pointerEnd = pointerStart;
+  });
+
+  canvas.addEventListener("pointermove", event => {
+    mouse = pointerPosition(event);
+
+    if (pointerStart) {
+      pointerEnd = mouse;
+    }
+  });
+
+  canvas.addEventListener("pointerleave", () => {
+    mouse = { x: -100, y: -100 };
+  });
+
+  canvas.addEventListener("pointerup", event => {
+    if (event.button !== 0 || !pointerStart) return;
+
+    const point = pointerPosition(event);
+    const start = pointerStart;
+
+    pointerStart = null;
+    pointerEnd = null;
+
+    if (state !== "playing") return;
+
+    if (start.y >= MAP_HEIGHT) {
+      const button = buttons.find(item =>
+        point.x >= item.x &&
+        point.x < item.x + 65 &&
+        point.y >= item.y &&
+        point.y < item.y + 38
+      );
+
+      if (button) action(button.type);
+      return;
+    }
+
+    if (placement) {
+      placeBuilding(point.x, point.y);
+      return;
+    }
+
+    if (spellMode === "fire") {
+      castFire(point.x, point.y);
+      return;
+    }
+
+    if (commandMode) {
+      issueOrder(point.x, point.y);
+      return;
+    }
+
+    if (
+      Math.hypot(
+        point.x - start.x,
+        point.y - start.y
+      ) > 9
+    ) {
+      const left = Math.min(point.x, start.x);
+      const right = Math.max(point.x, start.x);
+      const top = Math.min(point.y, start.y);
+      const bottom = Math.max(point.y, start.y);
+
+      selected = units.filter(unit =>
+        alive(unit) &&
+        unit.team === "blue" &&
+        unit.x >= left &&
+        unit.x <= right &&
+        unit.y >= top &&
+        unit.y <= bottom
+      );
+    } else {
+      selectAt(point.x, point.y);
+    }
+  });
+
+  window.addEventListener("keydown", event => {
+    if (event.repeat) return;
+
+    const key = event.key.toLowerCase();
+
+    const shortcuts = {
+      q: "worker",
+      w: "soldier",
+      e: "archer",
+      h: "hero",
+      t: "tower",
+      f: "barracks",
+      a: "fire",
+      s: "heal",
+      m: "command"
+    };
+
+    if (shortcuts[key]) {
+      action(shortcuts[key]);
+    }
+
+    if (key === "escape") {
+      placement = null;
+      spellMode = null;
+      commandMode = false;
+    }
+
+    if (key === "r" && state !== "playing") {
+      reset();
+    }
+  });
+
+  document
+    .querySelector("#restart")
+    .addEventListener("click", reset);
+
+  function moveTowards(unit, target, dt, stop = 0) {
+    const dx = target.x - unit.x;
+    const dy = target.y - unit.y;
+    const length = Math.hypot(dx, dy);
+
+    if (length <= stop || length < 0.001) {
+      return true;
+    }
+
+    const step = Math.min(
+      unit.speed * dt,
+      length - stop
+    );
+
+    unit.x = clamp(
+      unit.x + dx / length * step,
+      12,
+      WIDTH - 12
+    );
+
+    unit.y = clamp(
+      unit.y + dy / length * step,
+      38,
+      MAP_HEIGHT - 14
+    );
+
+    return length - step <= stop + 0.5;
+  }
+
+  function nearestEnemy(entity, maxDistance) {
+    let nearest = null;
+    let bestDistance = maxDistance;
+
+    for (const candidate of [...units, ...buildings]) {
+      if (
+        !alive(candidate) ||
+        candidate.team === entity.team
+      ) continue;
+
+      const currentDistance =
+        distance(entity, candidate);
+
+      if (currentDistance < bestDistance) {
+        nearest = candidate;
+        bestDistance = currentDistance;
+      }
+    }
+
+    return nearest;
+  }
+
+  function awardExperience(attacker, target) {
+    if (
+      target.kind !== "unit" ||
+      target.team !== "red"
+    ) return;
+
+    const hero = units.find(unit =>
+      unit.type === "hero" &&
+      unit.team === "blue" &&
+      alive(unit)
+    );
+
+    if (!hero) return;
+
+    if (
+      attacker !== hero &&
+      distance(hero, target) > 145
+    ) return;
+
+    hero.xp += 25;
+
+    while (hero.xp >= xpNeeded(hero.level)) {
+      hero.xp -= xpNeeded(hero.level);
+      hero.level++;
+
+      hero.maxHp += 27;
+      hero.hp = Math.min(
+        hero.maxHp,
+        hero.hp + 55
+      );
+
+      hero.damage += 3;
+
+      announce(
+        `Hrdina dosáhl úrovně ${hero.level}!`
+      );
+
+      effects.push({
+        kind: "ring",
+        x: hero.x,
+        y: hero.y,
+        radius: 37,
+        color: "#ffec91",
+        life: 0.7
+      });
+    }
+  }
+
+  function damage(attacker, target, amount) {
+    if (!alive(target)) return;
+
+    target.hp -= amount;
+
+    effects.push({
+      kind: "line",
+      x1: attacker.x,
+      y1: attacker.y - 17,
+      x2: target.x,
+      y2: target.y - 17,
+      color:
+        attacker.team === "blue"
+          ? "#ffe5a7"
+          : "#ff8882",
+      life: 0.18
+    });
+
+    if (target.hp <= 0) {
+      target.hp = 0;
+
+      awardExperience(attacker, target);
+
+      if (target.type === "citadel") {
+        state = "win";
+      }
+
+      if (target.type === "hall") {
+        state = "lose";
+      }
+    }
+  }
+
+  function gather(unit, dt) {
+    if (unit.order?.type !== "gather") {
+      return false;
+    }
+
+    const resource = unit.order.target;
+
+    const hall = buildings.find(building =>
+      building.type === "hall" &&
+      building.team === "blue" &&
+      alive(building)
+    );
+
+    if (!resource || resource.amount <= 0) {
+      unit.order = null;
+      unit.carry = null;
+      return false;
+    }
+
+    if (unit.carry) {
+      if (!hall) return true;
+
+      if (moveTowards(unit, hall, dt, 48)) {
+        if (unit.carry === "gold") {
+          gold += 10;
+        } else {
+          wood += 10;
+        }
+
+        unit.carry = null;
+      }
+
+      return true;
+    }
+
+    const stop =
+      resource.type === "gold" ? 31 : 24;
+
+    if (moveTowards(unit, resource, dt, stop)) {
+      unit.harvestTimer += dt;
+
+      if (unit.harvestTimer >= 0.9) {
+        unit.harvestTimer = 0;
+        unit.carry = resource.type;
+
+        if (resource.type === "wood") {
+          resource.amount -= 10;
+        }
+      }
+    }
+
+    return true;
+  }
+
+  function update(dt) {
+    if (state !== "playing") return;
+
+    elapsed += dt;
+    waveTimer -= dt;
+    messageTimer = Math.max(0, messageTimer - dt);
+
+    if (waveTimer <= 0) {
+      waveTimer = Math.max(
+        8,
+        18 - elapsed / 80
+      );
+
+      const citadel = buildings.find(building =>
+        building.type === "citadel" &&
+        alive(building)
+      );
+
+      if (citadel) {
+        const count = Math.min(
+          5,
+          1 + Math.floor(elapsed / 55)
+        );
+
+        for (let i = 0; i < count; i++) {
+          createUnit(
+            "raider",
+            citadel.x - 50 - i * 15,
+            citadel.y + 43 + i * 17,
+            "red"
+          );
+        }
+
+        announce(
+          `Přichází nepřátelská vlna: ${count} jednotek.`
+        );
+      }
+    }
+
+    for (const building of buildings) {
+      if (!alive(building)) continue;
+
+      building.cooldown -= dt;
+
+      if (
+        building.type === "tower" &&
+        building.cooldown <= 0
+      ) {
+        const target =
+          nearestEnemy(building, 155);
+
+        if (target) {
+          damage(building, target, 20);
+          building.cooldown = 0.85;
+        }
+      }
+    }
+
+    for (const unit of units) {
+      if (!alive(unit) || state !== "playing") {
+        continue;
+      }
+
+      unit.cooldown -= dt;
+
+      const moveIntent =
+        unit.order &&
+        (unit.order.type === "move" ||
+          unit.order.type === "gather" ||
+          (unit.order.type === "attack" &&
+            distance(unit, unit.order.target) >
+              unit.range + 6));
+
+      unit.walkCycle +=
+        moveIntent ? dt * (4 + unit.speed / 22) : 0;
+
+      if (unit.order?.type === "move" && unit.order.x != null) {
+        unit.facing = unit.order.x < unit.x ? -1 : 1;
+      }
+
+      if (unit.order?.type === "attack" && alive(unit.order.target)) {
+        unit.facing = unit.order.target.x < unit.x ? -1 : 1;
+      }
+
+      unit.fireCooldown = Math.max(
+        0,
+        unit.fireCooldown - dt
+      );
+
+      unit.healCooldown = Math.max(
+        0,
+        unit.healCooldown - dt
+      );
+
+      if (
+        unit.team === "blue" &&
+        unit.type === "worker" &&
+        gather(unit, dt)
+      ) {
+        continue;
+      }
+
+      // Přesun má přednost před automatickým útokem.
+      if (unit.order?.type === "move") {
+        if (
+          moveTowards(unit, unit.order, dt, 5)
+        ) {
+          unit.order = null;
+        }
+
+        continue;
+      }
+
+      let target =
+        unit.order?.type === "attack" &&
+        alive(unit.order.target)
+          ? unit.order.target
+          : null;
+
+      if (!target) {
+        target = nearestEnemy(
+          unit,
+          unit.team === "red" ? 1200 : 100
+        );
+      }
+
+      if (!target) continue;
+
+      const reach =
+        unit.range +
+        (target.kind === "building" ? 24 : 0);
+
+      if (distance(unit, target) > reach) {
+        if (
+          unit.team === "red" ||
+          unit.order?.type === "attack"
+        ) {
+          moveTowards(
+            unit,
+            target,
+            dt,
+            reach - 2
+          );
+        }
+      } else if (unit.cooldown <= 0) {
+        damage(unit, target, unit.damage);
+        unit.cooldown = unit.attackDelay;
+      }
+    }
+
+    units = units.filter(alive);
+    buildings = buildings.filter(alive);
+
+    resources = resources.filter(
+      resource => resource.amount > 0
+    );
+
+    selected = selected.filter(alive);
+
+    for (const effect of effects) {
+      effect.life -= dt;
+    }
+
+    effects = effects.filter(
+      effect => effect.life > 0
+    );
+  }
+
+  function drawHealth(entity, width, offset) {
+    if (
+      entity.hp >= entity.maxHp &&
+      !selected.includes(entity)
+    ) return;
+
+    const x = entity.x - width / 2;
+    const y = entity.y - offset;
+
+    rect(
+      x - 2,
+      y - 2,
+      width + 4,
+      8,
+      "#172024"
+    );
+
+    rect(x, y, width, 4, "#633b3a");
+
+    rect(
+      x,
+      y,
+      width * clamp(
+        entity.hp / entity.maxHp,
+        0,
+        1
+      ),
+      4,
+      entity.team === "blue"
+        ? "#70db81"
+        : "#f57c6d"
+    );
+  }
+
+  function drawResource(resource) {
+    const x = Math.round(resource.x);
+    const y = Math.round(resource.y);
+
+    if (resource.type === "wood") {
+      if (imageReady(images.tree)) {
+        ctx.drawImage(
+          images.tree,
+          x - 30,
+          y - 52,
+          60,
+          82
+        );
+      } else {
+        // Náhradní zobrazení při chybějícím souboru.
+        rect(x - 5, y + 5, 10, 30, "#65462b");
+        rect(x - 24, y - 28, 48, 41, "#276748");
+        rect(x - 15, y - 39, 30, 20, "#3a8953");
+      }
+
+      return;
+    }
+
+    // Zlato kreslí hra sama.
+    rect(x - 34, y + 13, 68, 14, "#56503b");
+    rect(x - 26, y - 3, 17, 28, "#ad7938");
+    rect(x - 16, y - 23, 23, 47, "#e5ad42");
+    rect(x + 4, y - 12, 25, 36, "#c98d35");
+    rect(x - 11, y - 20, 7, 17, "#fff098");
+    rect(x + 10, y - 8, 5, 13, "#ffdf70");
+  }
+
+  function buildingImage(building) {
+    if (building.type === "tower") {
+      return images.tower;
+    }
+
+    if (building.type === "barracks") {
+      return images.barracks;
+    }
+
+    return images.castle;
+  }
+
+  function buildingSize(building) {
+    if (building.type === "tower") {
+      return { w: 75, h: 120 };
+    }
+
+    if (building.type === "barracks") {
+      return { w: 115, h: 100 };
+    }
+
+    return { w: 130, h: 110 };
+  }
+
+  function drawBuilding(building) {
+    const img = buildingImage(building);
+    const size = buildingSize(building);
+
+    const x = Math.round(
+      building.x - size.w / 2
+    );
+
+    const y = Math.round(
+      building.y + 39 - size.h
+    );
+
+    ctx.fillStyle = "rgba(9, 13, 11, 0.32)";
+    ctx.beginPath();
+
+    ctx.ellipse(
+      building.x,
+      building.y + 33,
+      size.w * 0.36,
+      13,
+      0,
+      0,
+      Math.PI * 2
+    );
+
+    ctx.fill();
+
+    ctx.fillStyle =
+      building.team === "red"
+        ? "rgba(255, 122, 98, 0.18)"
+        : "rgba(116, 181, 255, 0.18)";
+    ctx.fillRect(
+      building.x - size.w * 0.3,
+      building.y - size.h * 0.5,
+      size.w * 0.6,
+      size.h * 0.3
+    );
+
+    if (imageReady(img)) {
+      ctx.drawImage(
+        img,
+        x,
+        y,
+        size.w,
+        size.h
+      );
+    } else {
+      // Hra zůstane hratelná i bez stažené grafiky.
+      rect(
+        building.x - 37,
+        building.y - 32,
+        74,
+        70,
+        building.team === "red"
+          ? "#70616a"
+          : "#a6a499"
+      );
+
+      rect(
+        building.x - 45,
+        building.y - 43,
+        90,
+        20,
+        building.team === "red"
+          ? "#a84951"
+          : "#4b78a5"
+      );
+
+      rect(
+        building.x - 10,
+        building.y + 4,
+        20,
+        34,
+        "#3c3536"
+      );
+    }
+
+    ctx.fillStyle =
+      building.team === "red"
+        ? "rgba(255, 212, 145, 0.17)"
+        : "rgba(255, 255, 255, 0.12)";
+    ctx.fillRect(
+      building.x - size.w * 0.18,
+      y + 10,
+      size.w * 0.36,
+      9
+    );
+
+    if (
+      building.type === "hall" ||
+      building.type === "citadel"
+    ) {
+      const flagColor =
+        building.team === "red"
+          ? "#b13c49"
+          : "#4685bc";
+
+      rect(
+        building.x + 29,
+        y + 4,
+        3,
+        34,
+        "#d0c8ad"
+      );
+
+      rect(
+        building.x + 32,
+        y + 5,
+        22,
+        11,
+        flagColor
+      );
+
+      rect(
+        building.x + 32,
+        y + 16,
+        13,
+        5,
+        flagColor
+      );
+    }
+
+    drawHealth(
+      building,
+      building.type === "tower" ? 52 : 78,
+      building.type === "tower" ? 88 : 84
+    );
+  }
+
+  function drawUnit(unit) {
+    const size =
+      unit.type === "hero" ? 51 : 43;
+
+    const x = Math.round(
+      unit.x - size / 2
+    );
+
+    const y = Math.round(
+      unit.y - size + 17
+    );
+
+    const step =
+      Math.sin((unit.walkCycle || 0) * 12 + unit.id * 0.7) *
+      (unit.type === "hero" ? 3.5 : 2.6);
+    const bob =
+      Math.abs(
+        Math.sin((unit.walkCycle || 0) * 12 + unit.id * 0.7)
+      ) * (unit.type === "hero" ? 3 : 2.1);
+    const shadowRadius =
+      unit.type === "hero" ? 18 : 15;
+
+    ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
+    ctx.beginPath();
+    ctx.ellipse(
+      unit.x,
+      unit.y + 12,
+      shadowRadius,
+      5,
+      0,
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
+
+    ctx.fillStyle =
+      unit.team === "red"
+        ? "rgba(255, 141, 116, 0.2)"
+        : "rgba(137, 209, 255, 0.2)";
+    ctx.beginPath();
+    ctx.ellipse(
+      unit.x,
+      unit.y - 5,
+      18,
+      12,
+      0,
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
+
+    if (preparedUnits) {
+      const row = spriteRows[unit.type];
+
+      ctx.drawImage(
+        preparedUnits,
+        0,
+        row * 32,
+        32,
+        32,
+        x + step * 0.35,
+        y - bob,
+        size,
+        size
+      );
+    } else {
+      // Záložní postava, pokud spritesheet chybí.
+      rect(
+        unit.x - 8 + step * 0.35,
+        unit.y - 12 - bob,
+        16,
+        22,
+        unit.team === "red"
+          ? "#af5250"
+          : unit.type === "hero"
+            ? "#9c73ba"
+            : "#5d8ca8"
+      );
+
+      rect(
+        unit.x - 5 + step * 0.35,
+        unit.y - 22 - bob,
+        10,
+        12,
+        "#e4b889"
+      );
+    }
+
+    ctx.strokeStyle =
+      unit.team === "red"
+        ? "#e87470"
+        : "#8ab9ed";
+
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+
+    ctx.ellipse(
+      unit.x,
+      unit.y + 12,
+      16,
+      6,
+      0,
+      0,
+      Math.PI * 2
+    );
+
+    ctx.stroke();
+    ctx.lineWidth = 1;
+
+    if (unit.type === "hero") {
+      text(
+        String(unit.level),
+        unit.x,
+        y - 5,
+        12,
+        "#ffe990",
+        "center"
+      );
+    }
+
+    if (unit.carry) {
+      rect(
+        unit.x - 4,
+        y - 11,
+        9,
+        8,
+        unit.carry === "gold"
+          ? "#f3cb58"
+          : "#946b42"
+      );
+    }
+
+    drawHealth(
+      unit,
+      unit.type === "hero" ? 33 : 27,
+      size + 2
+    );
+  }
+
+  function panel(x, y, w, h) {
+    rect(x, y, w, h, "#0d1117");
+    rect(x + 3, y + 3, w - 6, h - 6, "#475153");
+    rect(x + 6, y + 6, w - 12, h - 12, "#202b30");
+    rect(x + 4, y + 4, w - 8, 2, "#a18b5c");
+  }
+
+  function drawMinimap() {
+    panel(8, 488, 186, 124);
+    text("MINIMAPA", 19, 504, 11, "#f1d992");
+
+    const x = 19;
+    const y = 511;
+    const w = 164;
+    const h = 91;
+
+    rect(x, y, w, h, "#365b37");
+
+    for (const resource of resources) {
+      rect(
+        x + resource.x / WIDTH * w,
+        y + resource.y / MAP_HEIGHT * h,
+        3,
+        3,
+        resource.type === "gold"
+          ? "#e6c66c"
+          : "#183f2d"
+      );
+    }
+
+    for (const building of buildings) {
+      if (!alive(building)) continue;
+
+      rect(
+        x + building.x / WIDTH * w - 3,
+        y + building.y / MAP_HEIGHT * h - 3,
+        7,
+        7,
+        building.team === "blue"
+          ? "#75a4ed"
+          : "#ed6a63"
+      );
+    }
+
+    for (const unit of units) {
+      if (!alive(unit)) continue;
+
+      rect(
+        x + unit.x / WIDTH * w,
+        y + unit.y / MAP_HEIGHT * h,
+        2,
+        2,
+        unit.team === "blue"
+          ? "#ebf5ff"
+          : "#ffaaa0"
+      );
+    }
+
+    ctx.strokeStyle = "#c4b38b";
+    ctx.strokeRect(x - 1, y - 1, w + 2, h + 2);
+  }
+
+  function drawPortrait(entity) {
+    panel(203, 488, 128, 124);
+    text("VÝBĚR", 215, 504, 11, "#f1d992");
+
+    rect(215, 511, 104, 89, "#456a51");
+
+    if (!entity) {
+      text(
+        "Vyber",
+        267,
+        548,
+        15,
+        "#f1eedb",
+        "center"
+      );
+
+      text(
+        "jednotku",
+        267,
+        569,
+        15,
+        "#f1eedb",
+        "center"
+      );
+
+      return;
+    }
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(218, 514, 98, 83);
+    ctx.clip();
+
+    if (entity.kind === "unit") {
+      // Portrét používá stejnou grafiku jako postava na mapě.
+      ctx.translate(267, 566);
+      ctx.scale(1.8, 1.8);
+
+      drawUnit({
+        ...entity,
+        x: 0,
+        y: 0,
+        hp: entity.maxHp
+      });
+    } else {
+      ctx.translate(267, 558);
+      ctx.scale(0.72, 0.72);
+
+      drawBuilding({
+        ...entity,
+        x: 0,
+        y: 0,
+        hp: entity.maxHp
+      });
+    }
+
+    ctx.restore();
+  }
+
+  function drawInfo() {
+    panel(340, 488, 325, 124);
+
+    const entity = selected[0];
+
+    if (!entity) {
+      text(
+        "VELENÍ",
+        353,
+        508,
+        13,
+        "#efd591"
+      );
+
+      text(
+        "Vyber jednotku nebo budovu.",
+        353,
+        533,
+        14
+      );
+
+      text(
+        "Dělník těží zlato a dřevo.",
+        353,
+        555,
+        13,
+        "#cbd8c9"
+      );
+
+      text(
+        "Hrdina získává zkušenosti v boji.",
+        353,
+        577,
+        13,
+        "#cbd8c9"
+      );
+
+      return;
+    }
+
+    const heading =
+      selected.length > 1
+        ? `${selected.length} VYBRANÉ JEDNOTKY`
+        : names[entity.type].toUpperCase();
+
+    text(
+      heading,
+      353,
+      508,
+      14,
+      "#f4dc9a"
+    );
+
+    text(
+      `Životy: ${Math.ceil(entity.hp)} / ${entity.maxHp}`,
+      353,
+      532,
+      14,
+      entity.hp / entity.maxHp > 0.35
+        ? "#84e4a0"
+        : "#f19a7e"
+    );
+
+    rect(353, 541, 292, 10, "#141b20");
+
+    rect(
+      355,
+      543,
+      288 * entity.hp / entity.maxHp,
+      6,
+      "#69c279"
+    );
+
+    if (entity.type === "hero") {
+      text(
+        `Úroveň ${entity.level} · XP ${entity.xp}/${xpNeeded(entity.level)}`,
+        353,
+        572,
+        13,
+        "#efda88"
+      );
+
+      text(
+        `Oheň ${Math.ceil(entity.fireCooldown)} s · Léčení ${Math.ceil(entity.healCooldown)} s`,
+        353,
+        591,
+        13,
+        "#d2dce0"
+      );
+    } else if (entity.kind === "unit") {
+      text(
+        `Útok: ${entity.damage} · Dosah: ${entity.range}`,
+        353,
+        572,
+        13,
+        "#d2dce0"
+      );
+
+      text(
+        entity.type === "worker"
+          ? "Těžba: pošli dělníka na surovinu."
+          : "Pohyb a útok: vydej rozkaz.",
+        353,
+        591,
+        12,
+        "#d2dce0"
+      );
+    } else {
+      const detail =
+        entity.type === "hall"
+          ? "Výcvik dělníků"
+          : entity.type === "barracks"
+            ? "Výcvik armády a hrdiny"
+            : entity.type === "tower"
+              ? "Automatická obrana"
+              : "Cíl tvého útoku";
+
+      text(
+        detail,
+        353,
+        578,
+        13,
+        "#d2dce0"
+      );
+    }
+  }
+
+  function drawButtons() {
+    panel(670, 488, 282, 124);
+
+    for (const button of buttons) {
+      const active =
+        button.type === placement ||
+        (button.type === "fire" &&
+          spellMode === "fire") ||
+        (button.type === "command" &&
+          commandMode);
+
+      const hovered =
+        mouse.x >= button.x &&
+        mouse.x < button.x + 65 &&
+        mouse.y >= button.y &&
+        mouse.y < button.y + 38;
+
+      const needsHero =
+        button.type === "fire" ||
+        button.type === "heal";
+
+      const dim = needsHero && !selectedHero();
+
+      rect(
+        button.x,
+        button.y,
+        65,
+        38,
+        "#101719"
+      );
+
+      rect(
+        button.x + 2,
+        button.y + 2,
+        61,
+        34,
+        active
+          ? "#6d754d"
+          : hovered
+            ? "#526669"
+            : dim
+              ? "#343d3c"
+              : "#3a4e53"
+      );
+
+      rect(
+        button.x + 3,
+        button.y + 3,
+        59,
+        2,
+        active ? "#f3d78f" : "#879798"
+      );
+
+      text(
+        button.icon,
+        button.x + 14,
+        button.y + 23,
+        19,
+        dim ? "#82918f" : "#f2d697",
+        "center"
+      );
+
+      text(
+        button.key,
+        button.x + 51,
+        button.y + 13,
+        11,
+        "#ffebad",
+        "center"
+      );
+
+      text(
+        button.title,
+        button.x + 33,
+        button.y + 33,
+        10,
+        dim ? "#9ba8a4" : "#f2efe2",
+        "center"
+      );
+    }
+
+    const hoveredButton = buttons.find(button =>
+      mouse.x >= button.x &&
+      mouse.x < button.x + 65 &&
+      mouse.y >= button.y &&
+      mouse.y < button.y + 38
+    );
+
+    if (hoveredButton) {
+      const price = costs[hoveredButton.type];
+
+      const tooltip = price
+        ? `${hoveredButton.title}: ${price.gold} zl., ${price.wood} dř.`
+        : hoveredButton.type === "fire"
+          ? "Ohnivá koule: plošný útok"
+          : hoveredButton.type === "heal"
+            ? "Léčení okolních spojenců"
+            : "Rozkaz: klepni na cíl";
+
+      const x = clamp(
+        mouse.x - 100,
+        670,
+        756
+      );
+
+      rect(x, 443, 196, 27, "#101819");
+      rect(x + 2, 445, 192, 23, "#4b584d");
+      text(
+        tooltip,
+        x + 7,
+        461,
+        11,
+        "#fff0ca"
+      );
+    }
+  }
+
+  function drawTopBar() {
+    rect(0, 0, WIDTH, 31, "#101820");
+    rect(0, 29, WIDTH, 3, "#a58b56");
+
+    text(
+      `ZLATO: ${gold}`,
+      16,
+      21,
+      15,
+      "#f5d476"
+    );
+
+    text(
+      `DŘEVO: ${wood}`,
+      223,
+      21,
+      15,
+      "#dcc69a"
+    );
+
+    const army = units.filter(unit =>
+      unit.team === "blue"
+    ).length;
+
+    text(
+      `JEDNOTKY: ${army}/30`,
+      427,
+      21,
+      15,
+      "#c5e1eb"
+    );
+
+    text(
+      `VLNA ZA: ${Math.ceil(waveTimer)} s`,
+      944,
+      21,
+      14,
+      "#f2b7ab",
+      "right"
+    );
+  }
+
+  function drawEffects() {
+    for (const effect of effects) {
+      ctx.strokeStyle = effect.color;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+
+      if (effect.kind === "ring") {
+        ctx.arc(
+          effect.x,
+          effect.y,
+          effect.radius,
+          0,
+          Math.PI * 2
+        );
+      } else {
+        ctx.moveTo(effect.x1, effect.y1);
+        ctx.lineTo(effect.x2, effect.y2);
+      }
+
+      ctx.stroke();
+    }
+
+    ctx.lineWidth = 1;
+  }
+
+  function drawInterface() {
+    rect(
+      0,
+      MAP_HEIGHT,
+      WIDTH,
+      HEIGHT - MAP_HEIGHT,
+      "#11191e"
+    );
+
+    for (let x = 0; x < WIDTH; x += 18) {
+      rect(
+        x,
+        MAP_HEIGHT,
+        17,
+        5,
+        x % 36 === 0
+          ? "#a68754"
+          : "#705e43"
+      );
+    }
+
+    rect(
+      0,
+      MAP_HEIGHT + 5,
+      WIDTH,
+      4,
+      "#292d2b"
+    );
+
+    drawMinimap();
+    drawPortrait(selected[0]);
+    drawInfo();
+    drawButtons();
+
+    if (messageTimer > 0) {
+      rect(
+        202,
+        451,
+        556,
+        29,
+        "#111b1b"
+      );
+
+      rect(
+        205,
+        454,
+        550,
+        23,
+        "#405344"
+      );
+
+      text(
+        message,
+        480,
+        471,
+        13,
+        "#ffe4a8",
+        "center"
+      );
+    }
+  }
+
+  function draw() {
+    ctx.drawImage(terrain, 0, 0);
+
+    for (const resource of resources) {
+      drawResource(resource);
+    }
+
+    for (const building of buildings) {
+      if (alive(building)) {
+        drawBuilding(building);
+      }
+    }
+
+    [...units]
+      .filter(alive)
+      .sort((a, b) => a.y - b.y)
+      .forEach(drawUnit);
+
+    for (const entity of selected) {
+      if (!alive(entity)) continue;
+
+      const building =
+        entity.kind === "building";
+
+      const radius =
+        building ? 51 : 23;
+
+      ctx.strokeStyle = "#fff0a2";
+      ctx.lineWidth = 2;
+
+      ctx.strokeRect(
+        Math.round(entity.x - radius),
+        Math.round(
+          entity.y - (building ? 72 : 43)
+        ),
+        radius * 2,
+        building ? 123 : 69
+      );
+    }
+
+    ctx.lineWidth = 1;
+    drawEffects();
+
+    if (
+      pointerStart &&
+      pointerEnd &&
+      pointerStart.y < MAP_HEIGHT
+    ) {
+      ctx.strokeStyle = "#fff0a2";
+
+      ctx.strokeRect(
+        pointerStart.x,
+        pointerStart.y,
+        pointerEnd.x - pointerStart.x,
+        pointerEnd.y - pointerStart.y
+      );
+    }
+
+    if (placement || commandMode || spellMode) {
+      rect(
+        285,
+        39,
+        390,
+        29,
+        "#14201c"
+      );
+
+      rect(
+        288,
+        42,
+        384,
+        23,
+        "#536449"
+      );
+
+      text(
+        placement
+          ? "UMÍSTI STAVBU — klikni do mapy"
+          : spellMode
+            ? "OHNIVÁ KOULE — klikni na cíl"
+            : "ROZKAZ — klikni na cíl",
+        480,
+        59,
+        14,
+        "#fff0c4",
+        "center"
+      );
+    }
+
+    drawTopBar();
+    drawInterface();
+
+    if (state !== "playing") {
+      rect(
+        250,
+        163,
+        460,
+        145,
+        "#111a1d"
+      );
+
+      rect(
+        256,
+        169,
+        448,
+        133,
+        state === "win"
+          ? "#355846"
+          : "#633e42"
+      );
+
+      text(
+        state === "win"
+          ? "VÍTĚZSTVÍ!"
+          : "TVÁ RADNICE PADLA!",
+        480,
+        222,
+        30,
+        "#fff0ba",
+        "center"
+      );
+
+      text(
+        "Klikni na Nová hra nebo stiskni R.",
+        480,
+        263,
+        16,
+        "#f5e8d0",
+        "center"
+      );
+    }
+  }
+
+  let previousFrame = performance.now();
+
+  function frame(now) {
+    const dt = Math.min(
+      (now - previousFrame) / 1000,
+      0.05
+    );
+
+    previousFrame = now;
+
+    update(dt);
+    draw();
+
+    requestAnimationFrame(frame);
+  }
+
+  reset();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

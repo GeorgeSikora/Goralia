@@ -1,0 +1,38 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>world debug</title>
+<style>body{margin:0;background:#101018;overflow:hidden}canvas{image-rendering:pixelated;display:block}</style></head>
+<body>
+<canvas id="c"></canvas>
+<script src="js/pixel.js"></script>
+<script src="js/font.js"></script>
+<script src="js/props.js"></script>
+<script src="js/buildings.js"></script>
+<script src="js/world.js"></script>
+<script>
+const t0 = performance.now();
+const buildings = [{type:"hall",x:120,y:238},{type:"barracks",x:191,y:354},{type:"citadel",x:850,y:234}];
+const resources = [{type:"gold",x:320,y:112},{type:"gold",x:390,y:394}];
+const trees = [[29,69],[64,53],[102,70],[143,48],[192,78],[232,54],[32,382],[66,427],[113,404],[164,430],[249,416],[434,69],[466,98],[502,55],[520,397],[560,425],[599,394],[631,423],[706,67],[754,88],[919,80],[920,373],[890,421],[737,414]];
+for (const [x,y] of trees) resources.push({type:"wood",x,y});
+PK.world.build({buildings, resources});
+console.log("build ms", performance.now() - t0);
+const S = 2;
+const c = document.getElementById("c");
+c.width = 480*S; c.height = 240*S;
+const g = c.getContext("2d"); g.imageSmoothingEnabled = false;
+const b = document.createElement("canvas"); b.width=480; b.height=240; const bg = b.getContext("2d"); bg.imageSmoothingEnabled=false;
+function frame(now) {
+  const T = now/1000;
+  PK.world.drawGround(bg, T);
+  for (const d of PK.world.doodads) bg.drawImage(d.spr.c, d.x - d.spr.ax, d.y - d.spr.ay);
+  for (const r of resources) {
+    if (r.type === "wood") { const t = PK.props.trees[(r.x*7+r.y)%3 | 0]; bg.drawImage(t.trunk, r.x/2 - t.ax, r.y/2+15 - t.ay); bg.drawImage(t.crown[0], r.x/2 - t.ax, r.y/2+15 - t.ay); }
+    else { const m = PK.props.mine; bg.drawImage(m.c, r.x/2 - m.ax, r.y/2+13 - m.ay); }
+  }
+  for (const bd of buildings) { const s = PK.buildings.get(bd.type); bg.drawImage(s.c, bd.x/2 - s.ax, bd.y/2 + 19 - s.ay); }
+  PK.world.drawClouds(bg, T); PK.world.drawMist(bg, T); PK.world.drawGrade(bg);
+  g.drawImage(b, 0, 0, 480*S, 240*S);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script></body></html>

@@ -1,0 +1,26 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>props debug</title>
+<style>body{margin:0;background:#3a5a3a;overflow:hidden}canvas{image-rendering:pixelated;display:block}</style></head>
+<body>
+<canvas id="c"></canvas>
+<script src="js/pixel.js"></script>
+<script src="js/font.js"></script>
+<script src="js/props.js"></script>
+<script>
+const S = 3;
+const c = document.getElementById("c");
+c.width = 1200; c.height = 640;
+const g = c.getContext("2d"); g.imageSmoothingEnabled = false;
+g.fillStyle = "#4a8548"; g.fillRect(0,0,c.width,c.height);
+let x = 6, y = 6, rowH = 0;
+function put(cv) {
+  const w = cv.width * S, h = cv.height * S;
+  if (x + w > c.width) { x = 6; y += rowH + 8; rowH = 0; }
+  g.drawImage(cv, x, y, w, h);
+  x += w + 8; rowH = Math.max(rowH, h);
+}
+for (const t of PK.props.trees) { g.save(); put(t.trunk); x -= (t.w * S + 8); g.drawImage(t.crown[0], x, y, t.w*S, t.h*S); x += t.w*S+8; }
+put(PK.props.mine.c);
+for (const d of Object.values(PK.props.doodads)) put(d.c);
+const fl = PK.props.flame(7, 11); for (const f of fl) put(f);
+</script></body></html>

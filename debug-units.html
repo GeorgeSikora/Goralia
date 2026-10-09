@@ -1,0 +1,31 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>sprite debug</title>
+<style>body{margin:0;background:#3a5a3a;color:#fff;font:12px monospace;overflow:hidden}canvas{image-rendering:pixelated;display:block}</style></head>
+<body>
+<canvas id="c"></canvas>
+<script src="js/pixel.js"></script>
+<script src="js/font.js"></script>
+<script src="js/units.js"></script>
+<script>
+const S = 4;
+const only = "hero";
+let rows = [["worker","blue"],["soldier","blue"],["archer","blue"],["hero","blue"],["raider","red"]];
+if (only) rows = rows.filter(r => r[0] === only);
+const c = document.getElementById("c");
+c.width = 8 * 32 * S; c.height = rows.length * 2 * 32 * S;
+const g = c.getContext("2d"); g.imageSmoothingEnabled = false;
+g.fillStyle = "#4a8548"; g.fillRect(0,0,c.width,c.height);
+rows.forEach(([type, team], r) => {
+  const lines = [[["idle",2],["walk",6]], [["attack",3],["cast",3]]];
+  lines.forEach((anims, li) => {
+    let col = 0;
+    anims.forEach(([a, n]) => {
+      for (let i = 0; i < n; i++) {
+        const rec = PK.units.frame(type, team, a, i);
+        g.drawImage(rec.c, col * 32 * S, (r * 2 + li) * 32 * S, 32 * S, 32 * S);
+        col++;
+      }
+    });
+  });
+});
+</script></body></html>

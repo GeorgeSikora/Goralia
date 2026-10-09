@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pixelové království</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <h1 class="logo">
+      <canvas id="logo" role="img" aria-label="Pixelové království"></canvas>
+    </h1>
+    <div class="actions">
+      <button id="mute" class="btn" type="button" aria-pressed="false">Zvuk: zapnutý</button>
+      <button id="restart" class="btn" type="button">Nová hra</button>
+    </div>
+  </header>
+
+  <main class="stage" id="stage">
+    <div class="frame">
+      <canvas id="game" width="960" height="620" aria-label="Herní plocha"></canvas>
+    </div>
+  </main>
+
+  <footer class="help">
+    <p class="goal">
+      Levé kliknutí vybírá jednotky, tažení vybere skupinu.
+      Pravé kliknutí vydá rozkaz. Na telefonu použij tlačítko
+      <b>ROZKAZ</b> a potom klepni na cíl. Znič rudou pevnost.
+    </p>
+    <ul class="keys">
+      <li><kbd>Q</kbd>dělník</li>
+      <li><kbd>W</kbd>voják</li>
+      <li><kbd>E</kbd>lučištník</li>
+      <li><kbd>H</kbd>hrdina</li>
+      <li><kbd>T</kbd>věž</li>
+      <li><kbd>F</kbd>kasárna</li>
+      <li><kbd>A</kbd>ohnivá koule</li>
+      <li><kbd>S</kbd>léčení</li>
+      <li><kbd>M</kbd>rozkaz</li>
+    </ul>
+  </footer>
+</div>
+
+<script src="js/audio.js"></script>
+<script src="js/pixel.js"></script>
+<script src="js/font.js"></script>
+<script src="js/units.js"></script>
+<script src="js/buildings.js"></script>
+<script src="js/props.js"></script>
+<script src="js/icons.js"></script>
+<script src="js/world.js"></script>
+<script src="js/fx.js"></script>
+<script src="js/hud.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
