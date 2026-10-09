@@ -430,3 +430,29 @@ kbd {
 .menu.scene .panel {
   background: linear-gradient(180deg, rgba(42, 35, 71, 0.86) 0%, rgba(31, 27, 49, 0.8) 100%);
 }
+
+/* ---------- ikona celé obrazovky ---------- */
+.fs-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #ffe9a8;
+  opacity: 0.55;
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+
+.fs-btn:hover { opacity: 1; }
+.fs-btn:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+
+.btn-icon { right: 54px; }
+
+.step { display: grid; gap: 16px; }

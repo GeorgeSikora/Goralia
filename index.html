@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pixelové království</title>
+<title>Goralia</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -13,41 +13,45 @@
   </main>
 
   <button id="menu-btn" class="btn btn-icon" type="button" aria-label="Menu (Esc)" title="Menu (Esc)" hidden>&#9776;</button>
+  <button id="fs-btn" class="fs-btn" type="button" aria-label="Celá obrazovka" title="Celá obrazovka">
+    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1 6V1h5M10 1h5v5M15 10v5h-5M6 15H1v-5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+  </button>
 
   <div id="menu" class="menu scene" role="dialog" aria-modal="true" aria-labelledby="menu-title">
     <canvas id="menubg" class="menubg" aria-hidden="true"></canvas>
     <div class="panel">
       <h1 class="logo" id="menu-title">
-        <canvas id="logo" role="img" aria-label="Pixelové království"></canvas>
+        <canvas id="logo" role="img" aria-label="Goralia"></canvas>
       </h1>
       <p class="tagline">Postav hrad, shromáždi armádu, dobyj království</p>
 
       <section id="panel-main" class="page" data-page="main">
         <p id="menu-status" class="status"></p>
-        <button id="m-online" class="btn big" type="button">Online hra</button>
+        <button id="m-online" class="btn big" type="button">Multiplayer</button>
         <button id="m-play" class="btn big" type="button">Hra proti AI</button>
         <button id="m-restart" class="btn big" type="button" hidden>Nová hra</button>
         <button id="m-surrender" class="btn big" type="button" hidden>Vzdát se</button>
         <button id="m-leave" class="btn big" type="button" hidden>Hlavní menu</button>
         <button id="m-settings" class="btn big" type="button">Nastavení</button>
         <button id="m-help" class="btn big" type="button">Ovládání</button>
-        <button id="m-fullscreen" class="btn big" type="button">Celá obrazovka</button>
       </section>
 
       <section id="panel-online" class="page" data-page="online" hidden>
-        <h2>Online hra</h2>
+        <h2>Multiplayer</h2>
         <label class="row">
           <span>Přezdívka</span>
           <input id="o-name" class="field" type="text" maxlength="14" autocomplete="off" spellcheck="false" placeholder="Hrac">
         </label>
-        <label class="row">
-          <span>Server</span>
-          <input id="o-server" class="field" type="text" maxlength="120" autocomplete="off" spellcheck="false">
-        </label>
-        <p id="o-status" class="status lobby-status" aria-live="polite"></p>
-        <div id="o-rooms" class="rooms" role="list"></div>
-        <p id="o-stats" class="status small"></p>
-        <button id="o-create" class="btn big" type="button">Vytvořit místnost</button>
+        <div id="o-step-name" class="step">
+          <p class="status">Zadej přezdívku, pod kterou tě uvidí ostatní hráči.</p>
+          <button id="o-continue" class="btn big" type="button">Pokračovat</button>
+        </div>
+        <div id="o-step-rooms" class="step" hidden>
+          <p id="o-status" class="status lobby-status" aria-live="polite"></p>
+          <div id="o-rooms" class="rooms" role="list"></div>
+          <p id="o-stats" class="status small"></p>
+          <button id="o-create" class="btn big" type="button">Vytvořit místnost</button>
+        </div>
         <button class="btn big" type="button" data-back id="o-back">Zpět</button>
       </section>
 
@@ -110,9 +114,9 @@
         <p class="goal">
           Levé kliknutí vybírá jednotky, tažení vybere skupinu.
           Pravé kliknutí vydá rozkaz. Na telefonu použij tlačítko
-          <b>ROZKAZ</b> a potom klepni na cíl. Hraješ proti počítačům nebo online v místnosti
-          (až 4 hráči, každý sám za sebe). Vyhrává poslední, komu zůstane hlavní budova
-          (radnice nebo pevnost). Online hra běží i při otevřeném menu.
+          <b>ROZKAZ</b> a potom klepni na cíl. Hraješ proti počítačům nebo v multiplayeru v místnosti
+          (až 6 hráčů, každý sám za sebe). Vyhrává poslední, komu zůstane hlavní budova
+          (radnice nebo pevnost). Multiplayer běží i při otevřeném menu.
           Na velkých mapách posouvej kameru: <b>šipkami</b>, <b>myší u okraje obrazovky</b>,
           <b>prostředním tlačítkem myši</b> nebo <b>klikem a tažením v minimapě</b>
           (pravé tlačítko v minimapě pošle jednotky).
@@ -139,7 +143,7 @@
         <button class="btn big" type="button" data-back>Zpět</button>
       </section>
     </div>
-    <p class="footer">Pixelové království &middot; Esc otevře menu</p>
+    <p class="footer">Goralia &middot; Esc otevře menu</p>
   </div>
 </div>
 

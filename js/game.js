@@ -906,7 +906,7 @@
     const playing = live && state === "playing";
 
     $("m-online").hidden = onl && live;
-    $("m-online").textContent = onl && over ? "Zpět do místnosti" : "Online hra";
+    $("m-online").textContent = onl && over ? "Zpět do místnosti" : "Multiplayer";
     $("m-play").textContent = live ? "Pokračovat" : "Hra proti AI";
     $("m-restart").hidden = !started || onl;
     $("m-surrender").hidden = !playing;
@@ -955,7 +955,15 @@
   const oRooms = $("o-rooms");
   const oCreate = $("o-create");
   const oName = $("o-name");
-  const oServer = $("o-server");
+  const oContinue = $("o-continue");
+  const stepName = $("o-step-name");
+  const stepRooms = $("o-step-rooms");
+
+  const setOnlineStep = rooms => {
+    stepName.hidden = rooms;
+    stepRooms.hidden = !rooms;
+    oName.disabled = rooms && online.phase === "connecting";
+  };
 
   const playerName = () => oName.value.trim() || "Hrac";
 
@@ -994,7 +1002,6 @@
     const busy = phase === "connecting";
 
     oName.disabled = busy;
-    oServer.disabled = busy;
     oCreate.disabled = busy;
     oCreate.textContent = phase === "idle" ? "Vytvořit místnost" : "Připojit k serveru";
 
@@ -1017,13 +1024,13 @@
   function connectLobby() {
     online.error = "";
     online.phase = "connecting";
-    online.server = oServer.value.trim();
+    online.server = "";
     syncLobby();
 
     net.connect(online.server).catch(() => {
       if (online.phase !== "connecting") return;
       online.phase = "offline";
-      online.error = "Server není dostupný. Zkontroluj adresu a jestli server běží.";
+      online.error = "Server není dostupný. Zkus to později.";
       syncLobby();
     });
   }
@@ -1047,12 +1054,6 @@
     try { savedName = localStorage.getItem(NAME_KEY) || ""; } catch (e) { /* ignore */ }
     if (!oName.value) oName.value = savedName;
 
-    if (!oServer.value) {
-      try { oServer.value = localStorage.getItem("pk-server") || ""; } catch (e) { /* ignore */ }
-    }
-
-    oServer.placeholder = net.defaultUrl();
-
     if (online.phase === "room") {
       showPage("lobby");
       renderLobby();
@@ -1060,6 +1061,18 @@
     }
 
     showPage("online");
+
+    // přezdívka se zadává před výpisem místnost; při návratu z herí už jsme připojení
+    const connected = online.phase === "idle" || online.phase === "connecting";
+    setOnlineStep(connected);
+    if (!connected) oName.focus();
+    syncLobby();
+  }
+
+  function continueOnline() {
+    audio.unlock();
+    rememberName();
+    setOnlineStep(true);
     if (online.phase === "offline") connectLobby();
     syncLobby();
   }
@@ -1067,11 +1080,7 @@
   function createRoom() {
     audio.unlock();
 
-    // změněná adresa serveru = nové spojení
-    if (online.phase === "idle" && oServer.value.trim() !== online.server) {
-      net.close();
-      connectLobby();
-    } else if (online.phase === "idle") {
+    if (online.phase === "idle") {
       rememberName();
       online.error = "";
       net.send({ t: "create", map: lobby.mapId, name: playerName() });
@@ -1166,7 +1175,7 @@
     const map = lobbyMap();
     const host = isHost();
 
-    lobbyEl.title.textContent = lobby.online ? "Online místnost" : "Hra proti AI";
+    lobbyEl.title.textContent = lobby.online ? "Multiplayer místnost" : "Hra proti AI";
 
     lobbyEl.maps.replaceChildren(...MAPS.list.map(m => {
       const item = document.createElement("button");
@@ -1752,7 +1761,7 @@
 
   function onFullscreenChange() {
     const on = isFullscreen();
-    $("m-fullscreen").textContent = on ? "Okno" : "Celá obrazovka";
+    $("fs-btn").title = on ? "Zavřít celou obrazovku" : "Celá obrazovka";
     $("s-fullscreen").textContent = on ? "Vypnout" : "Zapnout";
 
     // lets Escape reach the game so it can open the menu instead of leaving fullscreen
@@ -1779,11 +1788,12 @@
     closeMenu();
   });
   oCreate.addEventListener("click", createRoom);
-  for (const input of [oName, oServer]) {
-    input.addEventListener("keydown", event => {
-      if (event.key === "Enter") createRoom();
-    });
-  }
+  oContinue.addEventListener("click", continueOnline);
+  oName.addEventListener("keydown", event => {
+    if (event.key !== "Enter") return;
+    if (stepRooms.hidden) continueOnline();
+    else createRoom();
+  });
   lobbyEl.start.addEventListener("click", () => {
     if (lobby.online) net.send({ t: "start" });
     else startOffline();
@@ -1792,7 +1802,7 @@
   $("m-restart").addEventListener("click", openOfflineLobby);
   $("m-settings").addEventListener("click", () => showPage("settings"));
   $("m-help").addEventListener("click", () => showPage("help"));
-  $("m-fullscreen").addEventListener("click", toggleFullscreen);
+  $("fs-btn").addEventListener("click", toggleFullscreen);
   $("s-fullscreen").addEventListener("click", toggleFullscreen);
   menuBtn.addEventListener("click", () => openMenu());
 
@@ -2746,7 +2756,7 @@
     canvas.style.height = `${cssH}px`;
     scale = cw / vw;
     // pravý horní roh zabírá tlačítko menu (cca 54 css px), HUD se mu vyhne
-    view.inset = Math.ceil(54 / (cssW / vw));
+    view.inset = Math.ceil(98 / (cssW / vw));
     display.imageSmoothingEnabled = false;
 
     PK.hud.relayout();

@@ -1,8 +1,8 @@
 {
-  "name": "pixelove-kralovstvi",
+  "name": "goralia",
   "version": "1.0.0",
   "private": true,
-  "description": "Pixelové království - online server (místnosti pro 2 až 4 hráče)",
+  "description": "Goralia - multiplayer server (místnosti pro 2 až 4 hráče)",
   "main": "server/server.js",
   "scripts": {
     "start": "node server/server.js",

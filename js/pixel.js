@@ -83,6 +83,14 @@
     violet: {
       d: 0x2e2058, m: 0x7050c0, s: 0x4a3290, l: 0xa07ee8, h: 0xd0b4ff,
       accent: C.a[2], accentL: C.a[3], light: C.a[2], ui: 0xa078e8
+    },
+    green: {
+      d: 0x1c4a2a, m: 0x3f9a4a, s: 0x2a6e38, l: 0x74cc6a, h: 0xc4f5a8,
+      accent: C.a[3], accentL: C.a[4], light: C.a[2], ui: 0x5cc864
+    },
+    silver: {
+      d: 0x3c4252, m: 0xa8b0c4, s: 0x6e7690, l: 0xd0d8ea, h: 0xffffff,
+      accent: C.r[3], accentL: C.r[4], light: C.a[2], ui: 0xc4ccdc
     }
   };
 

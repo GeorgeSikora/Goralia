@@ -6,19 +6,14 @@
   "use strict";
 
   const PK = window.PK;
-  const STORE_KEY = "pk-server";
 
   let ws = null;
   let handlers = { message() {}, close() {} };
 
   function defaultUrl() {
     const query = new URLSearchParams(location.search).get("server");
-    let saved = "";
-
-    try { saved = localStorage.getItem(STORE_KEY) || ""; } catch (e) { /* storage unavailable */ }
 
     if (query) return query;
-    if (saved) return saved;
     if (location.protocol === "http:" || location.protocol === "https:") {
       return `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`;
     }
@@ -55,12 +50,6 @@
 
       socket.addEventListener("open", () => {
         opened = true;
-
-        try {
-          if (address) localStorage.setItem(STORE_KEY, String(address).trim());
-          else localStorage.removeItem(STORE_KEY);
-        } catch (e) { /* storage unavailable */ }
-
         resolve();
       });
 

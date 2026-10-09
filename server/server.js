@@ -1,5 +1,5 @@
 /*
- * Server hry: statické soubory, místnosti s hostitelem (2 až 4 hráči + AI) a autoritativní běh zápasů.
+ * Server hry: statické soubory, místnosti s hostitelem (2 až 6 hráčů + AI) a autoritativní běh zápasů.
  * Spuštění: npm install && npm start  (port z proměnné PORT, výchozí 3000)
  */
 "use strict";
@@ -405,5 +405,5 @@ setInterval(() => {
 }, 20000);
 
 server.listen(PORT, () => {
-  console.log(`Pixelové království běží na http://localhost:${PORT}`);
+  console.log(`Goralia běží na http://localhost:${PORT}`);
 });

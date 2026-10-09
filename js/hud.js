@@ -811,12 +811,13 @@
 
   /* ---------- title logo (for the page header) ---------- */
   function drawLogo(canvas) {
-    const scale = 3;
-    const label = "PIXELOVÉ KRÁLOVSTVÍ";
+    const scale = 4;
+    const label = "GORALIA";
     const tw = PK.textWidth(label, "5", scale);
-    const emblem = PK.icons.ringEmblem(20, C.a[2], C.a[4]);
-    const w = tw + 44 * 2 + 12;
-    const h = 40;
+    const E = 24 * 4; // znak G, zvětšený po pixelech
+    const emblem = PK.icons.ringEmblem(24, C.a[2], C.a[4]);
+    const w = Math.max(tw + 24, E + 24);
+    const h = E + 52;
 
     canvas.width = w;
     canvas.height = h;
@@ -824,16 +825,15 @@
     g.imageSmoothingEnabled = false;
     g.clearRect(0, 0, w, h);
 
-    g.drawImage(emblem, 0, 8, 28, 28);
-    g.drawImage(emblem, w - 28, 8, 28, 28);
+    g.drawImage(emblem, Math.round((w - E) / 2), 0, E, E);
+
+    PK.text(g, label, w / 2, E + 10, 0xffe08a, { align: "center", scale, shadow: 0x6e1f2c, outline: C.ink });
 
     // brass underline
     g.fillStyle = css(BR[1]);
-    g.fillRect(36, 33, w - 72, 2);
+    g.fillRect(Math.round(w / 2) - 40, h - 6, 80, 2);
     g.fillStyle = css(BR[3]);
-    g.fillRect(36, 33, w - 72, 1);
-
-    PK.text(g, label, w / 2, 10, 0xffe08a, { align: "center", scale, shadow: 0x6e1f2c, outline: C.ink });
+    g.fillRect(Math.round(w / 2) - 40, h - 6, 80, 1);
   }
 
   /* ---------- public ---------- */

@@ -640,6 +640,16 @@
     };
 
     // ashMode: 0 = jen na bujné trávě, 1 = jen na popelu, bez hodnoty kdekoli
+    // symetrické mapy: každý kousek výzdoby dostane zrcadlové dvojče (rec.mirror = { x, y })
+    const orbit = (x, y) => {
+      const m = rec.mirror;
+      const pts = [[x, y]];
+      if (m && m.x) pts.push([W - x, y]);
+      if (m && m.y) pts.push([x, H - y]);
+      if (m && m.x && m.y) pts.push([W - x, H - y]);
+      return pts;
+    };
+
     const scatter = (name, count, x0, x1, y0, y1, r = 8, ashMode) => {
       let placed = 0;
       const tries = ashMode == null ? 90 : 90 + count * 6;
@@ -647,8 +657,14 @@
       for (let k = 0; k < tries && placed < count; k++) {
         const x = x0 + R() * (x1 - x0);
         const y = y0 + R() * (y1 - y0);
-        if (ashMode != null && world.ashMap[Math.round(y) * W + Math.round(x)] !== ashMode) continue;
-        if (add(name, x, y, false, r)) placed++;
+        const pts = orbit(x, y);
+
+        if (ashMode != null && pts.some(([px, py]) => world.ashMap[Math.round(py) * W + Math.round(px)] !== ashMode)) continue;
+        if (pts.some(([px, py]) => blocked(px, py, r, false))) continue;
+        if (pts.some((p, i) => pts.some((q, j) => j > i && Math.hypot(p[0] - q[0], (p[1] - q[1]) * 1.4) < r * 2))) continue;
+
+        for (const [px, py] of pts) add(name, px, py, true, r);
+        placed += pts.length;
       }
     };
 

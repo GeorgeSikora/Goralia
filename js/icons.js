@@ -282,12 +282,14 @@
         const r = Math.hypot(dx, dy);
         if (r > R || r <= R - th) continue;
         const ang = Math.atan2(dy, dx);
-        if (ang > -1.25 && ang < -0.35) continue;
+        if (ang > -1.05 && ang < -0.05) continue;
         P.set(x, y, dx + dy < 0 ? mix(color, 0xffffff, 0.35) : color);
       }
     }
 
-    P.disc(c, c, size / 7, size / 7, core);
+    // vodorovná příčka tvoří z kruhu písmeno G
+    const barY = Math.round(c - th / 2);
+    P.rect(Math.round(c) - th, barY, th + Math.floor(R), th, color);
     P.outline(C.ink, 0.72);
     const canvas = P.toCanvas();
     emblemCache.set(key, canvas);

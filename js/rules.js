@@ -1,5 +1,5 @@
 /*
- * Pravidla zápasu pro 2 až 4 hráče, sdílená serverem (Node) i prohlížečem.
+ * Pravidla zápasu pro 2 až 6 hráčů, sdílená serverem (Node) i prohlížečem.
  * Server podle nich simuluje celou hru, klient je používá jen k zobrazení.
  * Rozložení mapy (základny, doly, stromy) je v maps.js.
  */
@@ -35,9 +35,9 @@
   const BUILD_TIME = { tower: 10, barracks: 12, hut: 8 };
 
   // Index slotu na mapě = index týmu.
-  const TEAMS = ["blue", "red", "gold", "violet"];
-  const HQ = { blue: "hall", red: "citadel", gold: "hall", violet: "hall" };
-  const TEAM_NAMES = { blue: "Modrá", red: "Rudá", gold: "Zlatá", violet: "Fialová" };
+  const TEAMS = ["blue", "red", "gold", "violet", "green", "silver"];
+  const HQ = { blue: "hall", red: "citadel", gold: "hall", violet: "hall", green: "hall", silver: "hall" };
+  const TEAM_NAMES = { blue: "Modrá", red: "Rudá", gold: "Zlatá", violet: "Fialová", green: "Zelená", silver: "Stříbrná" };
   const MAX_PLAYERS = TEAMS.length;
   const BASE_GOLD = 260;
   const BASE_WOOD = 120;

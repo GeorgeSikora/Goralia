@@ -106,9 +106,18 @@
     [s.hq.x + fx * 270, s.hq.y + fy * 130]
   ];
 
-  function genTrees(seed, LW, LH, slots, mines, clusters, perCluster, blocked = () => false) {
+  // Stromy se generují v jedné čtvrtině/polovině a zrcadlí se, aby si byly strany rovné.
+  function genTrees(seed, LW, LH, slots, mines, clusters, perCluster, blocked = () => false, mirror = {}) {
     const r = mulberry(seed);
     const out = [];
+
+    const orbit = (x, y) => {
+      const pts = [[x, y]];
+      if (mirror.x) pts.push([LW - x, y]);
+      if (mirror.y) pts.push([x, LH - y]);
+      if (mirror.x && mirror.y) pts.push([LW - x, LH - y]);
+      return pts;
+    };
 
     const ok = (x, y) =>
       x >= 30 && x <= LW - 30 && y >= 64 && y <= LH - 30 &&
@@ -136,8 +145,14 @@
         const x = Math.round(Math.min(LW - 30, Math.max(30, cx + Math.cos(a) * d)));
         const y = Math.round(Math.min(LH - 30, Math.max(64, cy + Math.sin(a) * d)));
 
-        if (ok(x, y)) {
-          out.push([x, y]);
+        if (mirror.x && x > LW / 2) continue;
+        if (mirror.y && y > LH / 2) continue;
+
+        const pts = orbit(x, y);
+        const apart = pts.every((p, i) => pts.every((q, j) => j <= i || Math.hypot(p[0] - q[0], p[1] - q[1]) > 40));
+
+        if (apart && pts.every(([px, py]) => ok(px, py))) {
+          out.push(...pts);
           placed++;
         }
       }
@@ -161,7 +176,7 @@
   }
 
   // Terén pro mapy bez ručně kreslených cest: plácky u základen, cesty do středu, popel kolem rudé pevnosti.
-  function autoTerrain(seed, W, H, slots, rivers, extraAsh) {
+  function autoTerrain(seed, W, H, slots, rivers, extraAsh, opts = {}) {
     const r = mulberry(seed);
     const center = [W / 2, H / 2];
     const area = W * H / (480 * 240);
@@ -170,7 +185,10 @@
     const roads = [];
     const pave = [];
     const ashCircles = [...(extraAsh || [])];
-    const landmarks = [["ringstone", center[0] - 45, center[1] - 40, true, 22]];
+    const mirror = opts.mirror || null;
+    const landmarks = [];
+    if (!mirror) landmarks.push(["ringstone", center[0] - 45, center[1] - 40, true, 22]);
+    else if (opts.stone) landmarks.push(["ringstone", opts.stone[0], opts.stone[1], true, 22]);
 
     for (const s of slots) {
       const ax = s.hq.x / 2;
@@ -194,7 +212,9 @@
 
       plazas.push({ x: bx, y: by + 19 * fy, rx: 23, ry: 11, kind: "yard" });
       pave.push([ax, ay + 17 * fy, 52]);
-      roads.push({ w: 7, main: true, pts: roadTo([ax, ay + 17 * fy], center, (r() - 0.5) * 50) });
+      // zrcadlené mapy: oblouk cesty se zrcadlí spolu se základnou, střední základny jdou rovně
+      const jog = !mirror ? (r() - 0.5) * 50 : Math.abs(ax - center[0]) < 8 ? 0 : 22 * fx * fy;
+      roads.push({ w: 7, main: true, pts: roadTo([ax, ay + 17 * fy], center, jog) });
       roads.push({ w: 4.5, pts: [[bx, by + 12 * fy], [(bx + ax) / 2, ay + 20 * fy], [ax + fx * 24, ay + 19 * fy]] });
       landmarks.push(["lanternPost", ax + fx * 44, ay + 34 * fy, true, 5], ["lanternPost", ax + fx * 90, ay + 40 * fy, true, 5]);
     }
@@ -228,7 +248,7 @@
       ash: { circles: ashCircles }, cracks,
       doodads: { landmarks, scatter },
       tufts: { x: 12, y: 22, w: W - 24, h: H - 35, n: Math.round(240 * area * 1.4), tries: Math.round(900 * area * 1.4) },
-      mist, seed
+      mist, seed, mirror
     };
   }
 
@@ -332,6 +352,17 @@
     }
   };
 
+  // Stromy údolí: levá polovina se zrcadlí napravo, jen kde to nevadí vodě, základnám a dolům.
+  {
+    const mirrored = ([x, y]) => [960 - x, y];
+    const fits = ([x, y]) =>
+      !waterNear(valley.terrain, x, y) &&
+      valleySlots.every(s => Math.hypot(x - s.hq.x, y - s.hq.y) > 150 && Math.hypot(x - s.buildings[0].x, y - s.buildings[0].y) > 110) &&
+      valley.gold.every(m => Math.hypot(x - m[0], y - m[1]) > 70);
+    const left = valley.trees.filter(t => t[0] < 480 && fits(t) && fits(mirrored(t)));
+    valley.trees = [...left, ...left.map(mirrored)];
+  }
+
   /* ---------- mapa 2: Čtyři koruny (4 hráči) ---------- */
   const crownsSlots = [
     base(0, 220, 260, 1, 1, { x0: 45, y0: 85, x1: 705, y1: 545 }),
@@ -347,7 +378,8 @@
 
   const crownsTerrain = autoTerrain(
     301, 720, 560, crownsSlots,
-    [{ pts: [[358, 0], [370, 90], [352, 190], [366, 280], [354, 370], [368, 470], [360, 560]], hw: 5.5 }]
+    [{ pts: [[360, 0], [372, 90], [350, 190], [362, 280], [350, 370], [372, 470], [360, 560]], hw: 5.5 }],
+    null, { mirror: { x: true, y: true } }
   );
 
   const crowns = {
@@ -362,7 +394,7 @@
       "Střední mapa, na menších obrazovkách se kamera posouvá.",
     slots: crownsSlots,
     gold: crownsMines,
-    trees: genTrees(501, 1440, 1120, crownsSlots, crownsMines, 8, 7, (x, y) => waterNear(crownsTerrain, x, y)),
+    trees: genTrees(501, 1440, 1120, crownsSlots, crownsMines, 8, 7, (x, y) => waterNear(crownsTerrain, x, y), { x: true, y: true }),
     terrain: crownsTerrain
   };
 
@@ -380,8 +412,8 @@
 
   const highlandTerrain = autoTerrain(
     611, 960, 560, highlandSlots,
-    [{ pts: [[0, 318], [160, 326], [320, 310], [480, 322], [640, 312], [800, 324], [960, 316]], hw: 6 }],
-    [[850, 470, 90]]
+    [{ pts: [[0, 320], [160, 326], [320, 312], [480, 318], [640, 312], [800, 326], [960, 320]], hw: 6 }],
+    null, { mirror: { x: true }, stone: [480, 250] }
   );
 
   const highland = {
@@ -396,11 +428,54 @@
       "ale armády mají daleko. Velká mapa: kameru posouvej šipkami, myší u okraje nebo minimapou.",
     slots: highlandSlots,
     gold: highlandMines,
-    trees: genTrees(907, 1920, 1120, highlandSlots, highlandMines, 14, 8, (x, y) => waterNear(highlandTerrain, x, y)),
+    trees: genTrees(907, 1920, 1120, highlandSlots, highlandMines, 14, 8, (x, y) => waterNear(highlandTerrain, x, y), { x: true }),
     terrain: highlandTerrain
   };
 
-  const list = [valley, crowns, highland];
+  /* ---------- mapa 4: Šest říší (6 hráčů, velká) ---------- */
+  const sixSlots = [
+    base(0, 300, 260, 1, 1, { x0: 45, y0: 85, x1: 640, y1: 590 }),
+    base(1, 1700, 260, -1, 1, { x0: 1360, y0: 85, x1: 1955, y1: 590 }),
+    base(2, 300, 940, 1, -1, { x0: 45, y0: 610, x1: 640, y1: 1135 }),
+    base(3, 1700, 940, -1, -1, { x0: 1360, y0: 610, x1: 1955, y1: 1135 }),
+    base(4, 1000, 260, 1, 1, { x0: 690, y0: 85, x1: 1310, y1: 590 }),
+    base(5, 1000, 940, 1, -1, { x0: 690, y0: 610, x1: 1310, y1: 1135 })
+  ];
+
+  const sixMines = [
+    ...sixSlots.slice(0, 4).flatMap(s => baseMines(s, s.facing, s.buildings[0].y > s.hq.y ? 1 : -1)),
+    [810, 390], [1190, 390], [810, 810], [1190, 810],
+    [1000, 600, 4000], [340, 600, 4000], [1660, 600, 4000]
+  ];
+
+  const sixTerrain = autoTerrain(
+    777, 1000, 600, sixSlots,
+    [
+      { pts: [[330, 0], [338, 100], [322, 200], [334, 300], [322, 400], [338, 500], [330, 600]], hw: 5.5 },
+      { pts: [[670, 0], [662, 100], [678, 200], [666, 300], [678, 400], [662, 500], [670, 600]], hw: 5.5 }
+    ],
+    [[500, 300, 70]],
+    { mirror: { x: true, y: true }, stone: [500, 300] }
+  );
+
+  const six = {
+    id: "six",
+    name: "Šest říší",
+    players: 6,
+    size: [1000, 600],
+    tag: "6 hráčů · velká",
+    description:
+      "Šest království na rozlehlé pláni, rozdělené dvěma řekami. Čtyři základny leží v rozích, " +
+      "dvě v klidném středním pásu mezi řekami. Přes brody vedou jen cesty ke spálenému středu, " +
+      "kde stojí Prstencový kámen. Každý má dva doly a les za zády. " +
+      "Velká mapa: kameru posouvej šipkami, myší u okraje nebo minimapou.",
+    slots: sixSlots,
+    gold: sixMines,
+    trees: genTrees(1301, 2000, 1200, sixSlots, sixMines, 10, 7, (x, y) => waterNear(sixTerrain, x, y), { x: true, y: true }),
+    terrain: sixTerrain
+  };
+
+  const list = [valley, crowns, highland, six];
   const byId = new Map(list.map(m => [m.id, m]));
 
   return {

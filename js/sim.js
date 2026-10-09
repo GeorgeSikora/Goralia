@@ -1,5 +1,5 @@
 /*
- * Autoritativní simulace zápasu pro 2 až 4 hráče (každý sám za sebe), lidi i AI.
+ * Autoritativní simulace zápasu pro 2 až 6 hráčů (každý sám za sebe), lidi i AI.
  * Klienti posílají jen záměry (rozkazy, nákup, stavba, kouzla). Simulace je ověří
  * a sáma spočítá ekonomiku, pohyb, souboje i výsledek, takže nejde podvádět.
  * Běží na serveru (online) i v prohlížeči (hra proti AI).
