@@ -1150,8 +1150,11 @@
     const now = performance.now();
     const prev = lastTap;
     const again = !!prev && now - prev.t < DOUBLE_TAP && Math.hypot(event.clientX - prev.x, event.clientY - prev.y) < 36;
-    const unit = findEntity(w.x, w.y, units.filter(u => u.team === me), 19 * FINGER);
-    const building = unit ? null : findEntity(w.x, w.y, buildings.filter(b => b.team === me), 42 * FINGER);
+    const hasUnits = selected.some(e => e.kind === "unit" && alive(e));
+    // s vybranými jednotkami klepnutí vedle vlastní postavy nebo budovy velí, ne vybírá
+    const reach = hasUnits ? 1 : FINGER;
+    const unit = findEntity(w.x, w.y, units.filter(u => u.team === me), 19 * reach);
+    const building = unit ? null : findEntity(w.x, w.y, buildings.filter(b => b.team === me), 42 * reach);
 
     lastTap = { t: now, x: event.clientX, y: event.clientY, type: unit ? unit.type : "" };
 
@@ -1160,19 +1163,18 @@
         selectVisible(unit.type);
         lastTap = null;
       } else {
-        selectAt(w.x, w.y, FINGER);
+        selectAt(w.x, w.y, reach);
       }
 
       return;
     }
 
-    const hasUnits = selected.some(e => e.kind === "unit" && alive(e));
     const hasWorker = selected.some(e => e.type === "worker" && alive(e));
 
     if (building) {
       // dělník na rozestavěnou budovu nebo na základnu: pokračuje ve stavbě, vyloží náklad
       if (hasWorker && (building.progress < 1 || building.type === R.HQ[me])) touchOrder(w.x, w.y);
-      else selectAt(w.x, w.y, FINGER);
+      else selectAt(w.x, w.y, reach);
       return;
     }
 
