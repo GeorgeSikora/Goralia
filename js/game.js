@@ -82,9 +82,11 @@
   let panning = null;
   let minimapDrag = false;
 
-  // Přiblížení světa (násobek měřítka bufferu); diskrétní stupně drží pixel art čitelný.
-  const ZOOMS = [0.5, 0.75, 1, 1.5, 2, 3];
+  // Přiblížení světa (násobek měřítka bufferu). Ustálí se vždy na celém násobku nebo zlomku 1/n,
+  // jinak by se pixely škálovaly nerovnoměrně; mezi stupni se plynule animuje.
+  const ZOOMS = [1 / 3, 0.5, 1, 2, 3, 4];
   let zoom = 1;
+  let zoomAnim = null;
 
   // Dotyk: prsty na mapě, gesto jednoho prstu, štípnutí, setrvačnost posunu a cíl rozpracované akce.
   const touches = new Map();
@@ -636,14 +638,27 @@
 
   const nearestZoom = z => ZOOMS.reduce((best, s) => (Math.abs(Math.log(s / z)) < Math.abs(Math.log(best / z)) ? s : best), ZOOMS[0]);
 
+  // Plynule dojede na cílový stupeň; bod (ax, ay) zůstává na místě.
+  function animateZoom(target, ax, ay) {
+    zoomAnim = target === zoom ? null : { from: zoom, to: target, t: 0, ax, ay };
+  }
+
   function stepZoom(dir, ax, ay) {
-    const i = ZOOMS.indexOf(nearestZoom(zoom));
-    setZoom(ZOOMS[clamp(i + dir, 0, ZOOMS.length - 1)], ax, ay);
+    const i = ZOOMS.indexOf(nearestZoom(zoomAnim ? zoomAnim.to : zoom));
+    animateZoom(ZOOMS[clamp(i + dir, 0, ZOOMS.length - 1)], ax, ay);
   }
 
   function updateCamera(dt) {
     let dx = 0;
     let dy = 0;
+
+    if (zoomAnim) {
+      const a = zoomAnim;
+      a.t = Math.min(1, a.t + dt / 0.18);
+      const e = 1 - (1 - a.t) ** 3;
+      setZoom(a.from * (a.to / a.from) ** e, a.ax, a.ay);
+      if (a.t >= 1) zoomAnim = null;
+    }
 
     // setrvačnost po švihnutí prstem
     if (fling) {
@@ -914,6 +929,10 @@
 
     touches.clear();
     touchGesture = null;
+    if (pinch && pinch.mode === "box") {
+      pointerStart = null;
+      pointerEnd = null;
+    }
     pinch = null;
     fling = null;
     lastTap = null;
@@ -991,7 +1010,7 @@
     touches.delete(event.pointerId);
 
     if (pinch) {
-      if (touches.size < 2) pinch = null;
+      if (touches.size < 2) endPinch(cancelled);
       return;
     }
 
@@ -1028,6 +1047,8 @@
     touchTap(event);
   }
 
+  // Dva prsty: dokud se vzdálenost mezi nimi znatelně nezmění, určují rohy výběrového rámečku;
+  // jakmile se potáhnou nebo stáhnou, jde o zoom a posun mapy.
   function startPinch() {
     if (touchGesture) {
       clearTimeout(touchGesture.timer);
@@ -1038,25 +1059,77 @@
       touchGesture = null;
     }
 
-    const [a, b] = [...touches.values()];
-    const mid = clientToArt((a.cx + b.cx) / 2, (a.cy + b.cy) / 2);
-
-    pinch = {
-      z0: zoom,
-      d0: Math.max(24, Math.hypot(a.cx - b.cx, a.cy - b.cy)),
-      wx: camF.x + mid.x / zoom,
-      wy: camF.y + mid.y / zoom
-    };
+    zoomAnim = null;
     lastTap = null;
+
+    const [a, b] = [...touches.values()];
+    const d = Math.max(24, Math.hypot(a.cx - b.cx, a.cy - b.cy));
+    const canBox = state === "playing" && !placement && !spellMode && !commandMode;
+
+    pinch = { mode: canBox ? "box" : "zoom", d0: d, z0: zoom, wx: 0, wy: 0, mx: 0, my: 0 };
+    if (canBox) setPinchBox(a, b);
+    else anchorPinch(a, b, d);
   }
 
-  // Bod světa mezi prsty zůstává pod nimi: stejný výpočet řeší zoom i dvouprstý posun.
+  function anchorPinch(a, b, d) {
+    const mid = clientToArt((a.cx + b.cx) / 2, (a.cy + b.cy) / 2);
+    pinch.mode = "zoom";
+    pinch.z0 = zoom;
+    pinch.d0 = d;
+    pinch.wx = camF.x + mid.x / zoom;
+    pinch.wy = camF.y + mid.y / zoom;
+    pinch.mx = mid.x;
+    pinch.my = mid.y;
+  }
+
+  function setPinchBox(a, b) {
+    const pa = clientToArt(a.cx, a.cy);
+    const pb = clientToArt(b.cx, b.cy);
+    const wa = toWorld({ x: pa.x * 2, y: pa.y * 2 });
+    pointerStart = { x: pa.x * 2, y: pa.y * 2, wx: wa.x, wy: wa.y };
+    pointerEnd = { x: pb.x * 2, y: pb.y * 2 };
+  }
+
   function updatePinch() {
     const [a, b] = [...touches.values()];
-    const mid = clientToArt((a.cx + b.cx) / 2, (a.cy + b.cy) / 2);
+    const d = Math.hypot(a.cx - b.cx, a.cy - b.cy);
 
-    zoom = nearestZoom(pinch.z0 * Math.hypot(a.cx - b.cx, a.cy - b.cy) / pinch.d0);
+    if (pinch.mode === "box") {
+      if (Math.abs(Math.log(Math.max(24, d) / pinch.d0)) < 0.2) {
+        setPinchBox(a, b);
+        return;
+      }
+
+      pointerStart = null;
+      pointerEnd = null;
+      anchorPinch(a, b, Math.max(24, d));
+    }
+
+    // Bod světa mezi prsty zůstává pod nimi: stejný výpočet řeší zoom i dvouprstý posun.
+    const mid = clientToArt((a.cx + b.cx) / 2, (a.cy + b.cy) / 2);
+    pinch.mx = mid.x;
+    pinch.my = mid.y;
+    zoom = clamp(pinch.z0 * Math.max(24, d) / pinch.d0, ZOOMS[0] * 0.85, ZOOMS[ZOOMS.length - 1] * 1.15);
     setCam(pinch.wx - mid.x / zoom, pinch.wy - mid.y / zoom);
+  }
+
+  function endPinch(cancelled) {
+    const p = pinch;
+    pinch = null;
+
+    if (p.mode === "zoom") {
+      animateZoom(nearestZoom(zoom), p.mx, p.my);
+      return;
+    }
+
+    const start = pointerStart;
+    const end = pointerEnd && toWorld(pointerEnd);
+    pointerStart = null;
+    pointerEnd = null;
+    if (cancelled || !start || !end || state !== "playing") return;
+
+    // těsný dotyk dvou prstů bez pohybu nic nevybere
+    if (Math.hypot(end.x - start.wx, end.y - start.wy) > 30 * worldPerCss()) selectBox(end.x, end.y, start.wx, start.wy);
   }
 
   function touchTap(event) {
@@ -1070,7 +1143,7 @@
     }
 
     if (commandMode) {
-      issueOrder(w.x, w.y);
+      touchOrder(w.x, w.y);
       return;
     }
 
@@ -1098,7 +1171,7 @@
 
     if (building) {
       // dělník na rozestavěnou budovu nebo na základnu: pokračuje ve stavbě, vyloží náklad
-      if (hasWorker && (building.progress < 1 || building.type === R.HQ[me])) issueOrder(w.x, w.y);
+      if (hasWorker && (building.progress < 1 || building.type === R.HQ[me])) touchOrder(w.x, w.y);
       else selectAt(w.x, w.y, FINGER);
       return;
     }
@@ -1110,8 +1183,15 @@
       return;
     }
 
-    if (hasUnits) issueOrder(w.x, w.y);
+    if (hasUnits) touchOrder(w.x, w.y);
     else selectAt(w.x, w.y, FINGER);
+  }
+
+  // Po rozkazu prstem se výběr ruší, aby další klepnutí nevelelo znovu.
+  function touchOrder(x, y) {
+    issueOrder(x, y);
+    selected = [];
+    selectedResourceId = 0;
   }
 
   // Všechny vlastní jednotky daného typu v právě viditelné části mapy.
