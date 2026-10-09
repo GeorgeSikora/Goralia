@@ -22,24 +22,17 @@
   const display = canvas.getContext("2d");
   const { c: bufCanvas, g } = PK.makeCanvas(view.w, view.h);
 
-  const costs = {
-    worker:   { gold: 50,  wood: 0 },
-    soldier:  { gold: 65,  wood: 15 },
-    archer:   { gold: 80,  wood: 30 },
-    hero:     { gold: 150, wood: 50 },
-    tower:    { gold: 90,  wood: 55 },
-    barracks: { gold: 125, wood: 70 }
-  };
+  const costs = R.COSTS;
 
   const names = {
     worker: "Dělník",
     soldier: "Voják",
     archer: "Lučištník",
     hero: "Hrdina",
-    raider: "Nájezdník",
     hall: "Radnice",
     barracks: "Kasárna",
     tower: "Strážní věž",
+    hut: "Chatrč",
     citadel: "Rudá pevnost"
   };
 
@@ -88,11 +81,14 @@
   let panning = null;
   let minimapDrag = false;
   let selectedResourceId = 0;
+  let supplyCap = R.SUPPLY_BASE;
+  let focus = "";
+  let focusKey = "";
   const keysDown = new Set();
 
   const UNIT_TYPES = sim.UNIT_TYPES;
   const BUILDING_TYPES = sim.BUILDING_TYPES;
-  const ORDER_TYPES = [null, "move", "attack", "gather", "deliver"];
+  const ORDER_TYPES = [null, "move", "attack", "gather", "deliver", "build"];
 
   const online = {
     phase: "offline", // offline | connecting | idle | room | countdown | playing | ended
@@ -265,6 +261,56 @@
     );
   }
 
+  // Typ, který se právě ovládá (nabídka tlačítek); Tab přepíná mezi typy ve výběru.
+  const FOCUS_ORDER = ["hero", "worker", "soldier", "archer", "hall", "citadel", "barracks", "tower", "hut"];
+
+  function selectionTypes() {
+    const present = new Set(selected.map(e => e.type));
+    return FOCUS_ORDER.filter(t => present.has(t));
+  }
+
+  function focusType() {
+    const types = selectionTypes();
+    const key = types.join(",");
+
+    if (key !== focusKey || !types.includes(focus)) {
+      focusKey = key;
+      focus = types[0] || "";
+    }
+
+    return focus;
+  }
+
+  function cycleFocus() {
+    const types = selectionTypes();
+    if (types.length < 2) return;
+
+    focus = types[(types.indexOf(focusType()) + 1) % types.length];
+    audio.play("click");
+  }
+
+  function cardContext() {
+    const f = focusType();
+    const e = selected.find(s => s.type === f);
+    if (!e) return "none";
+
+    if (e.kind === "unit") return f === "hero" ? "hero" : f === "worker" ? "worker" : "army";
+    if (e.progress < 1) return "none";
+    return f === "hall" || f === "citadel" ? "hq" : f === "barracks" ? "barracks" : "none";
+  }
+
+  // Klik na avatar ve výběru: jedna jednotka; Shift ji ze výběru vyjme, Ctrl vybere všechny stejného typu.
+  function pickAvatar(index, event) {
+    const u = selected[index];
+    if (!u) return;
+
+    if (event.shiftKey) selected = selected.filter(e => e !== u);
+    else if (event.ctrlKey || event.metaKey) selected = selected.filter(e => e.type === u.type);
+    else selected = [u];
+
+    audio.play("select");
+  }
+
   function action(type) {
     if (state !== "playing") return;
     audio.unlock();
@@ -317,7 +363,7 @@
       return;
     }
 
-    if (type === "tower" || type === "barracks") {
+    if (type === "tower" || type === "barracks" || type === "hut") {
       const hasWorker = selected.some(entity =>
         entity.kind === "unit" &&
         entity.type === "worker" &&
@@ -338,7 +384,10 @@
 
     audio.play("click");
     online.pendingTrain = 1.5;
-    sendCmd({ c: "train", type });
+
+    // výcvik probíhá ve vybrané budově
+    const src = selected.find(e => e.kind === "building" && e.progress >= 1 && e.type === (type === "worker" ? R.HQ[me] : "barracks"));
+    sendCmd({ c: "train", type, src: src ? src.id : 0 });
   }
 
   /* ======================= picking and orders ======================= */
@@ -420,16 +469,18 @@
 
     if (ids.length) {
       const hasWorker = selected.some(unit => unit.type === "worker" && alive(unit));
-      const base = enemy || resource ? null : findEntity(x, y, buildings.filter(b => b.team === me && b.type === R.HQ[me]), 46);
+      const free = !enemy && !resource;
+      const site = free && hasWorker ? findEntity(x, y, buildings.filter(b => b.team === me && b.progress < 1), 46) : null;
+      const base = free && !site ? findEntity(x, y, buildings.filter(b => b.team === me && b.type === R.HQ[me]), 46) : null;
 
-      // klik na vlastní základnu: dělník vyloží nesený materiál
-      kind = enemy ? "attack" : resource ? "gather" : base && hasWorker ? "deliver" : "move";
+      // klik na rozestavěnou budovu: dělník pokračuje ve stavbě; na základnu: vyloží nesený materiál
+      kind = enemy ? "attack" : resource ? "gather" : site ? "build" : base && hasWorker ? "deliver" : "move";
 
       sendCmd({
         c: "order",
         k: kind,
         ids,
-        target: enemy ? enemy.id : resource ? resource.id : kind === "deliver" ? base.id : 0,
+        target: enemy ? enemy.id : resource ? resource.id : site ? site.id : kind === "deliver" ? base.id : 0,
         x: Math.round(x),
         y: Math.round(y)
       });
@@ -459,13 +510,15 @@
       return "Stavět lze jen ve vlastní části mapy.";
     }
 
+    if (PK.nav.forMap(map).isBlockedArea(x, y, 28)) return "Na tomto místě je voda.";
+
     const collidesWithBuilding = buildings.some(building =>
       alive(building) &&
       distance(building, { x, y }) < 90
     );
 
     const collidesWithResource = resources.some(resource =>
-      resource.amount > 0 &&
+      (resource.type === "gold" || resource.amount > 0) &&
       distance(resource, { x, y }) < 48
     );
 
@@ -488,7 +541,6 @@
       ids: selected.filter(e => e.type === "worker" && alive(e)).map(e => e.id)
     });
     placement = null;
-    online.pendingBuild = 1.5;
     audio.play("click");
   }
 
@@ -680,7 +732,13 @@
     if (start.y >= mapAreaH()) {
       const button = PK.hud.hitButton(point.x, point.y);
 
-      if (button) action(button.type);
+      if (button) {
+        action(button.type);
+      } else {
+        const index = PK.hud.selectionHit(point.x, point.y, selected.length);
+        if (index >= 0 && index === PK.hud.selectionHit(start.x, start.y, selected.length)) pickAvatar(index, event);
+      }
+
       return;
     }
 
@@ -761,6 +819,12 @@
 
     if (menuOpen || !started) return;
 
+    if (key === "tab") {
+      event.preventDefault();
+      cycleFocus();
+      return;
+    }
+
     const shortcuts = {
       q: "worker",
       w: "soldier",
@@ -768,12 +832,14 @@
       h: "hero",
       t: "tower",
       f: "barracks",
+      g: "hut",
       a: "fire",
       s: "heal",
       m: "command"
     };
 
-    if (shortcuts[key]) {
+    // zkratka platí jen pro tlačítko, které je ve vybrané nabídce
+    if (shortcuts[key] && PK.hud.cardHas(shortcuts[key])) {
       keyPress = { type: shortcuts[key], t: 0.14 };
       action(shortcuts[key]);
     }
@@ -846,6 +912,7 @@
     $("m-surrender").hidden = !playing;
     $("m-leave").hidden = !(onl && (over || !playing));
     menuBtn.hidden = !started || menuOpen;
+    menuEl.classList.toggle("scene", !started);
 
     if (!started) statusEl.textContent = "";
     else if (playing) statusEl.textContent = onl ? "Zápas běží i s otevřeným menu." : "Hra je pozastavena.";
@@ -1306,10 +1373,10 @@
     };
   }
 
-  function netBuilding(id, type, team, x, y, fresh) {
+  function netBuilding(id, type, team, x, y, progress) {
     return {
-      id, kind: "building", type, team, x, y, hp: 1, maxHp: 1, cooldown: 0,
-      age: fresh ? 0 : 99, flashT: 0, fireT: 0, smokeAcc: 0
+      id, kind: "building", type, team, x, y, hp: 1, maxHp: 1, cooldown: 0, progress,
+      age: 99, flashT: 0, fireT: 0, smokeAcc: 0
     };
   }
 
@@ -1407,6 +1474,7 @@
       if (mode === "online") online.phase = s.p;
     }
     online.count = s.c;
+    supplyCap = s.sc || R.SUPPLY_BASE;
     elapsed = s.el;
     gold = s.g;
     wood = s.w;
@@ -1445,7 +1513,8 @@
       u.order = order ? { type: ORDER_TYPES[order] } : null;
       u.fireCooldown = fcd;
       u.healCooldown = hcd;
-      u.working = !!work;
+      u.working = work === 1;
+      u.building = work === 2;
       u.damage = dmg;
     }
 
@@ -1457,27 +1526,27 @@
     const seenBuildings = new Set();
 
     for (const d of s.b) {
-      const [id, t, team, x, y, hp, maxHp] = d;
+      const [id, t, team, x, y, hp, maxHp, progress] = d;
       let b = buildingMap.get(id);
 
       if (!b) {
-        b = netBuilding(id, BUILDING_TYPES[t], R.TEAMS[team], x, y, !first);
+        b = netBuilding(id, BUILDING_TYPES[t], R.TEAMS[team], x, y, progress);
         buildingMap.set(id, b);
         buildings.push(b);
 
-        if (!first) {
-          fx.build(x, y + 39, b.type === "tower" ? 26 : 56);
-          audio.play("build", { x });
-          if (b.team === me && online.pendingBuild > 0) {
-            selected = [b];
-            online.pendingBuild = 0;
-          }
+        if (!first && progress < 1) {
+          fx.puff(x, y + 30, 6);
+          audio.play("order", { x });
         }
+      } else if (b.progress < 1 && progress >= 1) {
+        fx.build(x, y + 39, b.type === "tower" ? 26 : b.type === "hut" ? 34 : 56);
+        audio.play("build", { x });
       }
 
       seenBuildings.add(id);
       b.hp = hp;
       b.maxHp = maxHp;
+      b.progress = progress;
     }
 
     if (seenBuildings.size !== buildings.length) {
@@ -1527,6 +1596,21 @@
         u.y += dy * k;
       }
 
+      if (u.building) {
+        u.workT = 0.2;
+        u.fxT -= dt;
+
+        if (u.fxT <= 0) {
+          u.fxT = 0.5;
+          const site = nearestSite(u);
+
+          if (site) {
+            fx.chop(site.x, site.y + 14);
+            audio.play("wood", { x: site.x });
+          }
+        }
+      }
+
       if (u.working) {
         u.workT = 0.2;
         u.fxT -= dt;
@@ -1547,6 +1631,24 @@
 
     selected = selected.filter(alive);
     if (selected.length) selectedResourceId = 0;
+  }
+
+  // Rozestavěná budova nejblíž u stavitele (pro efekty kladiva).
+  function nearestSite(unit) {
+    let best = null;
+    let bestDistance = 90;
+
+    for (const b of buildings) {
+      if (b.progress >= 1) continue;
+      const d = distance(unit, b);
+
+      if (d < bestDistance) {
+        best = b;
+        bestDistance = d;
+      }
+    }
+
+    return best;
   }
 
   function nearestResource(unit) {
@@ -1860,7 +1962,7 @@
 
   function emitAmbient(dt) {
     for (const b of buildings) {
-      if (b.age < 0.9) continue;
+      if (b.progress < 1) continue;
 
       const spr = PK.buildings.get(b.type);
       const ox = Math.round(b.x / 2) - spr.ax;
@@ -2029,6 +2131,24 @@
     g.drawImage(frames[Math.floor(clock * 9 + seed) & 3], x - 3, y - 10 * size);
   }
 
+  const blueprints = new Map();
+
+  function blueprint(spr) {
+    let c = blueprints.get(spr);
+
+    if (!c) {
+      const t = PK.makeCanvas(spr.c.width, spr.c.height);
+      t.g.drawImage(spr.c, 0, 0);
+      t.g.globalCompositeOperation = "source-atop";
+      t.g.fillStyle = "rgba(70,150,255,0.7)";
+      t.g.fillRect(0, 0, t.c.width, t.c.height);
+      c = t.c;
+      blueprints.set(spr, c);
+    }
+
+    return c;
+  }
+
   function drawBuilding(b) {
     const spr = PK.buildings.get(b.type, b.team);
     const footX = Math.round(b.x / 2);
@@ -2036,18 +2156,38 @@
     const x0 = footX - spr.ax;
     const y0 = footY - spr.ay;
     const sh = world.shadow("building", spr.w - 14, 12);
-    const building = b.age >= 0.9;
-    const prog = Math.min(1, b.age / 0.9);
+    const building = b.progress >= 1;
+    const prog = b.progress;
 
     g.drawImage(sh, footX - (sh.width / 2 - 6 | 0), footY - (sh.height - 7));
 
     if (!building) {
+      // blueprint: průhledná modrá předloha celé budovy, hotová část roste od země nahoru
+      const top = Math.round(y0 + spr.h * (1 - prog));
+
+      g.globalAlpha = 0.5;
+      g.drawImage(blueprint(spr), x0, y0);
+      g.globalAlpha = 1;
+
       g.save();
       g.beginPath();
-      g.rect(x0 - 4, Math.round(y0 + spr.h * (1 - prog)), spr.w + 8, 400);
+      g.rect(x0 - 4, top, spr.w + 8, 400);
       g.clip();
       g.drawImage(spr.c, x0, y0);
       g.restore();
+
+      // lešení: dva sloupky a stavební čára
+      g.fillStyle = "#946b45";
+      g.fillRect(x0 - 1, top, 1, y0 + spr.h - top);
+      g.fillRect(x0 + spr.w, top, 1, y0 + spr.h - top);
+
+      for (let x = x0 - 1; x <= x0 + spr.w; x++) {
+        if (((x + Math.floor(clock * 8)) & 1) === 0) {
+          g.fillStyle = "#ffe08a";
+          g.fillRect(x, top, 1, 1);
+        }
+      }
+
       return;
     }
 
@@ -2128,7 +2268,7 @@
     }
 
     for (const b of buildings) {
-      if (b.age < 0.9) continue;
+      if (b.progress < 1) continue;
       const spr = PK.buildings.get(b.type);
       const x0 = Math.round(b.x / 2) - spr.ax;
       const y0 = Math.round(b.y / 2) + 19 - spr.ay;
@@ -2174,12 +2314,31 @@
     }
 
     for (const b of buildings) {
-      if (b.age < 0.9) continue;
-      if (b.hp >= b.maxHp && !selected.includes(b)) continue;
       const spr = PK.buildings.get(b.type);
-      const w = b.type === "tower" ? 22 : 34;
-      drawBar(Math.round(b.x / 2) - (w >> 1), Math.round(b.y / 2) + 19 - spr.ay - 5, w, b.hp / b.maxHp, b.team);
+      const w = b.type === "tower" || b.type === "hut" ? 22 : 34;
+      const bx = Math.round(b.x / 2) - (w >> 1);
+      const by = Math.round(b.y / 2) + 19 - spr.ay - 5;
+
+      if (b.progress < 1) {
+        drawProgressBar(bx, by, w, b.progress);
+        continue;
+      }
+
+      if (b.hp >= b.maxHp && !selected.includes(b)) continue;
+      drawBar(bx, by, w, b.hp / b.maxHp, b.team);
     }
+  }
+
+  function drawProgressBar(x, y, w, pct) {
+    const fw = Math.max(1, Math.round(w * clamp(pct, 0, 1)));
+    g.fillStyle = "#15121f";
+    g.fillRect(x - 1, y - 1, w + 2, 4);
+    g.fillStyle = "#1c2a46";
+    g.fillRect(x, y, w, 2);
+    g.fillStyle = "#58a6e0";
+    g.fillRect(x, y, fw, 2);
+    g.fillStyle = "rgba(255,255,255,0.4)";
+    g.fillRect(x, y, fw, 1);
   }
 
   function selectionRing(e) {
@@ -2488,13 +2647,19 @@
       hero: { afford: afford("hero"), enabled: barracks && !heroAlive },
       tower: { afford: afford("tower"), enabled: hasWorker, active: placement === "tower" },
       barracks: { afford: afford("barracks"), enabled: hasWorker, active: placement === "barracks" },
+      hut: { afford: afford("hut"), enabled: hasWorker, active: placement === "hut" },
       fire: { enabled: !!hero, cd: hero ? hero.fireCooldown : 0, cdMax: 10, active: spellMode === "fire" },
       heal: { enabled: !!hero, cd: hero ? hero.healCooldown : 0, cdMax: 14 },
       command: { enabled: true, active: commandMode }
     };
 
+    PK.hud.setCard(cardContext());
+
     const vm = {
-      gold, wood, army: units.filter(u => u.team === me).length, supplyMax: R.SUPPLY_MAX,
+      gold, wood, army: units.filter(u => u.team === me).length, supplyMax: supplyCap,
+      focus: focusType(),
+      typeCount: selectionTypes().length,
+      primary: selected.find(e => e.type === focus) || selected[0],
       state, elapsed, selected, units, buildings, resources,
       message, messageTimer, placement, spellMode, commandMode, names, costs, btn,
       hoverBtn: hoverBtnObj ? hoverBtnObj.type : null,
@@ -2549,16 +2714,16 @@
     let cssH;
 
     if (settings.pixel && k >= 1) {
-      vw = Math.max(MIN_W, Math.floor(availW * dpr / k));
-      vh = Math.max(MIN_H, Math.floor(availH * dpr / k));
+      vw = Math.max(MIN_W, Math.ceil(availW * dpr / k));
+      vh = Math.max(MIN_H, Math.ceil(availH * dpr / k));
       cw = vw * k;
       ch = vh * k;
       cssW = cw / dpr;
       cssH = ch / dpr;
     } else {
       const s = Math.min(availW / MIN_W, availH / MIN_H);
-      vw = Math.max(MIN_W, Math.floor(availW / s));
-      vh = Math.max(MIN_H, Math.floor(availH / s));
+      vw = Math.max(MIN_W, Math.ceil(availW / s));
+      vh = Math.max(MIN_H, Math.ceil(availH / s));
       cssW = vw * s;
       cssH = vh * s;
       cw = Math.max(vw, Math.round(cssW * dpr));

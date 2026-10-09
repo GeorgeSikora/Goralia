@@ -32,31 +32,64 @@
   const BW = 28;
   const BH = 28;
 
-  const SLOTS = [
+  const ALL = [
     ["worker", "Q", "Dělník"], ["soldier", "W", "Voják"], ["archer", "E", "Lučištník"],
     ["hero", "H", "Hrdina"], ["command", "M", "Rozkaz"],
-    ["tower", "T", "Strážní věž"], ["barracks", "F", "Kasárna"], ["fire", "A", "Ohnivá koule"],
-    ["heal", "S", "Léčení"], [null, "", ""]
+    ["tower", "T", "Strážní věž"], ["barracks", "F", "Kasárna"], ["hut", "G", "Chatrč"],
+    ["fire", "A", "Ohnivá koule"], ["heal", "S", "Léčení"]
   ];
 
+  // Tlačítka vpravo dole se mění podle vybrané jednotky nebo budovy; pořadí = pozice na panelu.
+  const CARDS = {
+    none: [],
+    hq: ["worker"],
+    barracks: ["soldier", "archer", "hero"],
+    worker: ["command", "tower", "barracks", "hut"],
+    hero: ["command", "fire", "heal"],
+    army: ["command"]
+  };
+
   const TIPS = {
-    worker: "Těží zlato a dřevo a staví věže i kasárna.",
+    worker: "Těží zlato a dřevo a staví budovy.",
     soldier: "Štít a meč. Pevný v boji zblízka.",
     archer: "Střílí z velké dálky, ale snadno padne.",
     hero: "Nese lucernu. Ohnivá koule a léčení. Jen jeden.",
-    tower: "Střílí na nepřátele v dosahu. Staví dělník.",
-    barracks: "Cvičí vojáky, lučištníky a hrdinu. Staví dělník.",
+    tower: "Střílí na nepřátele v dosahu. Staví dělník (10 s).",
+    barracks: "Cvičí vojáky, lučištníky a hrdinu. Staví dělník (12 s).",
+    hut: "Zvýší limit jednotek o 5. Staví dělník (8 s).",
     fire: "Hrdina vrhne ohnivou kouli na cíl (10 s).",
     heal: "Hrdina vyléčí spojence v okolí (14 s).",
-    command: "Klepni na cíl: pohyb, útok nebo těžba."
+    command: "Klepni na cíl: pohyb, útok, těžba nebo stavba."
   };
 
-  const buttons = SLOTS.map(([type, key, title], i) => ({
-    type, key, title, tip: TIPS[type], col: i % 5, row: Math.floor(i / 5),
+  const buttons = ALL.map(([type, key, title]) => ({
+    type, key, title, tip: TIPS[type], slot: -1, visible: false,
     x: 0, y: 0, w: BW, h: BH, lx: 0, ly: 0, lw: BW * 2, lh: BH * 2
-  })).filter(b => b.type);
+  }));
 
+  let cardName = "none";
   let layoutKey = "";
+
+  function placeButtons() {
+    const list = CARDS[cardName];
+
+    for (const b of buttons) {
+      b.slot = list.indexOf(b.type);
+      b.visible = b.slot >= 0;
+      b.x = LAYOUT.card.x + 5 + (b.slot % 5) * (BW + 2);
+      b.y = LAYOUT.card.y + 2 + Math.floor(b.slot / 5) * (BH + 2);
+      b.lx = b.x * 2;
+      b.ly = b.y * 2;
+    }
+  }
+
+  function setCard(name) {
+    if (!CARDS[name] || name === cardName) return;
+    cardName = name;
+    placeButtons();
+  }
+
+  const cardHas = type => buttons.some(b => b.type === type && b.visible);
 
   function relayout() {
     const key = `${V.w}x${V.mapH}`;
@@ -73,13 +106,7 @@
     Object.assign(LAYOUT.port, { x: x0, y });
     Object.assign(LAYOUT.info, { x: x0 + 52, y, w: infoW });
     Object.assign(LAYOUT.card, { x: V.w - 162, y });
-
-    for (const b of buttons) {
-      b.x = LAYOUT.card.x + 5 + b.col * (BW + 2);
-      b.y = LAYOUT.card.y + 2 + b.row * (BH + 2);
-      b.lx = b.x * 2;
-      b.ly = b.y * 2;
-    }
+    placeButtons();
   }
 
   relayout();
@@ -398,7 +425,7 @@
 
     const wx = L.x + 4;
     const wy = L.y + 4;
-    const e = vm.selected[0];
+    const e = vm.primary || vm.selected[0];
 
     // window backdrop with a banded lantern halo
     g.fillStyle = INK;
@@ -453,7 +480,7 @@
   }
 
   /* ---------- info ---------- */
-  const STATUS = { attack: "ÚTOČÍ", move: "POCHOD", gather: "TĚŽÍ", deliver: "ODEVZDÁVÁ" };
+  const STATUS = { attack: "ÚTOČÍ", move: "POCHOD", gather: "TĚŽÍ", deliver: "ODEVZDÁVÁ", build: "STAVÍ" };
 
   function drawInfo(g, vm, T0) {
     const L = LAYOUT.info;
@@ -490,8 +517,8 @@
       T(g, "VELENÍ", x0, L.y + 5, 0xf0d088);
       const lines = [
         "Vyber jednotku nebo budovu.",
-        "Dělník těží zlato a dřevo.",
-        "Hrdina získává zkušenosti v boji."
+        "Dělník těží a staví.",
+        "Hrdina sbírá zkušenosti."
       ];
       let y = L.y + 18;
 
@@ -522,13 +549,14 @@
     bar(g, x0, L.y + 27, iw, 4, hp / maxHp, hpColor(hp / maxHp), 8);
 
     if (multi) {
-      const n = Math.min(vm.selected.length, 24);
+      const n = Math.min(vm.selected.length, avatarCols() * 2);
+
+      if (vm.typeCount > 1) T3(g, "TAB: TYP", L.x + L.w - 7, L.y + 5, MUTED, { align: "right", shadow: null });
 
       for (let i = 0; i < n; i++) {
         const u = vm.selected[i];
-        const cx = x0 + (i % 12) * 12;
-        const cy = L.y + 35 + Math.floor(i / 12) * 13;
-        g.fillStyle = INK;
+        const { x: cx, y: cy } = avatarPos(i);
+        g.fillStyle = u.type === vm.focus ? "#ffe08a" : INK;
         g.fillRect(cx, cy, 11, 12);
         g.fillStyle = "#26305a";
         g.fillRect(cx + 1, cy + 1, 9, 10);
@@ -576,10 +604,17 @@
       }
     } else {
       const own = e.team === vm.myTeam;
+      if (e.progress < 1) {
+        T(g, `VÝSTAVBA ${Math.round(e.progress * 100)} %`, x0, L.y + 38, 0x8fd0ff);
+        bar(g, x0, L.y + 49, iw, 4, e.progress, css(0x58a6e0), 8);
+        return;
+      }
+
       const detail = {
         hall: "Výcvik dělníků.",
         barracks: "Výcvik armády a hrdiny.",
         tower: "Automatická obrana.",
+        hut: "Limit jednotek +5.",
         citadel: own ? "Výcvik dělníků." : "Cíl tvého útoku."
       }[e.type];
 
@@ -696,16 +731,17 @@
     const L = LAYOUT.card;
     g.drawImage(frame(L.w, L.h), L.x, L.y);
 
-    // empty socket for the tenth slot
-    const sx = LAYOUT.card.x + 5 + 4 * 30;
-    const sy = LAYOUT.card.y + 2 + 30;
-    g.fillStyle = INK;
-    g.fillRect(sx, sy, BW, BH);
-    g.fillStyle = "#14101f";
-    g.fillRect(sx + 1, sy + 1, BW - 2, BH - 2);
-    g.drawImage(PK.icons.ringEmblem(12, 0x2a2542), sx + 8, sy + 8);
+    // prázdné patice pod tlačítky aktuální nabídky
+    for (let i = 0; i < 10; i++) {
+      const sx = L.x + 5 + (i % 5) * (BW + 2);
+      const sy = L.y + 2 + Math.floor(i / 5) * (BH + 2);
+      g.fillStyle = INK;
+      g.fillRect(sx, sy, BW, BH);
+      g.fillStyle = "#14101f";
+      g.fillRect(sx + 1, sy + 1, BW - 2, BH - 2);
+    }
 
-    for (const b of buttons) drawButton(g, b, vm, T0);
+    for (const b of buttons) if (b.visible) drawButton(g, b, vm, T0);
   }
 
   function drawTooltip(g, vm) {
@@ -825,11 +861,35 @@
 
   function hitButton(lx, ly) {
     for (const b of buttons) {
-      if (lx >= b.lx && lx < b.lx + b.lw && ly >= b.ly && ly < b.ly + b.lh) return b;
+      if (b.visible && lx >= b.lx && lx < b.lx + b.lw && ly >= b.ly && ly < b.ly + b.lh) return b;
     }
 
     return null;
   }
 
-  PK.hud = { buttons, hitButton, minimapHit, relayout, draw, drawEnd, drawLogo, layout: LAYOUT };
+  // Avatary vybraných jednotek: stejné rozložení pro kreslení i klikání.
+  function avatarCols() {
+    return Math.max(12, Math.floor((LAYOUT.info.w - 14) / 12));
+  }
+
+  function avatarPos(i) {
+    const cols = avatarCols();
+    return { x: LAYOUT.info.x + 6 + (i % cols) * 12, y: LAYOUT.info.y + 35 + Math.floor(i / cols) * 13 };
+  }
+
+  // Index avataru pod kurzorem (logické souřadnice obrazovky), nebo -1.
+  function selectionHit(lx, ly, count) {
+    if (count < 2) return -1;
+
+    for (let i = 0; i < Math.min(count, avatarCols() * 2); i++) {
+      const p = avatarPos(i);
+      if (lx / 2 >= p.x && lx / 2 < p.x + 11 && ly / 2 >= p.y && ly / 2 < p.y + 12) return i;
+    }
+
+    return -1;
+  }
+
+  PK.hud = {
+    buttons, hitButton, selectionHit, setCard, cardHas, minimapHit, relayout, draw, drawEnd, drawLogo, layout: LAYOUT
+  };
 })();

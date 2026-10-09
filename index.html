@@ -14,11 +14,13 @@
 
   <button id="menu-btn" class="btn btn-icon" type="button" aria-label="Menu (Esc)" title="Menu (Esc)" hidden>&#9776;</button>
 
-  <div id="menu" class="menu" role="dialog" aria-modal="true" aria-labelledby="menu-title">
+  <div id="menu" class="menu scene" role="dialog" aria-modal="true" aria-labelledby="menu-title">
+    <canvas id="menubg" class="menubg" aria-hidden="true"></canvas>
     <div class="panel">
       <h1 class="logo" id="menu-title">
         <canvas id="logo" role="img" aria-label="Pixelové království"></canvas>
       </h1>
+      <p class="tagline">Postav hrad, shromáždi armádu, dobyj království</p>
 
       <section id="panel-main" class="page" data-page="main">
         <p id="menu-status" class="status"></p>
@@ -114,6 +116,9 @@
           Na velkých mapách posouvej kameru: <b>šipkami</b>, <b>myší u okraje obrazovky</b>,
           <b>prostředním tlačítkem myši</b> nebo <b>klikem a tažením v minimapě</b>
           (pravé tlačítko v minimapě pošle jednotky).
+          Budovy staví dělník na místě stavby, chatrče zvyšují limit jednotek o 5.
+          Kliknutím na avatara ve výběru vybereš jednu jednotku (Shift ji odebere, Ctrl vybere stejný typ).
+          Přes vodu se nechodí, jen po brodech.
         </p>
         <ul class="keys">
           <li><kbd>Q</kbd>dělník</li>
@@ -122,21 +127,25 @@
           <li><kbd>H</kbd>hrdina</li>
           <li><kbd>T</kbd>věž</li>
           <li><kbd>F</kbd>kasárna</li>
+          <li><kbd>G</kbd>chatrč (+5 jednotek)</li>
           <li><kbd>A</kbd>ohnivá koule</li>
           <li><kbd>S</kbd>léčení</li>
           <li><kbd>M</kbd>rozkaz</li>
           <li><kbd>←↑→↓</kbd>kamera</li>
+          <li><kbd>Tab</kbd>další typ ve výběru</li>
           <li><kbd>Esc</kbd>menu / zrušit akci</li>
           <li><kbd>R</kbd>další hra po konci</li>
         </ul>
         <button class="btn big" type="button" data-back>Zpět</button>
       </section>
     </div>
+    <p class="footer">Pixelové království &middot; Esc otevře menu</p>
   </div>
 </div>
 
 <script src="js/rules.js"></script>
 <script src="js/maps.js"></script>
+<script src="js/nav.js"></script>
 <script src="js/ai.js"></script>
 <script src="js/sim.js"></script>
 <script src="js/audio.js"></script>
@@ -150,6 +159,7 @@
 <script src="js/fx.js"></script>
 <script src="js/hud.js"></script>
 <script src="js/net.js"></script>
+<script src="js/menubg.js"></script>
 <script src="js/game.js"></script>
 </body>
 </html>

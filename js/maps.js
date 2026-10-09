@@ -20,6 +20,67 @@
     };
   };
 
+  /* ---------- voda (společné pro vykreslení i průchodnost) ---------- */
+  // Původní potok z Údolí potoka: [y, x] v art px.
+  const BROOK = [
+    [0, 372], [25, 369], [48, 364], [75, 368], [105, 368], [128, 369],
+    [160, 368], [190, 376], [215, 388], [240, 384]
+  ];
+
+  const brookX = y => {
+    for (let i = 0; i < BROOK.length - 1; i++) {
+      if (y <= BROOK[i + 1][0]) {
+        const [y0, x0] = BROOK[i];
+        const [y1, x1] = BROOK[i + 1];
+        const t = (y - y0) / (y1 - y0);
+        return x0 + (x1 - x0) * (t * t * (3 - 2 * t));
+      }
+    }
+    return BROOK[BROOK.length - 1][1];
+  };
+
+  const brookHW = y => 6.2 + 1.5 * Math.sin(y * 0.11) + 1.1 * Math.sin(y * 0.31 + 1);
+
+  function distToPolyline(x, y, pts) {
+    let best = Infinity;
+
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [ax, ay] = pts[i];
+      const [bx, by] = pts[i + 1];
+      const dx = bx - ax;
+      const dy = by - ay;
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy)));
+      best = Math.min(best, Math.hypot(x - (ax + dx * t), y - (ay + dy * t)));
+    }
+
+    return best;
+  }
+
+  // Je bod (art px) ve vodě? Cesty přes vodu jsou brody a jdou přejít; hrana vody je o px úžší než vykreslená.
+  function isWater(rec, ax, ay) {
+    let water = false;
+
+    for (const r of rec.rivers) {
+      if (r.legacy) {
+        if (Math.abs(ax - brookX(ay)) < brookHW(ay) - 1) water = true;
+      } else if (distToPolyline(ax, ay, r.pts) < r.hw - 1) {
+        water = true;
+      }
+    }
+
+    if (!water) return false;
+
+    for (const road of rec.roads) {
+      if (distToPolyline(ax, ay, road.pts) < road.w * (road.main ? 0.8 : 0.5)) return false;
+    }
+
+    return true;
+  }
+
+  // Logické souřadnice, s malým odstupem (stromy a budovy nestojí na břehu).
+  const waterNear = (rec, x, y, r = 12) =>
+    [[0, 0], [r, 0], [-r, 0], [0, r], [0, -r]].some(([dx, dy]) => isWater(rec, (x + dx) / 2, (y + dy) / 2));
+
   /* ---------- základny ---------- */
   // fx/fy jsou směry ke středu mapy (+1 nebo -1), podle nich se zrcadlí rozestavění kolem radnice.
   function base(slotIndex, x, y, fx, fy, zone) {
@@ -45,12 +106,13 @@
     [s.hq.x + fx * 270, s.hq.y + fy * 130]
   ];
 
-  function genTrees(seed, LW, LH, slots, mines, clusters, perCluster) {
+  function genTrees(seed, LW, LH, slots, mines, clusters, perCluster, blocked = () => false) {
     const r = mulberry(seed);
     const out = [];
 
     const ok = (x, y) =>
       x >= 30 && x <= LW - 30 && y >= 64 && y <= LH - 30 &&
+      !blocked(x, y) &&
       slots.every(s =>
         Math.hypot(x - s.hq.x, y - s.hq.y) > 150 &&
         Math.hypot(x - s.buildings[0].x, y - s.buildings[0].y) > 110) &&
@@ -283,6 +345,11 @@
     [640, 560, 4000], [800, 560, 4000]
   ];
 
+  const crownsTerrain = autoTerrain(
+    301, 720, 560, crownsSlots,
+    [{ pts: [[358, 0], [370, 90], [352, 190], [366, 280], [354, 370], [368, 470], [360, 560]], hw: 5.5 }]
+  );
+
   const crowns = {
     id: "crowns",
     name: "Čtyři koruny",
@@ -295,11 +362,8 @@
       "Střední mapa, na menších obrazovkách se kamera posouvá.",
     slots: crownsSlots,
     gold: crownsMines,
-    trees: genTrees(501, 1440, 1120, crownsSlots, crownsMines, 8, 7),
-    terrain: autoTerrain(
-      301, 720, 560, crownsSlots,
-      [{ pts: [[358, 0], [370, 90], [352, 190], [366, 280], [354, 370], [368, 470], [360, 560]], hw: 5.5 }]
-    )
+    trees: genTrees(501, 1440, 1120, crownsSlots, crownsMines, 8, 7, (x, y) => waterNear(crownsTerrain, x, y)),
+    terrain: crownsTerrain
   };
 
   /* ---------- mapa 3: Pustá vysočina (3 hráči, velká) ---------- */
@@ -314,6 +378,12 @@
     [960, 330, 4000], [620, 800, 4000], [1300, 800, 4000], [960, 560, 4000]
   ];
 
+  const highlandTerrain = autoTerrain(
+    611, 960, 560, highlandSlots,
+    [{ pts: [[0, 318], [160, 326], [320, 310], [480, 322], [640, 312], [800, 324], [960, 316]], hw: 6 }],
+    [[850, 470, 90]]
+  );
+
   const highland = {
     id: "highland",
     name: "Pustá vysočina",
@@ -326,12 +396,8 @@
       "ale armády mají daleko. Velká mapa: kameru posouvej šipkami, myší u okraje nebo minimapou.",
     slots: highlandSlots,
     gold: highlandMines,
-    trees: genTrees(907, 1920, 1120, highlandSlots, highlandMines, 14, 8),
-    terrain: autoTerrain(
-      611, 960, 560, highlandSlots,
-      [{ pts: [[0, 318], [160, 326], [320, 310], [480, 322], [640, 312], [800, 324], [960, 316]], hw: 6 }],
-      [[850, 470, 90]]
-    )
+    trees: genTrees(907, 1920, 1120, highlandSlots, highlandMines, 14, 8, (x, y) => waterNear(highlandTerrain, x, y)),
+    terrain: highlandTerrain
   };
 
   const list = [valley, crowns, highland];
@@ -340,6 +406,7 @@
   return {
     list,
     get: id => byId.get(id) || null,
+    isWater, waterNear, brookX, brookHW,
     DEFAULT: "valley"
   };
 });

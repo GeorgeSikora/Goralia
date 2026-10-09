@@ -12,6 +12,7 @@ const WebSocket = require("ws");
 const MAPS = require("../js/maps.js");
 const R = require("../js/rules.js");
 const { Match, TICK } = require("../js/sim.js");
+const NAV = require("../js/nav.js");
 
 const PORT = 3100 + Math.floor(Math.random() * 500);
 const URL = `ws://localhost:${PORT}`;
@@ -74,6 +75,30 @@ function testMaps() {
     }
 
     assert(map.terrain && Array.isArray(map.terrain.roads) && map.terrain.doodads, `${label}: recept terénu`);
+
+    // průchodnost: nic nestojí ve vodě a všechno je dosažitelné po souvislé cestě
+    const nav = NAV.forMap(map);
+    const reaches = (a, b) => {
+      const p = nav.path(a.x, a.y, b.x, b.y);
+      const end = p.length ? p[p.length - 1] : a;
+      return Math.hypot(end.x - b.x, end.y - b.y) < 24;
+    };
+
+    map.slots.forEach((s, i) => {
+      assert(!nav.isBlockedArea(s.hq.x, s.hq.y, 20), `${label}: základna ${i} ve vodě`);
+      for (const b of s.buildings) assert(!nav.isBlocked(b.x, b.y), `${label}: budova slotu ${i} ve vodě`);
+      for (const u of s.units) assert(!nav.isBlocked(u.x, u.y), `${label}: jednotka slotu ${i} ve vodě`);
+      map.slots.forEach((o, j) => {
+        if (j > i) assert(reaches(s.hq, o.hq), `${label}: základny ${i} a ${j} nejsou propojené`);
+      });
+    });
+
+    for (const [x, y] of map.gold) {
+      assert(!nav.isBlockedArea(x, y, 20), `${label}: důl ve vodě`);
+      assert(reaches(map.slots[0].hq, { x, y }), `${label}: důl je nedosažitelný`);
+    }
+
+    for (const [x, y] of map.trees) assert(!nav.isBlocked(x, y), `${label}: strom ve vodě`);
   }
 }
 
@@ -124,6 +149,90 @@ function testSimulation() {
   assert.strictEqual(draw.winner, null);
 
   testEconomy();
+  testBuilding();
+}
+
+function testBuilding() {
+  const run = (m, seconds, each) => { for (let t = 0; t < seconds; t += TICK) { m.step(TICK); m.endTick(); if (each) each(); } };
+  const newMatch = () => new Match(MAPS.get("valley"), [{ name: "A" }, { name: "B" }], { countdown: 0 });
+  const workerOf = m => m.units.find(u => u.team === "blue" && u.type === "worker");
+
+  // stavba: platba hned, budova roste, jen když u ní dělník pracuje, chatrč zvýší limit o 5
+  let m = newMatch();
+  const w = workerOf(m);
+  m.econ.blue.gold = 1000;
+  m.econ.blue.wood = 1000;
+  const hq = m.hqOf("blue");
+  let spot = null;
+
+  for (let x = 120; x < 480 && !spot; x += 20) {
+    for (let y = 100; y < 430 && !spot; y += 20) if (!m.placementProblem("blue", x, y)) spot = { x, y };
+  }
+
+  assert(spot, "existuje volné místo pro stavbu");
+  const gold0 = m.econ.blue.gold;
+  m.command("blue", { c: "build", type: "hut", x: spot.x, y: spot.y, ids: [w.id] });
+  const hut = m.buildings.find(b => b.type === "hut");
+  assert(hut && hut.progress < 0.1, "budova začíná jako rozestavěná");
+  assert.strictEqual(m.econ.blue.gold, gold0 - R.COSTS.hut.gold, "cena se strhává hned");
+  assert.strictEqual(w.order.type, "build");
+  assert.strictEqual(m.supplyCap("blue"), R.SUPPLY_BASE);
+
+  run(m, 0.5);
+  assert(hut.progress < 0.1, "dělník ještě nedošel");
+  let walked = 0;
+  while (!w.building && walked < 30) { run(m, TICK); walked += TICK; }
+  assert(w.building, "dělník dojde ke stavbě");
+  const t0 = hut.progress;
+  run(m, 2);
+  assert(hut.progress > t0 + 0.15 && hut.progress < 1, "stavba postupuje");
+  run(m, R.BUILD_TIME.hut);
+  assert.strictEqual(hut.progress, 1);
+  assert(!w.order, "dělník po dostavění končí");
+  assert.strictEqual(m.supplyCap("blue"), R.SUPPLY_BASE + R.SUPPLY_PER_HUT);
+
+  // bez dělníka se nestaví; jiný dělník může pokračovat
+  const other = m.units.find(u => u.team === "blue" && u.type === "worker" && u !== w);
+  m.command("blue", { c: "build", type: "tower", x: spot.x + 100, y: spot.y, ids: [w.id] });
+  const tower = m.buildings.find(b => b.type === "tower");
+  assert(tower, "věž se začala stavět");
+
+  m.command("blue", { c: "order", k: "move", ids: [w.id], x: hq.x, y: hq.y + 150 });
+  const p = tower.progress;
+  run(m, 3);
+  assert(tower.progress <= p + 0.01, "bez stavitele se nestaví");
+  m.command("blue", { c: "order", k: "build", ids: [other.id], target: tower.id });
+  run(m, 40);
+  assert.strictEqual(tower.progress, 1, "jiný dělník stavbu dokončí");
+
+  // limit jednotek: základ + 5 za chatrč
+  m = newMatch();
+  m.econ.blue.gold = 5000;
+  m.econ.blue.wood = 5000;
+  for (let i = 0; i < 30; i++) m.command("blue", { c: "train", type: "worker" });
+  assert.strictEqual(m.units.filter(u => u.team === "blue").length, R.SUPPLY_BASE, "limit jednotek");
+  assert(m.notes.blue.some(n => n.startsWith("Maximum jednotek")));
+
+  // voda: jednotka obejde potok přes brod a nikdy nevstoupí do vody
+  m = newMatch();
+  const walker = workerOf(m);
+  walker.x = 680;
+  walker.y = 100;
+  m.command("blue", { c: "order", k: "move", ids: [walker.id], x: 800, y: 100 });
+  let wet = 0;
+  run(m, 45, () => { if (m.nav.isBlocked(walker.x, walker.y)) wet++; });
+  assert.strictEqual(wet, 0, "jednotka nechodí přes vodu");
+  assert(walker.x > 770, "přešla brodem na druhou stranu");
+
+  // nelze stavět na vodě
+  assert(m.placementProblem("red", 736, 100), "stavba ve vodě je zamítnuta");
+
+  // jednotky se překrývají jen mírně: dvě na stejném místě se rozejdou
+  m = newMatch();
+  const a = m.createUnit("soldier", "blue", 300, 300);
+  const b = m.createUnit("soldier", "blue", 300, 300);
+  run(m, 2);
+  assert(Math.hypot(a.x - b.x, a.y - b.y) >= 13, "jednotky se odtlačily");
 }
 
 function testEconomy() {

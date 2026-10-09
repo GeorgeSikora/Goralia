@@ -28,25 +28,8 @@
   const Z_TERRACE = 5;
   const Z_BANK = 6;
 
-  /* ---------- the original brook (Valley map, rivers: [{ legacy: true }]) ---------- */
-  const BROOK = [
-    [0, 372], [25, 369], [48, 364], [75, 368], [105, 368], [128, 369],
-    [160, 368], [190, 376], [215, 388], [240, 384]
-  ];
-
-  const brookX = y => {
-    for (let i = 0; i < BROOK.length - 1; i++) {
-      if (y <= BROOK[i + 1][0]) {
-        const [y0, x0] = BROOK[i];
-        const [y1, x1] = BROOK[i + 1];
-        const t = (y - y0) / (y1 - y0);
-        return x0 + (x1 - x0) * (t * t * (3 - 2 * t));
-      }
-    }
-    return BROOK[BROOK.length - 1][1];
-  };
-
-  const brookHW = y => 6.2 + 1.5 * Math.sin(y * 0.11) + 1.1 * Math.sin(y * 0.31 + 1);
+  // The original brook (Valley map, rivers: [{ legacy: true }]) is shared with the walkability grid.
+  const { brookX, brookHW } = PK.maps;
 
   // 1 = bujná tráva, 0 = popel. Popel leží za hranicí ash.edge nebo uvnitř kruhů ash.circles.
   const lushAt = (rc, x, y) => {

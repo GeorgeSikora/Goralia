@@ -365,6 +365,63 @@
     };
   }
 
+  /* ---------- Chatrč: +5 jednotek ---------- */
+  function hut(team = "blue") {
+    const W = 32;
+    const H = 32;
+    const P = new Pix(W, H);
+    const T = TEAM[team];
+    const roof = shingle([C.t[0], C.t[1], C.t[2], C.t[3], C.t[4]], 4, 3, 3, 21);
+
+    // timber walls with vertical planks
+    P.shade(6, 17, 26, 31, (x, y) => {
+      if (y === 17) return C.w[3];
+      if ((x - 6) % 4 === 3) return C.w[1];
+      return hash(x >> 1, y >> 1, 5) > 0.8 ? C.w[3] : C.w[2];
+    });
+    edges(P, 6, 17, 25, 30, C.w[4], C.w[0]);
+    P.rect(21, 17, 5, 14, C.w[1]);
+
+    // stone footing
+    P.rect(5, 29, 22, 2, C.s[3]);
+    P.rect(5, 29, 22, 1, C.s[4]);
+
+    // chimney behind the roof
+    P.rect(21, 5, 4, 9, C.s[2]);
+    P.rect(21, 5, 4, 1, C.s[5]);
+    P.rect(23, 6, 2, 8, C.s[1]);
+
+    // slate roof with a deep eave
+    P.poly([[2, 18], [30, 18], [16, 4]], (x, y) => {
+      const c = roof(x, y);
+      return x > 17 ? dark(c, 0.25) : c;
+    });
+    P.rect(2, 18, 28, 1, C.t[4]);
+    P.rect(2, 19, 28, 1, C.t[0]);
+
+    // door and lit window
+    P.rect(12, 22, 7, 9, C.w[0]);
+    P.rect(13, 23, 5, 8, C.w[2]);
+    P.rect(15, 24, 1, 7, C.w[1]);
+    P.set(17, 27, C.gold[1]);
+    P.rect(8, 22, 3, 3, C.s[0]);
+    P.rect(9, 23, 1, 1, C.a[3]);
+
+    // team pennant on the ridge
+    P.rect(16, 0, 1, 5, C.w[3]);
+    P.rect(17, 0, 5, 3, T.m);
+    P.rect(17, 0, 5, 1, T.l);
+
+    P.outline(C.ink, 0.74);
+
+    return {
+      c: P.toCanvas(), w: W, h: H, ax: 16, ay: 31,
+      banners: [],
+      smoke: [[22, 4]],
+      glows: [{ x: 9, y: 23, r: 6, a: 0.35, color: C.a[2], pulse: true }]
+    };
+  }
+
   /* ---------- Rudá pevnost: the Cinder citadel ---------- */
   function citadel() {
     const W = 80;
@@ -585,7 +642,8 @@
         hall,
         barracks,
         tower,
-        citadel
+        citadel,
+        hut
       }[type](team);
     }
 

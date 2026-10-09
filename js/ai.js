@@ -41,8 +41,19 @@
   function assignWorkers(match, brain, hq, workers) {
     const eco = match.econ[brain.team];
 
+    // rozestavěná budova bez stavitele (jeho dělník padl nebo dostal jiný rozkaz)
+    let orphan = match.buildings.find(b =>
+      b.team === brain.team && b.progress < 1 && alive(b) &&
+      !workers.some(w => w.order && w.order.type === "build" && w.order.target === b));
+
     for (const worker of workers) {
       if (worker.order || worker.carry) continue;
+
+      if (orphan) {
+        match.command(brain.team, { c: "order", k: "build", ids: [worker.id], target: orphan.id });
+        orphan = null;
+        continue;
+      }
 
       const type = eco.wood < eco.gold * 0.6 + 60 ? "wood" : "gold";
       const resource = nearestResource(match, hq, type) || nearestResource(match, hq, "gold");
@@ -70,18 +81,29 @@
     const team = brain.team;
     const eco = match.econ[team];
     const barracks = match.buildings.filter(b => b.team === team && b.type === "barracks" && alive(b));
+    const ready = barracks.filter(b => b.progress >= 1);
     const towers = match.buildings.filter(b => b.team === team && b.type === "tower" && alive(b));
+    const huts = match.buildings.filter(b => b.team === team && b.type === "hut" && alive(b));
     const hasHero = army.some(u => u.type === "hero");
+    const builder = workers.find(w => !w.order || w.order.type !== "build") || workers[0];
 
     if (workers.length < WORKERS_WANTED && canPay(eco, "worker")) {
       match.command(team, { c: "train", type: "worker" });
     }
 
-    if (workers.length && barracks.length < (match.elapsed > 240 ? 2 : 1) && canPay(eco, "barracks")) {
-      buildNear(match, brain, hq, "barracks", workers[0]);
+    if (builder && barracks.length < (match.elapsed > 240 ? 2 : 1) && canPay(eco, "barracks")) {
+      buildNear(match, brain, hq, "barracks", builder);
     }
 
-    if (!barracks.length) return;
+    // dostáváme se na limit jednotek: chatrč (jedna rozestavěná najednou)
+    const supply = workers.length + army.length;
+    const cap = match.supplyCap(team);
+
+    if (builder && supply >= cap - 2 && cap < R.SUPPLY_MAX && !huts.some(h => h.progress < 1) && canPay(eco, "hut")) {
+      buildNear(match, brain, hq, "hut", builder);
+    }
+
+    if (!ready.length) return;
 
     if (!hasHero && canPay(eco, "hero")) match.command(team, { c: "train", type: "hero" });
 
@@ -91,7 +113,7 @@
     }
 
     if (workers.length && army.length >= 5 && towers.length < 2 && eco.wood >= 120 && canPay(eco, "tower")) {
-      buildNear(match, brain, hq, "tower", workers[1] || workers[0]);
+      buildNear(match, brain, hq, "tower", builder);
     }
   }
 

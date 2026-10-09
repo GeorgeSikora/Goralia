@@ -16,7 +16,8 @@
     archer:   { gold: 80,  wood: 30 },
     hero:     { gold: 150, wood: 50 },
     tower:    { gold: 90,  wood: 55 },
-    barracks: { gold: 125, wood: 70 }
+    barracks: { gold: 125, wood: 70 },
+    hut:      { gold: 70,  wood: 40 }
   };
 
   // [hp, rychlost, poškození, dosah, prodleva mezi útoky]
@@ -28,7 +29,10 @@
   };
 
   // Všechny základny mají stejné zdraví, aby byl souboj férový.
-  const BUILDING_HP = { hall: 1500, citadel: 1500, barracks: 290, tower: 175 };
+  const BUILDING_HP = { hall: 1500, citadel: 1500, barracks: 290, tower: 175, hut: 200 };
+
+  // Doba stavby v sekundách (jeden dělník).
+  const BUILD_TIME = { tower: 10, barracks: 12, hut: 8 };
 
   // Index slotu na mapě = index týmu.
   const TEAMS = ["blue", "red", "gold", "violet"];
@@ -38,12 +42,17 @@
   const BASE_GOLD = 260;
   const BASE_WOOD = 120;
   const GOLD_AMOUNT = 2000; // výchozí zásoba zlatého dolu; mapa může u dolu uvést třetí číslo
-  const SUPPLY_MAX = 30;
-  const MAX_BUILDINGS = 20;
+  // Limit jednotek: základ od hlavní budovy + 5 za každou dostavěnou chatrč, nejvýše SUPPLY_MAX.
+  const SUPPLY_BASE = 12;
+  const SUPPLY_PER_HUT = 5;
+  const SUPPLY_MAX = 60;
+  const MAX_BUILDINGS = 30;
   const COUNTDOWN = 3;
 
+  const supplyCap = huts => Math.min(SUPPLY_MAX, SUPPLY_BASE + SUPPLY_PER_HUT * huts);
+
   return {
-    COSTS, UNITS, BUILDING_HP, TEAMS, HQ, TEAM_NAMES, MAX_PLAYERS, BASE_GOLD, BASE_WOOD, GOLD_AMOUNT,
-    SUPPLY_MAX, MAX_BUILDINGS, COUNTDOWN
+    COSTS, UNITS, BUILDING_HP, BUILD_TIME, TEAMS, HQ, TEAM_NAMES, MAX_PLAYERS, BASE_GOLD, BASE_WOOD, GOLD_AMOUNT,
+    SUPPLY_BASE, SUPPLY_PER_HUT, SUPPLY_MAX, supplyCap, MAX_BUILDINGS, COUNTDOWN
   };
 });
