@@ -111,6 +111,7 @@
     phase: "offline", // offline | connecting | idle | room | countdown | playing | ended
     rooms: [],
     playing: 0,
+    total: 0,
     roomId: 0,
     firstSnapshot: true,
     pendingTrain: 0,
@@ -1471,7 +1472,7 @@
       oStatus.textContent = online.error || "Nejsi připojený k serveru.";
     }
 
-    oStats.textContent = phase === "idle" ? `Místností: ${online.rooms.length} · Hráčů ve hře: ${online.playing}` : "";
+    oStats.textContent = phase === "idle" ? `Hráčů online: ${online.total} · Místností: ${online.rooms.length} · Hráčů ve hře: ${online.playing}` : "";
     renderRooms();
   }
 
@@ -2190,6 +2191,7 @@
       case "rooms":
         online.rooms = Array.isArray(m.list) ? m.list : [];
         online.playing = m.playing | 0;
+        online.total = m.online | 0;
 
         if (m.t === "hello" && online.phase === "connecting") online.phase = "idle";
 

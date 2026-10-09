@@ -183,7 +183,7 @@ function roomList() {
 
   for (const room of rooms.values()) {
     if (room.match) continue;
-    list.push({ id: room.id, map: room.map.id, host: room.host.name, players: humansOf(room).length, max: room.slots.length });
+    list.push({ id: room.id, map: room.map.id, host: room.host.name, players: room.slots.filter(s => s.kind !== "open").length, max: room.slots.length });
   }
 
   return list;
@@ -191,7 +191,7 @@ function roomList() {
 
 function broadcastRooms() {
   const playing = [...matches].reduce((n, room) => n + humansOf(room).length, 0);
-  const text = JSON.stringify({ t: "rooms", list: roomList(), playing });
+  const text = JSON.stringify({ t: "rooms", list: roomList(), playing, online: clients.size });
   if (text === lastRooms) return;
   lastRooms = text;
 
@@ -333,7 +333,8 @@ wss.on("connection", ws => {
   };
 
   clients.add(client);
-  send(client, { t: "hello", list: roomList(), playing: [...matches].reduce((n, r) => n + humansOf(r).length, 0) });
+  send(client, { t: "hello", list: roomList(), playing: [...matches].reduce((n, r) => n + humansOf(r).length, 0), online: clients.size });
+  broadcastRooms();
 
   ws.on("pong", () => { client.alive = true; });
 
@@ -423,6 +424,7 @@ wss.on("connection", ws => {
   ws.on("close", () => {
     clients.delete(client);
     leaveRoom(client);
+    broadcastRooms();
   });
 
   ws.on("error", () => ws.terminate());
