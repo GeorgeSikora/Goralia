@@ -1,7 +1,7 @@
 /*
  * HUD: carved-stone panels with brass bevels, amber focus light.
- * Layout is in art pixels (480x310 buffer); hit-testing exposes logical
- * coordinates (x2) so input code can stay in game units.
+ * Layout is in art pixels; the buffer width and height follow the window (PK.view).
+ * Hit-testing exposes logical coordinates (x2) so input code can stay in game units.
  */
 (() => {
   "use strict";
@@ -9,7 +9,7 @@
   const PK = window.PK;
   const { C, Pix, css, hash, mix, clamp } = PK;
 
-  const MAP_H = 240;
+  const V = PK.view;
 
   const INK = css(C.ink);
   const BR = [0x5a4129, 0x8a6a3c, 0xc09c5a, 0xf0d088];
@@ -21,6 +21,7 @@
   const GOOD = 0x7fe08a;
   const BAD = 0xff6a5a;
 
+  // Rozmístění panelů se přepočítá podle šířky a výšky mapové části (relayout).
   const LAYOUT = {
     mini: { x: 4, y: 244, w: 96, h: 62 },
     port: { x: 104, y: 244, w: 48, h: 62 },
@@ -30,8 +31,6 @@
 
   const BW = 28;
   const BH = 28;
-  const BX0 = LAYOUT.card.x + 5;
-  const BY0 = LAYOUT.card.y + 2;
 
   const SLOTS = [
     ["worker", "Q", "Dělník"], ["soldier", "W", "Voják"], ["archer", "E", "Lučištník"],
@@ -52,13 +51,38 @@
     command: "Klepni na cíl: pohyb, útok nebo těžba."
   };
 
-  const buttons = SLOTS.map(([type, key, title], i) => {
-    const col = i % 5;
-    const row = Math.floor(i / 5);
-    const x = BX0 + col * (BW + 2);
-    const y = BY0 + row * (BH + 2);
-    return { type, key, title, tip: TIPS[type], x, y, w: BW, h: BH, lx: x * 2, ly: y * 2, lw: BW * 2, lh: BH * 2 };
-  }).filter(b => b.type);
+  const buttons = SLOTS.map(([type, key, title], i) => ({
+    type, key, title, tip: TIPS[type], col: i % 5, row: Math.floor(i / 5),
+    x: 0, y: 0, w: BW, h: BH, lx: 0, ly: 0, lw: BW * 2, lh: BH * 2
+  })).filter(b => b.type);
+
+  let layoutKey = "";
+
+  function relayout() {
+    const key = `${V.w}x${V.mapH}`;
+    if (key === layoutKey) return;
+    layoutKey = key;
+
+    const y = V.mapH + 4;
+    const midFrom = 104;
+    const midTo = V.w - 166;
+    const infoW = clamp(midTo - midFrom - 52, 158, 318);
+    const x0 = midFrom + Math.floor((midTo - midFrom - (48 + 4 + infoW)) / 2);
+
+    Object.assign(LAYOUT.mini, { x: 4, y });
+    Object.assign(LAYOUT.port, { x: x0, y });
+    Object.assign(LAYOUT.info, { x: x0 + 52, y, w: infoW });
+    Object.assign(LAYOUT.card, { x: V.w - 162, y });
+
+    for (const b of buttons) {
+      b.x = LAYOUT.card.x + 5 + b.col * (BW + 2);
+      b.y = LAYOUT.card.y + 2 + b.row * (BH + 2);
+      b.lx = b.x * 2;
+      b.ly = b.y * 2;
+    }
+  }
+
+  relayout();
 
   /* ---------- baked frames ---------- */
   const frameCache = new Map();
@@ -108,21 +132,22 @@
   }
 
   let strip = null;
+  let stripW = 0;
 
-  function buildStrip() {
-    const P = new Pix(480, 70);
-    P.shade(0, 0, 480, 70, (x, y) => {
+  function buildStrip(w) {
+    const P = new Pix(w, 70);
+    P.shade(0, 0, w, 70, (x, y) => {
       const brick = (x + ((y >> 3) & 1) * 6) % 12 === 0 || y % 8 === 7;
       const v = hash(x >> 1, y >> 1, 8);
       return brick ? 0x0f0c1a : v > 0.9 ? 0x1b1730 : 0x15122a;
     });
-    P.rect(0, 0, 480, 1, C.ink);
-    P.rect(0, 1, 480, 1, BR[3]);
-    P.rect(0, 2, 480, 2, BR[2]);
-    P.rect(0, 4, 480, 1, BR[0]);
-    P.rect(0, 5, 480, 1, C.ink);
+    P.rect(0, 0, w, 1, C.ink);
+    P.rect(0, 1, w, 1, BR[3]);
+    P.rect(0, 2, w, 2, BR[2]);
+    P.rect(0, 4, w, 1, BR[0]);
+    P.rect(0, 5, w, 1, C.ink);
 
-    for (let x = 8; x < 480; x += 24) {
+    for (let x = 8; x < w; x += 24) {
       P.rect(x, 2, 2, 2, BR[3]);
       P.set(x + 1, 3, BR[1]);
     }
@@ -213,54 +238,58 @@
     });
   }
 
-  function drawVersus(g, vm) {
+  const teamCss = team => css(PK.TEAM[team].ui);
+
+  // Vpravo nahoře: čas hry a seznam hráčů s barvami týmů.
+  function drawPlayers(g, vm) {
     const mins = Math.floor(vm.elapsed / 60);
     const secs = Math.floor(vm.elapsed % 60);
-    const label = `${vm.opponent}  ${mins}:${String(secs).padStart(2, "0")}`;
-    const w = 6 + 8 + 4 + PK.textWidth(label) + 3;
-    const x = 480 - 3 - w;
-    const foeColor = vm.myTeam === "blue" ? "#e2603c" : "#58a6e0";
+    const rows = [{ label: `${mins}:${String(secs).padStart(2, "0")}`, time: true }, ...vm.players.map(p => ({
+      label: p.name.slice(0, 12), team: p.team, out: p.out, me: p.me
+    }))];
 
-    g.drawImage(frame(w, 15, "plaque"), x, 3);
-    g.fillStyle = INK;
-    g.fillRect(x + 5, 7, 8, 7);
-    g.fillStyle = foeColor;
-    g.fillRect(x + 6, 8, 6, 5);
-    T(g, label, x + 17, 7, 0xf0d9a8);
-  }
+    let y = 3;
 
-  function drawWave(g, vm, T0) {
-    if (vm.online) return drawVersus(g, vm);
+    for (const row of rows) {
+      const w = 6 + (row.time ? 0 : 12) + PK.textWidth(row.label) + 3;
+      const x = V.w - 3 - V.inset - w;
 
-    const secs = Math.ceil(vm.waveTimer);
-    const label = `VLNA ZA ${secs} S`;
-    const urgent = vm.waveTimer < 4;
-    const w = 6 + 10 + 3 + PK.textWidth(label) + 3;
-    const x = 480 - 3 - w;
+      g.drawImage(frame(w, 15, "plaque"), x, y);
 
-    g.drawImage(frame(w, 19, "plaque"), x, 3);
+      if (row.time) {
+        T(g, row.label, x + 5, y + 4, 0xf0d9a8);
+      } else {
+        g.fillStyle = INK;
+        g.fillRect(x + 5, y + 4, 8, 7);
+        g.fillStyle = row.out ? "#4a4560" : teamCss(row.team);
+        g.fillRect(x + 6, y + 5, 6, 5);
+        T(g, row.label, x + 17, y + 4, row.out ? MUTED : row.me ? 0xffe08a : TEXT);
 
-    const flick = urgent && Math.floor(T0 * 5) % 2 === 0;
-    g.drawImage(PK.icons.small.horn, x + 5, 6 + (urgent ? Math.round(Math.sin(T0 * 22)) : 0));
-    T(g, label, x + 18, 7, flick ? BAD : urgent ? 0xffd27a : 0xf0b0a0);
+        if (row.out) {
+          g.fillStyle = BAD;
+          g.fillRect(x + 16, y + 7, w - 19, 1);
+        }
+      }
 
-    const pct = vm.waveMax > 0 ? 1 - vm.waveTimer / vm.waveMax : 0;
-    bar(g, x + 5, 16, w - 10, 2, pct, urgent ? css(0xff5a4a) : css(0xe0902a));
+      y += 17;
+    }
   }
 
   /* ---------- banners ---------- */
   function drawBanners(g, vm, T0) {
+    const cx = Math.round(V.w / 2);
+
     if (vm.messageTimer > 0 && vm.message) {
       const w = PK.textWidth(vm.message) + 16;
       const slideIn = Math.min(1, (3 - vm.messageTimer) / 0.2);
       const slideOut = Math.min(1, vm.messageTimer / 0.3);
       const k = Math.min(slideIn, slideOut);
       const y = 25 - Math.round((1 - k) * 8);
-      const x = Math.round(240 - w / 2);
+      const x = Math.round(cx - w / 2);
 
       g.globalAlpha = k;
       g.drawImage(frame(w, 15, "plaque"), x, y);
-      T(g, vm.message, 240, y + 4, 0xffe4a8, { align: "center" });
+      T(g, vm.message, cx, y + 4, 0xffe4a8, { align: "center" });
       g.globalAlpha = 1;
     }
 
@@ -268,41 +297,60 @@
     if (vm.placement) hint = "UMÍSTI STAVBU · KLIKNI NA MAPU";
     else if (vm.spellMode) hint = "OHNIVÁ KOULE · KLIKNI NA CÍL";
     else if (vm.commandMode) hint = "ROZKAZ · KLIKNI NA CÍL";
+    else if (vm.spectating) hint = "VYPADL JSI · SLEDUJEŠ HRU";
 
     if (hint) {
       const w = PK.textWidth(hint) + 14;
-      const x = Math.round(240 - w / 2);
+      const x = Math.round(cx - w / 2);
       const pulseA = 0.6 + 0.4 * Math.sin(T0 * 6);
 
       g.drawImage(frame(w, 13, "plaque"), x, 42);
       g.fillStyle = `rgba(255,191,69,${0.12 * pulseA})`;
       g.fillRect(x + 3, 45, w - 6, 7);
-      T(g, hint, 240, 45, 0xfff0c4, { align: "center" });
+      T(g, hint, cx, 45, 0xfff0c4, { align: "center" });
     }
   }
 
   /* ---------- minimap ---------- */
+  // Obrázek minimapy leží uprostřed panelu; souřadnice mapy (logické) se na něj převádějí poměrem stran mapy.
+  function miniRect() {
+    const L = LAYOUT.mini;
+    const mm = PK.world.minimap;
+    const w = mm.width;
+    const h = mm.height;
+    return { x: L.x + 4 + Math.floor((88 - w) / 2), y: L.y + 10 + Math.floor((48 - h) / 2), w, h };
+  }
+
+  // Bod v minimapě (logické souřadnice obrazovky) -> světové logické souřadnice, nebo null.
+  function minimapHit(lx, ly) {
+    const r = miniRect();
+    const ax = lx / 2;
+    const ay = ly / 2;
+    if (ax < r.x || ay < r.y || ax >= r.x + r.w || ay >= r.y + r.h) return null;
+
+    return { x: (ax - r.x) / r.w * PK.world.W * 2, y: (ay - r.y) / r.h * PK.world.H * 2 };
+  }
+
   function drawMinimap(g, vm, T0) {
     const L = LAYOUT.mini;
     g.drawImage(frame(L.w, L.h), L.x, L.y);
     T3(g, "MINIMAPA", L.x + 5, L.y + 4, MUTED, { shadow: null });
 
-    const mx = 8;
-    const my = 254;
+    const { x: mx, y: my, w: mw, h: mh } = miniRect();
     g.drawImage(PK.world.minimap, mx, my);
     g.fillStyle = "rgba(24,18,48,0.22)";
-    g.fillRect(mx, my, 88, 44);
+    g.fillRect(mx, my, mw, mh);
     g.fillStyle = INK;
-    g.fillRect(mx - 1, my - 1, 90, 1);
-    g.fillRect(mx - 1, my + 44, 90, 1);
-    g.fillRect(mx - 1, my, 1, 44);
-    g.fillRect(mx + 88, my, 1, 44);
+    g.fillRect(mx - 1, my - 1, mw + 2, 1);
+    g.fillRect(mx - 1, my + mh, mw + 2, 1);
+    g.fillRect(mx - 1, my, 1, mh);
+    g.fillRect(mx + mw, my, 1, mh);
 
-    const sx = 88 / 960;
-    const sy = 44 / 480;
+    const sx = mw / (PK.world.W * 2);
+    const sy = mh / (PK.world.H * 2);
 
     for (const r of vm.resources) {
-      g.fillStyle = r.type === "gold" ? "#ffd36b" : "#173a2d";
+      g.fillStyle = r.type === "gold" ? (r.amount > 0 ? "#ffd36b" : "#6a6480") : "#173a2d";
       if (r.type === "gold") g.fillRect(mx + Math.round(r.x * sx) - 1, my + Math.round(r.y * sy) - 1, 3, 2);
       else g.fillRect(mx + Math.round(r.x * sx), my + Math.round(r.y * sy), 1, 1);
     }
@@ -312,7 +360,7 @@
       const y = my + Math.round(b.y * sy);
       g.fillStyle = INK;
       g.fillRect(x - 3, y - 2, 6, 5);
-      g.fillStyle = b.team === "blue" ? "#58a6e0" : "#e2603c";
+      g.fillStyle = teamCss(b.team);
       g.fillRect(x - 2, y - 1, 4, 3);
     }
 
@@ -325,10 +373,22 @@
         g.fillStyle = u.type === "hero" ? "#ffe08a" : "#e8f4ff";
         g.fillRect(x, y, 1, 1);
       } else {
-        g.fillStyle = blink ? "#ff9a7a" : "#d65a3c";
+        g.fillStyle = teamCss(u.team);
+        g.globalAlpha = blink ? 1 : 0.7;
         g.fillRect(x, y, 2, 1);
+        g.globalAlpha = 1;
       }
     }
+
+    // vydělý úsek kamery
+    const cam = vm.cam;
+    const vx = Math.max(0, cam.x * 2 * sx);
+    const vy = Math.max(0, cam.y * 2 * sy);
+    const vw = Math.min(mw - vx, cam.w * 2 * sx);
+    const vh = Math.min(mh - vy, cam.h * 2 * sy);
+    g.strokeStyle = "#fff6cc";
+    g.lineWidth = 1;
+    g.strokeRect(mx + Math.round(vx) + 0.5, my + Math.round(vy) + 0.5, Math.max(2, Math.round(vw) - 1), Math.max(2, Math.round(vh) - 1));
   }
 
   /* ---------- portrait ---------- */
@@ -393,14 +453,38 @@
   }
 
   /* ---------- info ---------- */
-  const STATUS = { attack: "ÚTOČÍ", move: "POCHOD", gather: "TĚŽÍ" };
+  const STATUS = { attack: "ÚTOČÍ", move: "POCHOD", gather: "TĚŽÍ", deliver: "ODEVZDÁVÁ" };
 
   function drawInfo(g, vm, T0) {
     const L = LAYOUT.info;
     g.drawImage(frame(L.w, L.h), L.x, L.y);
     const x0 = L.x + 6;
+    const iw = L.w - 14;
     const names = vm.names;
     const e = vm.selected[0];
+
+    if (!e && vm.resource) {
+      const r = vm.resource;
+      const gold = r.type === "gold";
+      const left = Math.ceil(r.amount);
+
+      T(g, gold ? (left > 0 ? "ZLATÝ DŮL" : "VYČERPANÝ DŮL") : "STROM", x0, L.y + 5, 0xf0d088);
+      g.drawImage(gold ? PK.icons.small.coin : PK.icons.small.wood, x0, L.y + 16);
+      T(g, `${left}/${r.max}`, x0 + 11, L.y + 16, left > 0 ? (gold ? 0xffe08a : 0xe0b070) : MUTED);
+      bar(g, x0, L.y + 27, iw, 4, r.max ? left / r.max : 0, gold ? css(0xffbf45) : css(0x6fd36f), 8);
+
+      const hint = left > 0
+        ? (gold ? "Dělník vytěží vždy 10 zlata." : "Dělník vytěží vždy 10 dřeva.")
+        : "Zlato je pryč. Důl už nic nedá.";
+      let y = L.y + 37;
+
+      for (const ln of PK.wrap(hint, iw)) {
+        T(g, ln, x0, y, 0xb8b0d4);
+        y += 10;
+      }
+
+      return;
+    }
 
     if (!e) {
       T(g, "VELENÍ", x0, L.y + 5, 0xf0d088);
@@ -412,7 +496,7 @@
       let y = L.y + 18;
 
       for (const text of lines) {
-        for (const ln of PK.wrap(text, 144)) {
+        for (const ln of PK.wrap(text, iw)) {
           T(g, ln, x0, y, 0xb8b0d4);
           y += 10;
         }
@@ -435,7 +519,7 @@
 
     g.drawImage(PK.icons.small.heart, x0, L.y + 16);
     T(g, `${Math.ceil(hp)}/${maxHp}`, x0 + 11, L.y + 16, hp / maxHp > 0.35 ? 0x84e4a0 : 0xf19a7e);
-    bar(g, x0, L.y + 27, 144, 4, hp / maxHp, hpColor(hp / maxHp), 8);
+    bar(g, x0, L.y + 27, iw, 4, hp / maxHp, hpColor(hp / maxHp), 8);
 
     if (multi) {
       const n = Math.min(vm.selected.length, 24);
@@ -481,12 +565,12 @@
 
       if (e.type === "hero") {
         const need = e.level * 40;
-        bar(g, x0, L.y + 49, 144, 3, e.xp / need, css(0xffbf45), 0);
-        T3(g, `XP ${e.xp}/${need}`, x0 + 72, L.y + 55, 0xffe08a, { align: "center", shadow: null });
+        bar(g, x0, L.y + 49, iw, 3, e.xp / need, css(0xffbf45), 0);
+        T3(g, `XP ${e.xp}/${need}`, x0 + Math.round(iw / 2), L.y + 55, 0xffe08a, { align: "center", shadow: null });
         const f = Math.ceil(e.fireCooldown);
         const h = Math.ceil(e.healCooldown);
         T3(g, f > 0 ? `OHEN ${f}S` : "OHEN OK", x0, L.y + 55, f > 0 ? MUTED : 0xffa060, { shadow: null });
-        T3(g, h > 0 ? `LECENI ${h}S` : "LECENI OK", x0 + 144, L.y + 55, h > 0 ? MUTED : 0x7fe0b0, { align: "right", shadow: null });
+        T3(g, h > 0 ? `LECENI ${h}S` : "LECENI OK", x0 + iw, L.y + 55, h > 0 ? MUTED : 0x7fe0b0, { align: "right", shadow: null });
       } else {
         T(g, status, x0, L.y + 49, status === "ČEKÁ" ? MUTED : 0xf0d088);
       }
@@ -613,11 +697,13 @@
     g.drawImage(frame(L.w, L.h), L.x, L.y);
 
     // empty socket for the tenth slot
+    const sx = LAYOUT.card.x + 5 + 4 * 30;
+    const sy = LAYOUT.card.y + 2 + 30;
     g.fillStyle = INK;
-    g.fillRect(BX0 + 4 * 30, BY0 + 30, BW, BH);
+    g.fillRect(sx, sy, BW, BH);
     g.fillStyle = "#14101f";
-    g.fillRect(BX0 + 4 * 30 + 1, BY0 + 31, BW - 2, BH - 2);
-    g.drawImage(PK.icons.ringEmblem(12, 0x2a2542), BX0 + 4 * 30 + 8, BY0 + 30 + 8);
+    g.fillRect(sx + 1, sy + 1, BW - 2, BH - 2);
+    g.drawImage(PK.icons.ringEmblem(12, 0x2a2542), sx + 8, sy + 8);
 
     for (const b of buttons) drawButton(g, b, vm, T0);
   }
@@ -631,7 +717,7 @@
     const lines = PK.wrap(b.tip, innerW);
     const w = innerW + 12;
     const h = 10 + 10 + lines.length * 10 + (cost ? 11 : 0) + 4;
-    const x = Math.min(476 - w, b.x + BW / 2 - w / 2);
+    const x = Math.min(V.w - 4 - w, b.x + BW / 2 - w / 2);
     const y = LAYOUT.card.y - h - 3;
 
     g.drawImage(frame(w, h, "plaque"), x, y);
@@ -660,37 +746,31 @@
   function drawEnd(g, vm, T0, endT) {
     const k = Math.min(1, endT / 0.6);
     const win = vm.state === "win";
+    const cx = Math.round(V.w / 2);
 
     g.globalAlpha = 0.55 * k;
     g.fillStyle = win ? "#1a1a38" : "#2a0d16";
-    g.fillRect(0, 0, 480, MAP_H);
+    g.fillRect(0, 0, V.w, V.mapH);
     g.globalAlpha = 1;
 
     const w = 210;
     const h = 78;
-    const x = 240 - w / 2;
-    const y = 64 - Math.round((1 - k) * 24);
+    const x = cx - w / 2;
+    const y = Math.max(8, Math.round(V.mapH / 2 - h / 2 - 16)) - Math.round((1 - k) * 24);
 
     g.drawImage(frame(w, h), x, y);
-    g.drawImage(PK.icons.ringEmblem(18, win ? C.a[2] : C.r[3], win ? C.a[4] : C.r[5]), 240 - 9, y - 8 + Math.round(Math.sin(T0 * 2)));
+    g.drawImage(PK.icons.ringEmblem(18, win ? C.a[2] : C.r[3], win ? C.a[4] : C.r[5]), cx - 9, y - 8 + Math.round(Math.sin(T0 * 2)));
 
-    const title = vm.online
-      ? (win ? "VÍTĚZSTVÍ!" : vm.state === "draw" ? "REMÍZA" : "PORÁŽKA!")
-      : (win ? "VÍTĚZSTVÍ!" : "RADNICE PADLA!");
-    T(g, title, 240, y + 16, win ? 0xffe08a : 0xff8f7a, { align: "center", scale: 2, outline: C.ink, shadow: null });
+    const title = win ? "VÍTĚZSTVÍ!" : vm.state === "draw" ? "REMÍZA" : "PORÁŽKA!";
+    T(g, title, cx, y + 16, win ? 0xffe08a : 0xff8f7a, { align: "center", scale: 2, outline: C.ink, shadow: null });
 
     const mins = Math.floor(vm.elapsed / 60);
     const secs = Math.floor(vm.elapsed % 60);
     const time = `ČAS BOJE ${mins}:${String(secs).padStart(2, "0")}`;
 
-    if (vm.online) {
-      T(g, vm.endReason, 240, y + 33, 0xe8e2f4, { align: "center" });
-      T(g, time, 240, y + 45, 0xb8b0d4, { align: "center" });
-      T(g, "R: další soupeř, Esc: menu.", 240, y + 59, 0xf0d088, { align: "center" });
-    } else {
-      T(g, time, 240, y + 40, 0xb8b0d4, { align: "center" });
-      T(g, "Stiskni R pro novou hru, Esc pro menu.", 240, y + 56, 0xf0d088, { align: "center" });
-    }
+    T(g, vm.endReason, cx, y + 33, 0xe8e2f4, { align: "center" });
+    T(g, time, cx, y + 45, 0xb8b0d4, { align: "center" });
+    T(g, vm.endHint, cx, y + 59, 0xf0d088, { align: "center" });
   }
 
   /* ---------- title logo (for the page header) ---------- */
@@ -722,19 +802,23 @@
 
   /* ---------- public ---------- */
   function draw(g, vm, T0, dt) {
-    if (!strip) strip = buildStrip();
+    relayout();
+    if (!strip || stripW !== V.w) {
+      strip = buildStrip(V.w);
+      stripW = V.w;
+    }
 
-    g.drawImage(strip, 0, MAP_H);
+    g.drawImage(strip, 0, V.mapH);
     drawMinimap(g, vm, T0);
     drawPortrait(g, vm, T0);
     drawInfo(g, vm, T0);
     drawCard(g, vm, T0);
 
     // central ornament over the border
-    g.drawImage(PK.icons.ringEmblem(13, C.a[2], C.a[4]), 240 - 6, MAP_H - 5 + Math.round(Math.sin(T0 * 1.4) * 0.6));
+    g.drawImage(PK.icons.ringEmblem(13, C.a[2], C.a[4]), Math.round(V.w / 2) - 6, V.mapH - 5 + Math.round(Math.sin(T0 * 1.4) * 0.6));
 
     drawResources(g, vm, dt);
-    drawWave(g, vm, T0);
+    drawPlayers(g, vm);
     drawBanners(g, vm, T0);
     drawTooltip(g, vm);
   }
@@ -747,5 +831,5 @@
     return null;
   }
 
-  PK.hud = { buttons, hitButton, draw, drawEnd, drawLogo, layout: LAYOUT, MAP_H };
+  PK.hud = { buttons, hitButton, minimapHit, relayout, draw, drawEnd, drawLogo, layout: LAYOUT };
 })();

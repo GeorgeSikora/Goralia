@@ -140,8 +140,8 @@
     };
   }
 
-  /* ---------- gold mine ---------- */
-  function mine() {
+  /* ---------- gold mine (full and depleted) ---------- */
+  function mine(empty = false) {
     const W = 50;
     const H = 40;
     const P = new Pix(W, H);
@@ -154,37 +154,47 @@
       return C.s[l > 0.45 ? 4 : l > 0.0 ? 3 : l > -0.4 ? 2 : 1];
     });
 
-    // gold veins
+    // gold veins (a depleted mine keeps only empty grooves)
     const vein = (x0, y0, x1, y1) => {
-      P.line(x0, y0, x1, y1, C.gold[0]);
-      P.line(x0 + 1, y0, x1 + 1, y1, C.gold[1]);
-      P.line(x0, y0 - 1, x1, y1 - 1, C.gold[2]);
+      P.line(x0, y0, x1, y1, empty ? C.s[0] : C.gold[0]);
+      P.line(x0 + 1, y0, x1 + 1, y1, empty ? C.s[1] : C.gold[1]);
+      P.line(x0, y0 - 1, x1, y1 - 1, empty ? C.s[2] : C.gold[2]);
     };
     vein(8, 30, 17, 19);
     vein(33, 17, 43, 28);
     vein(12, 18, 19, 23);
 
-    // timber-framed shaft with a lit interior
+    // timber-framed shaft with a lit interior, or boarded up and dark
     P.rect(21, 18, 14, 3, C.w[2]);
     P.rect(21, 18, 14, 1, C.w[3]);
     P.rect(21, 21, 3, 15, C.w[1]);
     P.rect(32, 21, 3, 15, C.w[2]);
     P.rect(24, 21, 8, 15, C.s[0]);
-    P.shade(24, 28, 32, 36, (x, y) => (y > 33 ? C.a[2] : C.a[1]));
-    P.rect(27, 25, 2, 1, C.a[3]);
+
+    if (empty) {
+      P.rect(24, 24, 8, 2, C.w[1]);
+      P.rect(24, 24, 8, 1, C.w[2]);
+      P.rect(24, 30, 8, 2, C.w[1]);
+      P.rect(24, 30, 8, 1, C.w[2]);
+    } else {
+      P.shade(24, 28, 32, 36, (x, y) => (y > 33 ? C.a[2] : C.a[1]));
+      P.rect(27, 25, 2, 1, C.a[3]);
+    }
 
     // broken ring carved over the lintel
     for (const [x, y] of [[26, 14], [27, 14], [25, 15], [29, 15], [25, 16], [29, 16], [26, 17], [27, 17], [28, 17]]) {
-      P.set(x, y, C.a[1]);
+      P.set(x, y, empty ? C.s[3] : C.a[1]);
     }
 
-    // ore pile + crystals
+    // ore pile + crystals (plain rubble once the gold is gone)
     for (const [x, y] of [[9, 34], [13, 35], [11, 32], [16, 34], [6, 35]]) {
-      P.disc(x, y, 2.4, 2, (px, py) => (px < x && py < y ? C.gold[2] : C.gold[1]));
-      P.set(x - 1, y - 1, C.white);
+      P.disc(x, y, 2.4, 2, (px, py) => (px < x && py < y ? (empty ? C.s[3] : C.gold[2]) : (empty ? C.s[2] : C.gold[1])));
+      if (!empty) P.set(x - 1, y - 1, C.white);
     }
-    for (const [x, y, h] of [[39, 12, 7], [42, 14, 5]]) {
-      P.poly([[x - 1, y + 4], [x + 2, y + 4], [x + 0.5, y - h + 4]], (px) => (px < x + 0.5 ? C.a[3] : C.a[1]));
+    if (!empty) {
+      for (const [x, y, h] of [[39, 12, 7], [42, 14, 5]]) {
+        P.poly([[x - 1, y + 4], [x + 2, y + 4], [x + 0.5, y - h + 4]], (px) => (px < x + 0.5 ? C.a[3] : C.a[1]));
+      }
     }
 
     P.outline(C.ink, 0.72);
@@ -195,8 +205,8 @@
       h: H,
       ax: 25,
       ay: 36,
-      sparkle: [[11, 31], [14, 21], [40, 22], [29, 26], [41, 10]],
-      glow: { x: 28, y: 32, r: 9, a: 0.4, color: C.a[2] }
+      sparkle: empty ? [] : [[11, 31], [14, 21], [40, 22], [29, 26], [41, 10]],
+      glow: empty ? null : { x: 28, y: 32, r: 9, a: 0.4, color: C.a[2] }
     };
   }
 
@@ -502,6 +512,7 @@
   PK.props = {
     trees,
     mine: mine(),
+    mineEmpty: mine(true),
     doodads: out,
     flame: flameFrames
   };

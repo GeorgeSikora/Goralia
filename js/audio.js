@@ -1,6 +1,6 @@
 /*
  * Procedural sound effects (Web Audio, no asset files).
- * play(name, { x }) pans by the logical world x position (0..960).
+ * play(name, { x }) pans by the logical world x position relative to the visible area (audio.listener).
  */
 (() => {
   "use strict";
@@ -168,6 +168,8 @@
     death: 0.08, coin: 0.08, select: 0.05, click: 0.03, spawn: 0.12
   };
 
+  const listener = { x: 0, w: 960 };
+
   function play(name, opts = {}) {
     if (muted) return;
     if (!ensure() || !SFX[name]) return;
@@ -176,7 +178,7 @@
     if (now - (lastPlayed[name] || -1) < (GAP[name] || 0.02)) return;
     lastPlayed[name] = now;
 
-    const pan = opts.x == null ? 0 : (opts.x / 960 - 0.5) * 1.4;
+    const pan = opts.x == null ? 0 : ((opts.x - listener.x) / listener.w - 0.5) * 1.4;
     const dest = out(pan);
     const bus = ctx.createGain();
     bus.gain.value = (opts.vol != null ? opts.vol : 1) * 1.5;
@@ -329,6 +331,8 @@
 
   PK.audio = {
     play,
+    // Vydělý úsek světa (logické jednotky), podle něj se zvuk panoramuje.
+    listener,
     setIntensity,
     unlock: ensure,
     setMuted,

@@ -1,6 +1,7 @@
 /*
- * Pravidla online zápasu 1v1, sdílená serverem (Node) i prohlížečem.
+ * Pravidla zápasu pro 2 až 4 hráče, sdílená serverem (Node) i prohlížečem.
  * Server podle nich simuluje celou hru, klient je používá jen k zobrazení.
+ * Rozložení mapy (základny, doly, stromy) je v maps.js.
  */
 (function (root, factory) {
   const rules = factory();
@@ -8,9 +9,6 @@
   else (root.PK = root.PK || {}).rules = rules;
 })(typeof window !== "undefined" ? window : globalThis, () => {
   "use strict";
-
-  const WIDTH = 960;
-  const MAP_HEIGHT = 480;
 
   const COSTS = {
     worker:   { gold: 50,  wood: 0 },
@@ -29,61 +27,23 @@
     hero:    { hp: 210, speed: 53, damage: 23, range: 34,  delay: 0.68 }
   };
 
-  // Obě základny mají stejné zdraví, aby byl souboj férový. Online základny vydrží víc než v AI hře,
-  // protože jim útočí živý hráč a soupeř musí mít čas zareagovat.
+  // Všechny základny mají stejné zdraví, aby byl souboj férový.
   const BUILDING_HP = { hall: 1500, citadel: 1500, barracks: 290, tower: 175 };
 
-  const HQ = { blue: "hall", red: "citadel" };
+  // Index slotu na mapě = index týmu.
+  const TEAMS = ["blue", "red", "gold", "violet"];
+  const HQ = { blue: "hall", red: "citadel", gold: "hall", violet: "hall" };
+  const TEAM_NAMES = { blue: "Modrá", red: "Rudá", gold: "Zlatá", violet: "Fialová" };
+  const MAX_PLAYERS = TEAMS.length;
   const BASE_GOLD = 260;
   const BASE_WOOD = 120;
+  const GOLD_AMOUNT = 2000; // výchozí zásoba zlatého dolu; mapa může u dolu uvést třetí číslo
   const SUPPLY_MAX = 30;
   const MAX_BUILDINGS = 20;
-  const MIDLINE = 480;
   const COUNTDOWN = 3;
 
-  const mirror = ([x, y]) => [WIDTH - x, y];
-
-  const goldMines = [[320, 112], [390, 394]];
-
-  const trees = [
-    [29, 69], [64, 53], [102, 70], [143, 48], [192, 78], [232, 54],
-    [32, 382], [66, 427], [113, 404], [164, 430], [249, 416],
-    [434, 69], [466, 98], [502, 55],
-    [520, 397], [560, 425], [599, 394], [631, 423],
-    [706, 67], [754, 88], [919, 80], [920, 373], [890, 421], [737, 414],
-    [812, 58], [868, 96], [828, 428], [864, 392], [935, 410]
-  ];
-
-  const LAYOUT = {
-    buildings: [
-      { type: "hall", team: "blue", x: 120, y: 238 },
-      { type: "barracks", team: "blue", x: 191, y: 354 },
-      { type: "citadel", team: "red", x: 850, y: 234 },
-      { type: "barracks", team: "red", x: 769, y: 354 }
-    ],
-    units: [
-      { type: "worker", team: "blue", x: 173, y: 194 },
-      { type: "worker", team: "blue", x: 164, y: 266 },
-      { type: "soldier", team: "blue", x: 259, y: 234 },
-      { type: "soldier", team: "blue", x: 280, y: 255 },
-      { type: "worker", team: "red", x: 787, y: 194 },
-      { type: "worker", team: "red", x: 796, y: 266 },
-      { type: "soldier", team: "red", x: 701, y: 234 },
-      { type: "soldier", team: "red", x: 680, y: 255 }
-    ],
-    gold: [...goldMines, ...goldMines.map(mirror)],
-    trees
-  };
-
-  // Strana mapy, na které smí hráč stavět.
-  function buildZone(team) {
-    return team === "blue"
-      ? { x0: 45, x1: MIDLINE, y0: 85, y1: MAP_HEIGHT - 45 }
-      : { x0: MIDLINE, x1: 915, y0: 85, y1: MAP_HEIGHT - 45 };
-  }
-
   return {
-    WIDTH, MAP_HEIGHT, COSTS, UNITS, BUILDING_HP, HQ, BASE_GOLD, BASE_WOOD,
-    SUPPLY_MAX, MAX_BUILDINGS, COUNTDOWN, LAYOUT, buildZone
+    COSTS, UNITS, BUILDING_HP, TEAMS, HQ, TEAM_NAMES, MAX_PLAYERS, BASE_GOLD, BASE_WOOD, GOLD_AMOUNT,
+    SUPPLY_MAX, MAX_BUILDINGS, COUNTDOWN
   };
 });

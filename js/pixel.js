@@ -75,6 +75,14 @@
     red: {
       d: C.r[0], m: C.r[2], s: C.r[1], l: C.r[3], h: C.r[4],
       accent: C.r[4], accentL: C.r[5], light: C.r[4], ui: 0xe2603c
+    },
+    gold: {
+      d: 0x6a4a10, m: 0xe0b030, s: 0xa87a1c, l: 0xffd860, h: 0xfff0a0,
+      accent: C.white, accentL: C.white, light: 0xffd860, ui: 0xe8c040
+    },
+    violet: {
+      d: 0x2e2058, m: 0x7050c0, s: 0x4a3290, l: 0xa07ee8, h: 0xd0b4ff,
+      accent: C.a[2], accentL: C.a[3], light: C.a[2], ui: 0xa078e8
     }
   };
 
@@ -491,9 +499,7 @@
   Object.assign(PK, {
     C, TEAM, rgb, mix, css, rng, hash, vnoise, fbm, tnoise, bayer, dither,
     clamp, smooth, makeCanvas, Pix, strokeEllipse,
-    VW: 480,
-    VH: 310,
-    MAPW: 480,
-    MAPH: 240
+    // Rozměry bufferu v art px; game.js je mění podle velikosti okna.
+    view: { w: 480, h: 310, mapH: 240, hudH: 70, inset: 0 }
   });
 })();

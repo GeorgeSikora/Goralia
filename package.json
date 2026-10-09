@@ -2,7 +2,7 @@
   "name": "pixelove-kralovstvi",
   "version": "1.0.0",
   "private": true,
-  "description": "Pixelové království - online 1v1 server",
+  "description": "Pixelové království - online server (místnosti pro 2 až 4 hráče)",
   "main": "server/server.js",
   "scripts": {
     "start": "node server/server.js",

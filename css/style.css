@@ -219,3 +219,86 @@ kbd {
   .page { gap: 10px; }
   .logo { margin-bottom: 8px; }
 }
+
+/* ---------- výběr mapy a online místnosti ---------- */
+.panel.wide { width: min(920px, 100%); }
+
+.lobby {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr) 230px;
+  gap: 18px;
+  align-items: start;
+}
+
+.maps, .slots, .rooms { display: grid; gap: 10px; }
+.rooms { max-height: 190px; overflow: auto; padding: 4px; }
+
+.map-item, .room {
+  display: grid;
+  gap: 2px;
+  padding: 9px 11px;
+  border: 0;
+  background: #2f2a50;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 0 0 2px var(--ink), 0 0 0 4px var(--brass-d);
+}
+
+.map-item:hover:not(:disabled), .room:hover:not(:disabled) { background: #3d3768; }
+.map-item.selected { background: #4a3a2c; color: #ffe9a8; box-shadow: 0 0 0 2px var(--ink), 0 0 0 4px var(--amber); }
+.map-item:disabled, .room:disabled { cursor: default; opacity: 0.7; }
+.map-item.selected:disabled { opacity: 1; }
+.map-item:focus-visible, .room:focus-visible { outline: 2px solid var(--amber); outline-offset: 5px; }
+.map-name { font-weight: 700; }
+.map-tag { color: var(--muted); font-size: 11px; }
+
+.detail { display: grid; gap: 8px; min-width: 0; }
+
+.preview {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 10;
+  background: #0b0914;
+  box-shadow: 0 0 0 2px var(--ink), 0 0 0 4px var(--brass-d);
+}
+
+.detail h3 {
+  margin: 6px 0 0;
+  color: #ffe9a8;
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.desc { margin: 0; color: var(--text); font-size: 12px; }
+.meta { margin: 0; color: var(--muted); font-size: 11px; }
+
+.slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: #15121f;
+  box-shadow: inset 0 0 0 1px #2f2a50;
+}
+
+.slot .swatch { flex: none; width: 12px; height: 12px; box-shadow: 0 0 0 1px var(--ink); }
+.slot-team { flex: 1; min-width: 0; }
+.slot .field { flex: 0 0 112px; }
+.slot-who { color: #ffe9a8; }
+.slot-who.muted { color: var(--muted); }
+
+.actions { display: flex; gap: 12px; }
+.actions .btn { flex: 1; }
+
+@media (max-width: 800px) {
+  .lobby { grid-template-columns: 1fr; }
+}
+
+@media (max-height: 560px) {
+  .panel { padding: 12px 16px 14px; }
+  .page { gap: 10px; }
+  .logo { margin-bottom: 8px; }
+}

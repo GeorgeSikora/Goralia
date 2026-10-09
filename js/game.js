@@ -1,7 +1,7 @@
 /*
- * Game logic (unchanged mechanics) + rendering glue.
- * Rules, AI, combat, economy, controls and numbers are the original ones;
- * the additions here only drive visuals (animation timers, effects, HUD).
+ * Klient hry: vstup, kamera, menu a lobby, vykreslování.
+ * Pravidla a souboje počítá simulace (js/sim.js): na serveru v online hře,
+ * v prohlížeči ve hře proti AI. Klient dostává stejné snímky v obou režimech.
  */
 (() => {
   "use strict";
@@ -13,15 +13,14 @@
   const world = PK.world;
   const audio = PK.audio;
   const R = PK.rules;
+  const MAPS = PK.maps;
+  const sim = PK.sim;
   const net = PK.net;
+  const view = PK.view;
 
   const canvas = document.querySelector("#game");
   const display = canvas.getContext("2d");
-  const { c: bufCanvas, g } = PK.makeCanvas(PK.VW, PK.VH);
-
-  const WIDTH = 960;
-  const MAP_HEIGHT = 480;
-  const HEIGHT = 620;
+  const { c: bufCanvas, g } = PK.makeCanvas(view.w, view.h);
 
   const costs = {
     worker:   { gold: 50,  wood: 0 },
@@ -52,45 +51,54 @@
   let gold;
   let wood;
   let elapsed;
-  let waveTimer;
-  let waveMax;
   let state;
   let placement;
   let commandMode;
   let spellMode;
   let message;
   let messageTimer;
-  let nextId;
 
   let pointerStart = null;
   let pointerEnd = null;
   let mouse = { x: -100, y: -100 };
   let pressedBtn = null;
   let keyPress = null;
-  let waveFlash = 0;
   let endT = 0;
   let clock = 0;
   let battleLevel = 0;
   let lastBattle = 0;
   let hover = null;
 
-  // "ai": původní hra proti počítači. "online": zápas 1v1, o všem rozhoduje server.
+  // "ai": hra proti počítačům, simulace běží tady. "online": o všem rozhoduje server.
   let mode = "ai";
-  let me = "blue";
-  let foeTeam = "red";
+  let map = MAPS.get(MAPS.DEFAULT);
+  let mySlot = 0;
+  let me = R.TEAMS[0];
+  let players = [];
+  let simMatch = null;
+  let simAcc = 0;
+  let matchPhase = ""; // countdown | playing | ended
+  let matchOver = true;
+  let endWhy = "";
+  let ownOutWhy = "";
 
-  const UNIT_TYPES = ["worker", "soldier", "archer", "hero"];
-  const BUILDING_TYPES = ["hall", "citadel", "barracks", "tower"];
-  const ORDER_TYPES = [null, "move", "attack", "gather"];
+  // Kamera v art px (levý horní roh viditelné části světa); camF je přesná, cam zaokrouhlená pro kreslení.
+  const cam = { x: 0, y: 0 };
+  const camF = { x: 0, y: 0 };
+  let panning = null;
+  let minimapDrag = false;
+  let selectedResourceId = 0;
+  const keysDown = new Set();
+
+  const UNIT_TYPES = sim.UNIT_TYPES;
+  const BUILDING_TYPES = sim.BUILDING_TYPES;
+  const ORDER_TYPES = [null, "move", "attack", "gather", "deliver"];
 
   const online = {
-    phase: "offline", // offline | connecting | idle | queued | countdown | playing | ended
-    you: "",
-    opponent: "",
-    why: "",
-    stats: { queued: 0, playing: 0 },
-    queuedAt: 0,
-    wantSearch: false,
+    phase: "offline", // offline | connecting | idle | room | countdown | playing | ended
+    rooms: [],
+    playing: 0,
+    roomId: 0,
     firstSnapshot: true,
     pendingTrain: 0,
     pendingBuild: 0,
@@ -116,89 +124,10 @@
     if (FAIL_MSG.test(value)) audio.play("error");
   }
 
-  /* ======================= entities ======================= */
-  function createBuilding(type, x, y, team = "blue", fresh = false) {
-    const maxHp = {
-      hall: 500,
-      barracks: 290,
-      tower: 175,
-      citadel: 650
-    }[type];
-
-    const building = {
-      id: nextId++,
-      kind: "building",
-      type,
-      team,
-      x,
-      y,
-      hp: maxHp,
-      maxHp,
-      cooldown: 0,
-      age: fresh ? 0 : 99,
-      flashT: 0,
-      fireT: 0,
-      smokeAcc: 0
-    };
-
-    buildings.push(building);
-    return building;
-  }
-
-  function createUnit(type, x, y, team = "blue") {
-    // HP, rychlost, poškození, dosah a prodleva mezi útoky.
-    const stats = {
-      worker:  [65, 55, 6,  22, 0.85],
-      soldier: [110, 45, 15, 25, 0.72],
-      archer:  [70, 49, 11, 110, 1.04],
-      hero:    [210, 53, 23, 34, 0.68],
-      raider:  [85, 43, 12, 25, 0.90]
-    }[type];
-
-    const unit = {
-      id: nextId++,
-      kind: "unit",
-      type,
-      team,
-      x,
-      y,
-      hp: stats[0],
-      maxHp: stats[0],
-      speed: stats[1],
-      damage: stats[2],
-      range: stats[3],
-      attackDelay: stats[4],
-      cooldown: 0,
-      fireCooldown: 0,
-      healCooldown: 0,
-      order: null,
-      harvestTimer: 0,
-      carry: null,
-      level: 1,
-      xp: 0,
-      walkCycle: 0,
-      facing: team === "red" ? -1 : 1,
-      // visual-only state
-      atk: 0,
-      castT: 0,
-      flashT: 0,
-      workT: 0,
-      fxT: 0,
-      moveT: 0,
-      wd: 0,
-      lx: x,
-      ly: y,
-      stepT: 0
-    };
-
-    units.push(unit);
-    return unit;
-  }
+  /* ======================= match lifecycle ======================= */
+  const teamCss = team => PK.css(PK.TEAM[team].ui);
 
   function reset() {
-    mode = "ai";
-    me = "blue";
-    foeTeam = "red";
     units = [];
     buildings = [];
     resources = [];
@@ -208,88 +137,124 @@
     resourceMap.clear();
     online.firstSnapshot = true;
 
-    gold = 260;
-    wood = 120;
+    gold = 0;
+    wood = 0;
     elapsed = 0;
-    waveTimer = 12;
-    waveMax = 12;
     state = "playing";
     placement = null;
     commandMode = false;
     spellMode = null;
     message = "";
     messageTimer = 0;
-    nextId = 1;
     pointerStart = null;
     pointerEnd = null;
     pressedBtn = null;
-    waveFlash = 0;
+    panning = null;
+    minimapDrag = false;
     endT = 0;
-
-    createBuilding("hall", 120, 238);
-    createBuilding("barracks", 191, 354);
-    createBuilding("citadel", 850, 234, "red");
-
-    createUnit("worker", 173, 194);
-    createUnit("worker", 164, 266);
-    createUnit("soldier", 259, 234);
-    createUnit("soldier", 280, 255);
-
-    createUnit("raider", 770, 254, "red");
-    createUnit("raider", 798, 299, "red");
-
-    resources.push(
-      { type: "gold", x: 320, y: 112, amount: Infinity, shake: 0 },
-      { type: "gold", x: 390, y: 394, amount: Infinity, shake: 0 }
-    );
-
-    const trees = [
-      [29,69], [64,53], [102,70], [143,48],
-      [192,78], [232,54], [32,382], [66,427],
-      [113,404], [164,430], [249,416], [434,69],
-      [466,98], [502,55], [520,397], [560,425],
-      [599,394], [631,423], [706,67], [754,88],
-      [919,80], [920,373], [890,421], [737,414]
-    ];
-
-    for (const [x, y] of trees) {
-      resources.push({
-        type: "wood",
-        x,
-        y,
-        amount: 100,
-        shake: 0
-      });
-    }
-
-    if (!world.ready) {
-      // Terén se staví jednou pro obě hry, proto zná i základny a doly soupeře z online zápasu.
-      world.build({
-        buildings: R.LAYOUT.buildings,
-        resources: [
-          ...R.LAYOUT.gold.map(([x, y]) => ({ type: "gold", x, y })),
-          ...R.LAYOUT.trees.map(([x, y]) => ({ type: "wood", x, y }))
-        ]
-      });
-    }
-    fx.reset();
+    matchPhase = "";
+    matchOver = true;
+    endWhy = "";
+    ownOutWhy = "";
+    simMatch = null;
+    simAcc = 0;
   }
 
-  /* ======================= economy / actions ======================= */
-  function pay(type) {
-    const price = costs[type];
+  // Postaví terén mapy (jednou na mapu) a vycentruje kameru na vlastní základnu.
+  function loadMap(next, slot) {
+    map = next;
+    world.build(map);
+    fx.reset();
 
-    if (gold < price.gold || wood < price.wood) {
-      announce(
-        `Potřebuješ ${price.gold} zlata a ${price.wood} dřeva.`
-      );
-      return false;
+    const hq = map.slots[slot || 0].hq;
+    centerCamera(hq.x, hq.y);
+  }
+
+  // cfg: { mode, map, slot, players: [{ slot, name, ai }] }
+  function beginMatch(cfg) {
+    reset();
+    mode = cfg.mode;
+    mySlot = cfg.slot;
+    me = R.TEAMS[mySlot];
+    loadMap(cfg.map, mySlot);
+    players = cfg.players.map(p => ({
+      slot: p.slot, name: p.name, team: R.TEAMS[p.slot], ai: !!p.ai, out: false, me: p.slot === mySlot
+    }));
+    matchOver = false;
+    matchPhase = "countdown";
+    started = true;
+
+    if (mode === "ai") {
+      const roster = map.slots.map((_, i) => {
+        const p = players.find(q => q.slot === i);
+        return p ? { name: p.name, ai: p.ai } : null;
+      });
+      simMatch = new sim.Match(map, roster, { countdown: 0 });
+      applySnapshot(simMatch.snapshot(me));
+      simMatch.endTick();
+    } else {
+      online.phase = "countdown";
     }
 
-    gold -= price.gold;
-    wood -= price.wood;
-    audio.play("coin");
-    return true;
+    closeMenu();
+  }
+
+  function pumpSim(dt) {
+    if (!simMatch || matchOver) return;
+
+    simAcc += dt;
+    let stepped = false;
+
+    while (simAcc >= sim.TICK && simMatch.phase !== "ended") {
+      simAcc -= sim.TICK;
+      simMatch.step(sim.TICK);
+      stepped = true;
+    }
+
+    if (stepped) {
+      applySnapshot(simMatch.snapshot(me));
+      simMatch.endTick();
+    }
+  }
+
+  // Rozkazy jdou stejnou cestou v obou režimech: na server, nebo přímo do místní simulace.
+  function sendCmd(cmd) {
+    if (mode === "online") net.send({ t: "cmd", ...cmd });
+    else if (simMatch) simMatch.command(me, cmd);
+  }
+
+  function playerOut(slot, why) {
+    const p = players.find(q => q.slot === slot);
+    if (p) p.out = true;
+    if (slot !== mySlot || state !== "playing") return;
+
+    state = "lose";
+    ownOutWhy = why;
+    placement = null;
+    spellMode = null;
+    commandMode = false;
+    audio.play("lose");
+    syncMenu();
+  }
+
+  function finishMatch(winner, why) {
+    if (matchOver) return;
+
+    matchOver = true;
+    matchPhase = "ended";
+    endWhy = why;
+    endT = 0;
+    if (mode === "online") online.phase = "ended";
+
+    if (state === "playing") {
+      state = winner === mySlot ? "win" : winner < 0 ? "draw" : "lose";
+      placement = null;
+      spellMode = null;
+      commandMode = false;
+      audio.play(state === "win" ? "win" : "lose");
+    }
+
+    syncMenu();
   }
 
   function selectedHero() {
@@ -347,35 +312,8 @@
         );
       }
 
-      if (mode === "online") {
-        audio.play("click");
-        net.send({ t: "cmd", c: "heal" });
-        return;
-      }
-
-      let healed = 0;
-      const amount = 42 + hero.level * 10;
-
-      for (const ally of units) {
-        if (
-          ally.team !== "blue" ||
-          !alive(ally) ||
-          distance(ally, hero) > 90 ||
-          ally.hp >= ally.maxHp
-        ) continue;
-
-        ally.hp = Math.min(ally.maxHp, ally.hp + amount);
-        healed++;
-        fx.healOn(ally.x, ally.y + 4);
-        fx.text(ally.x, ally.y - 30, `+${amount}`, 0x9ef7c8);
-      }
-
-      hero.healCooldown = 14;
-      hero.castT = 0.5;
-      fx.healBurst(hero.x, hero.y + 8, 90);
-      audio.play("heal", { x: hero.x });
-
-      announce(`Vyléčeno spojenců: ${healed}.`);
+      audio.play("click");
+      sendCmd({ c: "heal" });
       return;
     }
 
@@ -398,67 +336,9 @@
       return;
     }
 
-    if (mode === "online") {
-      audio.play("click");
-      online.pendingTrain = 1.5;
-      net.send({ t: "cmd", c: "train", type });
-      return;
-    }
-
-    const hall = buildings.find(building =>
-      building.type === "hall" && alive(building)
-    );
-
-    const barracks = buildings.find(building =>
-      building.type === "barracks" && alive(building)
-    );
-
-    const source = type === "worker" ? hall : barracks;
-
-    if (!source) {
-      return announce(
-        type === "worker"
-          ? "Potřebuješ radnici."
-          : "Potřebuješ kasárna."
-      );
-    }
-
-    if (
-      type === "hero" &&
-      units.some(unit =>
-        unit.team === "blue" &&
-        unit.type === "hero" &&
-        alive(unit)
-      )
-    ) {
-      return announce("Současně můžeš mít jen jednoho hrdinu.");
-    }
-
-    if (
-      units.filter(unit =>
-        unit.team === "blue" && alive(unit)
-      ).length >= 30
-    ) {
-      return announce("Maximum je 30 jednotek.");
-    }
-
-    if (pay(type)) {
-      const newUnit = createUnit(
-        type,
-        source.x + 58,
-        source.y + 29
-      );
-
-      selected = [newUnit];
-      fx.spawn(newUnit.x, newUnit.y + 12);
-      audio.play("spawn", { x: newUnit.x });
-
-      if (type === "hero") {
-        announce(
-          "Hrdina připraven: A ohnivá koule, S léčení."
-        );
-      }
-    }
+    audio.play("click");
+    online.pendingTrain = 1.5;
+    sendCmd({ c: "train", type });
   }
 
   /* ======================= picking and orders ======================= */
@@ -496,13 +376,19 @@
         ? [friendlyBuilding]
         : [];
 
-    if (selected.length) audio.play("select");
+    // Když není nic vlastního, vybere se surovina pod kurzorem (info o zásobě v panelu).
+    const res = selected.length ? null : resourceUnder(x, y);
+    selectedResourceId = res ? res.id : 0;
+
+    if (selected.length || res) audio.play("select");
   }
+
+  const selectedResource = () => (selected.length ? null : resourceMap.get(selectedResourceId) || null);
 
   function enemyAt(x, y) {
     return (
-      findEntity(x, y, units.filter(unit => unit.team === foeTeam), 20) ||
-      findEntity(x, y, buildings.filter(building => building.team === foeTeam), 46)
+      findEntity(x, y, units.filter(unit => unit.team !== me), 20) ||
+      findEntity(x, y, buildings.filter(building => building.team !== me), 46)
     );
   }
 
@@ -514,47 +400,41 @@
     );
   }
 
+  // i vyčerpaný důl jde vybrat
+  function resourceUnder(x, y) {
+    return resources.find(item =>
+      Math.hypot(item.x - x, item.y - y) <
+        (item.type === "gold" ? 31 : 26)
+    );
+  }
+
   function issueOrder(x, y) {
     const enemy = enemyAt(x, y);
     const resource = resourceAt(x, y);
     let ordered = false;
     let kind = "move";
 
-    if (mode === "online") {
-      const ids = selected
-        .filter(unit => unit.kind === "unit" && alive(unit))
-        .map(unit => unit.id);
+    const ids = selected
+      .filter(unit => unit.kind === "unit" && alive(unit))
+      .map(unit => unit.id);
 
-      if (ids.length) {
-        kind = enemy ? "attack" : resource ? "gather" : "move";
+    if (ids.length) {
+      const hasWorker = selected.some(unit => unit.type === "worker" && alive(unit));
+      const base = enemy || resource ? null : findEntity(x, y, buildings.filter(b => b.team === me && b.type === R.HQ[me]), 46);
 
-        net.send({
-          t: "cmd",
-          c: "order",
-          k: kind,
-          ids,
-          target: enemy ? enemy.id : resource ? resource.id : 0,
-          x: Math.round(x),
-          y: Math.round(y)
-        });
+      // klik na vlastní základnu: dělník vyloží nesený materiál
+      kind = enemy ? "attack" : resource ? "gather" : base && hasWorker ? "deliver" : "move";
 
-        ordered = true;
-      }
-    } else {
-      for (const unit of selected) {
-        if (unit.kind !== "unit" || !alive(unit)) continue;
-        ordered = true;
+      sendCmd({
+        c: "order",
+        k: kind,
+        ids,
+        target: enemy ? enemy.id : resource ? resource.id : kind === "deliver" ? base.id : 0,
+        x: Math.round(x),
+        y: Math.round(y)
+      });
 
-        if (enemy) {
-          unit.order = { type: "attack", target: enemy };
-          kind = "attack";
-        } else if (resource && unit.type === "worker") {
-          unit.order = { type: "gather", target: resource };
-          kind = "gather";
-        } else {
-          unit.order = { type: "move", x, y };
-        }
-      }
+      ordered = true;
     }
 
     if (ordered) {
@@ -568,9 +448,7 @@
   }
 
   function placementProblem(x, y) {
-    const zone = mode === "online"
-      ? R.buildZone(me)
-      : { x0: 45, x1: 715, y0: 85, y1: MAP_HEIGHT - 45 };
+    const zone = map.slots[mySlot].zone;
 
     if (
       x < zone.x0 ||
@@ -602,29 +480,16 @@
     const problem = placementProblem(x, y);
     if (problem) return announce(problem);
 
-    if (mode === "online") {
-      net.send({
-        t: "cmd",
-        c: "build",
-        type: placement,
-        x: Math.round(x),
-        y: Math.round(y),
-        ids: selected.filter(e => e.type === "worker" && alive(e)).map(e => e.id)
-      });
-      placement = null;
-      online.pendingBuild = 1.5;
-      audio.play("click");
-      return;
-    }
-
-    if (!pay(placement)) return;
-
-    const newBuilding = createBuilding(placement, x, y, "blue", true);
-    selected = [newBuilding];
+    sendCmd({
+      c: "build",
+      type: placement,
+      x: Math.round(x),
+      y: Math.round(y),
+      ids: selected.filter(e => e.type === "worker" && alive(e)).map(e => e.id)
+    });
     placement = null;
-    fx.build(x, y + 39, newBuilding.type === "tower" ? 26 : 56);
-    audio.play("build", { x });
-    announce("Stavba dokončena.");
+    online.pendingBuild = 1.5;
+    audio.play("click");
   }
 
   function castFire(x, y) {
@@ -639,51 +504,61 @@
       return announce("Cíl je příliš daleko od hrdiny.");
     }
 
-    if (mode === "online") {
-      net.send({ t: "cmd", c: "fire", x: Math.round(x), y: Math.round(y) });
-      return;
+    sendCmd({ c: "fire", x: Math.round(x), y: Math.round(y) });
+  }
+
+  /* ======================= camera ======================= */
+  const CAM_SPEED = 320; // art px za sekundu
+  const EDGE = 10; // pruh u okraje obrazovky (logické jednotky), kde se kamera posouvá
+
+  function setCam(x, y) {
+    const mw = map.size[0];
+    const mh = map.size[1];
+    camF.x = mw <= view.w ? -(view.w - mw) / 2 : clamp(x, 0, mw - view.w);
+    camF.y = mh <= view.mapH ? -(view.mapH - mh) / 2 : clamp(y, 0, mh - view.mapH);
+    cam.x = Math.round(camF.x);
+    cam.y = Math.round(camF.y);
+  }
+
+  // x, y ve světových logických jednotkách
+  function centerCamera(x, y) {
+    setCam(x / 2 - view.w / 2, y / 2 - view.mapH / 2);
+  }
+
+  function updateCamera(dt) {
+    let dx = 0;
+    let dy = 0;
+
+    if (keysDown.has("arrowleft")) dx -= 1;
+    if (keysDown.has("arrowright")) dx += 1;
+    if (keysDown.has("arrowup")) dy -= 1;
+    if (keysDown.has("arrowdown")) dy += 1;
+
+    if (!panning && !minimapDrag && mouse.x >= 0 && document.hasFocus()) {
+      const w = view.w * 2;
+      const h = view.h * 2;
+      if (mouse.x < EDGE) dx -= 1;
+      else if (mouse.x > w - EDGE && mouse.x <= w) dx += 1;
+      if (mouse.y >= 0 && mouse.y < EDGE) dy -= 1;
+      else if (mouse.y > h - EDGE && mouse.y <= h) dy += 1;
     }
 
-    hero.fireCooldown = 10;
-    hero.castT = 0.5;
-    hero.facing = x < hero.x ? -1 : 1;
-
-    fx.fireball(hero.x + hero.facing * 14, hero.y - 6, x, y + 8, 47);
-    audio.play("fireCast", { x: hero.x });
-    fx.later(0.3, () => audio.play("explosion", { x }));
-
-    let hits = 0;
-
-    for (const enemy of [...units, ...buildings]) {
-      if (!alive(enemy) || enemy.team !== "red") continue;
-
-      const radius =
-        enemy.kind === "building" ? 70 : 47;
-
-      if (distance(enemy, { x, y }) <= radius) {
-        damage(hero, enemy, 42 + hero.level * 10, { silent: true, delay: 0.3 });
-        hits++;
-      }
-    }
-
-    announce(
-      hits
-        ? `Ohnivá koule zasáhla ${hits} cílů!`
-        : "Ohnivá koule minula."
-    );
+    if (dx || dy) setCam(camF.x + clamp(dx, -1, 1) * CAM_SPEED * dt, camF.y + clamp(dy, -1, 1) * CAM_SPEED * dt);
   }
 
   /* ======================= pointer + keyboard ======================= */
+  // Souřadnice obrazovky v logických jednotkách (art px x2); svět = obrazovka + 2 * kamera.
   function pointerPosition(event) {
     const bounds = canvas.getBoundingClientRect();
 
     return {
-      x: (event.clientX - bounds.left) *
-        WIDTH / bounds.width,
-      y: (event.clientY - bounds.top) *
-        HEIGHT / bounds.height
+      x: (event.clientX - bounds.left) * view.w * 2 / bounds.width,
+      y: (event.clientY - bounds.top) * view.h * 2 / bounds.height
     };
   }
+
+  const mapAreaH = () => view.mapH * 2;
+  const toWorld = p => ({ x: p.x + cam.x * 2, y: p.y + cam.y * 2 });
 
   canvas.addEventListener("contextmenu", event => {
     event.preventDefault();
@@ -698,26 +573,67 @@
     }
 
     const point = pointerPosition(event);
+    const mini = PK.hud.minimapHit(point.x, point.y);
 
-    if (point.y < MAP_HEIGHT) {
-      issueOrder(point.x, point.y);
+    if (mini) {
+      issueOrder(mini.x, mini.y);
+    } else if (point.y < mapAreaH()) {
+      const w = toWorld(point);
+      issueOrder(w.x, w.y);
     }
   });
 
+  canvas.addEventListener("mousedown", event => {
+    if (event.button === 1) event.preventDefault();
+  });
+
   canvas.addEventListener("pointerdown", event => {
-    if (event.button !== 0) return;
     audio.unlock();
 
-    canvas.setPointerCapture(event.pointerId);
-    pointerStart = pointerPosition(event);
-    pointerEnd = pointerStart;
+    if (event.button === 1) {
+      event.preventDefault();
+      canvas.setPointerCapture(event.pointerId);
+      panning = { cx: event.clientX, cy: event.clientY, x: camF.x, y: camF.y };
+      return;
+    }
 
-    const btn = pointerStart.y >= MAP_HEIGHT ? PK.hud.hitButton(pointerStart.x, pointerStart.y) : null;
+    if (event.button !== 0) return;
+
+    canvas.setPointerCapture(event.pointerId);
+    const point = pointerPosition(event);
+    const mini = PK.hud.minimapHit(point.x, point.y);
+
+    if (mini) {
+      minimapDrag = true;
+      centerCamera(mini.x, mini.y);
+      return;
+    }
+
+    const w = toWorld(point);
+    pointerStart = { x: point.x, y: point.y, wx: w.x, wy: w.y };
+    pointerEnd = point;
+
+    const btn = point.y >= mapAreaH() ? PK.hud.hitButton(point.x, point.y) : null;
     pressedBtn = btn ? btn.type : null;
   });
 
   canvas.addEventListener("pointermove", event => {
     mouse = pointerPosition(event);
+
+    if (panning) {
+      const bounds = canvas.getBoundingClientRect();
+      setCam(
+        panning.x - (event.clientX - panning.cx) * view.w / bounds.width,
+        panning.y - (event.clientY - panning.cy) * view.h / bounds.height
+      );
+      return;
+    }
+
+    if (minimapDrag) {
+      const mini = PK.hud.minimapHit(mouse.x, mouse.y);
+      if (mini) centerCamera(mini.x, mini.y);
+      return;
+    }
 
     if (pointerStart) {
       pointerEnd = mouse;
@@ -732,12 +648,27 @@
     pointerStart = null;
     pointerEnd = null;
     pressedBtn = null;
+    panning = null;
+    minimapDrag = false;
   });
 
   canvas.addEventListener("pointerup", event => {
-    if (event.button !== 0 || !pointerStart) return;
+    if (event.button === 1) {
+      panning = null;
+      return;
+    }
+
+    if (event.button !== 0) return;
+
+    if (minimapDrag) {
+      minimapDrag = false;
+      return;
+    }
+
+    if (!pointerStart) return;
 
     const point = pointerPosition(event);
+    const world_ = toWorld(point);
     const start = pointerStart;
 
     pointerStart = null;
@@ -746,7 +677,7 @@
 
     if (state !== "playing") return;
 
-    if (start.y >= MAP_HEIGHT) {
+    if (start.y >= mapAreaH()) {
       const button = PK.hud.hitButton(point.x, point.y);
 
       if (button) action(button.type);
@@ -754,30 +685,25 @@
     }
 
     if (placement) {
-      placeBuilding(point.x, point.y);
+      placeBuilding(world_.x, world_.y);
       return;
     }
 
     if (spellMode === "fire") {
-      castFire(point.x, point.y);
+      castFire(world_.x, world_.y);
       return;
     }
 
     if (commandMode) {
-      issueOrder(point.x, point.y);
+      issueOrder(world_.x, world_.y);
       return;
     }
 
-    if (
-      Math.hypot(
-        point.x - start.x,
-        point.y - start.y
-      ) > 9
-    ) {
-      const left = Math.min(point.x, start.x);
-      const right = Math.max(point.x, start.x);
-      const top = Math.min(point.y, start.y);
-      const bottom = Math.max(point.y, start.y);
+    if (Math.hypot(world_.x - start.wx, world_.y - start.wy) > 9) {
+      const left = Math.min(world_.x, start.wx);
+      const right = Math.max(world_.x, start.wx);
+      const top = Math.min(world_.y, start.wy);
+      const bottom = Math.max(world_.y, start.wy);
 
       selected = units.filter(unit =>
         alive(unit) &&
@@ -787,22 +713,41 @@
         unit.y >= top &&
         unit.y <= bottom
       );
+      selectedResourceId = 0;
       if (selected.length) audio.play("select");
     } else {
-      selectAt(point.x, point.y);
+      selectAt(world_.x, world_.y);
     }
   });
 
-  window.addEventListener("keydown", event => {
-    if (event.repeat) return;
+  window.addEventListener("keyup", event => {
+    keysDown.delete(event.key.toLowerCase());
+  });
 
+  window.addEventListener("blur", () => {
+    keysDown.clear();
+    panning = null;
+    minimapDrag = false;
+  });
+
+  window.addEventListener("keydown", event => {
     const key = event.key.toLowerCase();
+
+    if (key.startsWith("arrow")) {
+      if (!menuOpen && started && !event.target.matches("input, select")) {
+        keysDown.add(key);
+        event.preventDefault();
+      }
+      return;
+    }
+
+    if (event.repeat) return;
 
     if (key === "escape" || key === "p") {
       if (menuOpen) {
         const page = pages.find(p => !p.hidden);
         if (key === "p" && event.target.matches("input")) return;
-        if (page && page.dataset.page !== "main") showPage("main");
+        if (page && page.dataset.page !== "main") goBack(page.dataset.page);
         else if (started) closeMenu();
       } else if (key === "escape" && (placement || spellMode || commandMode)) {
         placement = null;
@@ -833,9 +778,9 @@
       action(shortcuts[key]);
     }
 
-    if (key === "r" && state !== "playing") {
-      if (mode === "online") searchAgain();
-      else newGame();
+    if (key === "r" && matchOver) {
+      if (mode === "online") returnToRoom();
+      else startOffline(lastOffline);
     }
   });
 
@@ -860,49 +805,54 @@
   let started = false;
 
   function showPage(name) {
-    if (name !== "online") leaveLobby();
+    if (name !== "online" && name !== "lobby") leaveLobby();
+    menuEl.querySelector(".panel").classList.toggle("wide", name === "lobby");
     for (const page of pages) page.hidden = page.dataset.page !== name;
     const first = menuEl.querySelector(`.page[data-page="${name}"] button:not([hidden]):not(:disabled)`);
     if (first) first.focus({ preventScroll: true });
   }
 
-  const liveOnline = () =>
-    mode === "online" && started && (online.phase === "countdown" || online.phase === "playing");
+  const liveMatch = () => started && !matchOver;
+
+  // Zpět z podstránky: z online místnosti se odchází přes server, jinak do hlavního menu.
+  function goBack(page) {
+    if (page === "lobby" && lobby.online) net.send({ t: "leave" });
+    else showPage("main");
+  }
 
   function endReason() {
-    const won = state === "win";
-
-    switch (online.why) {
-      case "surrender": return won ? "Soupeř se vzdal." : "Vzdal ses.";
-      case "disconnect": return "Soupeř se odpojil.";
-      case "connection": return "Spojení se serverem bylo přerušeno.";
-      default: return won ? "Soupeřova základna padla." : "Tvoje základna padla.";
+    if (state === "win") {
+      if (endWhy === "surrender") return "Soupeři se vzdali.";
+      if (endWhy === "disconnect") return "Soupeři se odpojili.";
+      return "Poslední soupeřova základna padla.";
     }
+
+    if (state === "draw") return "Všechny základny padly.";
+    if (endWhy === "connection") return "Spojení se serverem bylo přerušeno.";
+    if (ownOutWhy === "surrender") return "Vzdal ses.";
+    return "Tvoje základna padla.";
   }
 
   function syncMenu() {
     const onl = mode === "online" && started;
-    const live = liveOnline();
-    const over = onl && !live;
+    const live = liveMatch();
+    const over = started && matchOver;
+    const playing = live && state === "playing";
 
-    $("m-online").hidden = onl && !over;
-    $("m-online").textContent = over ? "Hledat dalšího soupeře" : "Online 1v1";
-    $("m-play").textContent = started ? "Pokračovat" : "Hra proti AI";
+    $("m-online").hidden = onl && live;
+    $("m-online").textContent = onl && over ? "Zpět do místnosti" : "Online hra";
+    $("m-play").textContent = live ? "Pokračovat" : "Hra proti AI";
     $("m-restart").hidden = !started || onl;
-    $("m-surrender").hidden = !live;
-    $("m-leave").hidden = !over;
+    $("m-surrender").hidden = !playing;
+    $("m-leave").hidden = !(onl && (over || !playing));
     menuBtn.hidden = !started || menuOpen;
 
     if (!started) statusEl.textContent = "";
-    else if (live) statusEl.textContent = `Zápas proti ${online.opponent}. Hra běží i s otevřeným menu.`;
-    else if (onl) {
-      statusEl.textContent = `${state === "win" ? "Vítězství!" : state === "lose" ? "Porážka." : "Remíza."} ${endReason()}`;
-    } else if (state === "win") statusEl.textContent = "Vítězství! Rudá pevnost padla.";
-    else if (state === "lose") statusEl.textContent = "Porážka. Zkus to znovu.";
-    else statusEl.textContent = "Hra je pozastavena.";
+    else if (playing) statusEl.textContent = onl ? "Zápas běží i s otevřeným menu." : "Hra je pozastavena.";
+    else if (live) statusEl.textContent = "Vypadl jsi, ostatní hrají dál.";
+    else statusEl.textContent = `${state === "win" ? "Vítězství!" : state === "lose" ? "Porážka." : "Remíza."} ${endReason()}`;
 
-    // a finished game cannot be resumed
-    $("m-play").hidden = onl ? !live : started && state !== "playing";
+    $("m-play").hidden = started && !live;
   }
 
   function openMenu(page = "main") {
@@ -924,56 +874,80 @@
     document.activeElement && document.activeElement.blur();
   }
 
-  function newGame() {
-    reset();
-    started = true;
-    closeMenu();
-  }
-
   function play() {
     audio.unlock();
     if (settings.autoFullscreen && !isFullscreen()) toggleFullscreen();
-    if (started) closeMenu();
-    else newGame();
+    if (liveMatch()) closeMenu();
+    else openOfflineLobby();
   }
 
-  /* ======================= online: lobby ======================= */
+  /* ======================= lobby: výběr mapy a hráčů ======================= */
   const NAME_KEY = "pk-name";
   const oStatus = $("o-status");
   const oStats = $("o-stats");
-  const oSearch = $("o-search");
+  const oRooms = $("o-rooms");
+  const oCreate = $("o-create");
   const oName = $("o-name");
   const oServer = $("o-server");
 
   const playerName = () => oName.value.trim() || "Hrac";
 
+  // Stav lobby (hra proti AI i online místnost); sloty odpovídají slotům mapy.
+  const lobby = { online: false, mapId: MAPS.DEFAULT, slots: [], you: 0, host: 0 };
+  const lobbyEl = {
+    maps: $("l-maps"), preview: $("l-preview"), name: $("l-name"), desc: $("l-desc"),
+    meta: $("l-meta"), slots: $("l-slots"), status: $("l-status"), start: $("l-start"), title: $("l-title")
+  };
+  const previews = new Map();
+  const previewBusy = new Set();
+  let lastOffline = null;
+
+  function renderRooms() {
+    oRooms.replaceChildren();
+    if (online.phase !== "idle") return;
+
+    for (const r of online.rooms) {
+      const m = MAPS.get(r.map);
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "room";
+      row.disabled = r.players >= r.max;
+      row.textContent = `${m ? m.name : r.map} · hostitel ${r.host} · ${r.players}/${r.max}`;
+      row.addEventListener("click", () => {
+        audio.unlock();
+        rememberName();
+        net.send({ t: "join", room: r.id, name: playerName() });
+      });
+      oRooms.append(row);
+    }
+  }
+
   function syncLobby() {
     const phase = online.phase;
-    const busy = phase === "connecting" || phase === "queued";
+    const busy = phase === "connecting";
 
     oName.disabled = busy;
     oServer.disabled = busy;
-    oSearch.disabled = phase === "connecting";
-    oSearch.textContent = phase === "queued" ? "Zrušit hledání" : phase === "idle" ? "Hledat soupeře" : "Připojit k serveru";
+    oCreate.disabled = busy;
+    oCreate.textContent = phase === "idle" ? "Vytvořit místnost" : "Připojit k serveru";
 
     if (phase === "connecting") {
       oStatus.textContent = "Připojuji se k serveru…";
-    } else if (phase === "queued") {
-      const s = Math.floor((performance.now() - online.queuedAt) / 1000);
-      oStatus.textContent = `Hledám soupeře… ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}\nAž se někdo najde, hra začne sama.`;
     } else if (phase === "idle") {
-      oStatus.textContent = "Připojeno. Klikni na Hledat soupeře.";
+      oStatus.textContent = online.error || (online.rooms.length ? "Vyber místnost, nebo vytvoř vlastní." : "Zatím tu není žádná místnost. Vytvoř vlastní.");
     } else {
       oStatus.textContent = online.error || "Nejsi připojený k serveru.";
     }
 
-    oStats.textContent = phase === "idle" || phase === "queued"
-      ? `Ve frontě: ${online.stats.queued} · Ve hře: ${online.stats.playing}`
-      : "";
+    oStats.textContent = phase === "idle" ? `Místností: ${online.rooms.length} · Hráčů ve hře: ${online.playing}` : "";
+    renderRooms();
   }
 
-  function connectLobby(search) {
-    online.wantSearch = !!search;
+  function rememberName() {
+    try { localStorage.setItem(NAME_KEY, playerName()); } catch (e) { /* ignore */ }
+  }
+
+  function connectLobby() {
     online.error = "";
     online.phase = "connecting";
     online.server = oServer.value.trim();
@@ -987,34 +961,20 @@
     });
   }
 
-  function startSearch() {
-    try { localStorage.setItem(NAME_KEY, playerName()); } catch (e) { /* ignore */ }
-    net.send({ t: "queue", name: playerName() });
-  }
-
   function leaveLobby() {
     const phase = online.phase;
 
-    if (phase === "queued") net.send({ t: "unqueue" });
-
-    if (phase === "queued" || phase === "idle" || phase === "connecting") {
+    if (phase === "idle" || phase === "room" || phase === "connecting") {
       online.phase = "offline";
-      online.wantSearch = false;
+      online.roomId = 0;
       online.error = "";
+      lobby.online = false;
       net.close();
     }
   }
 
-  function resetToIdle() {
-    reset();
-    started = false;
-    online.phase = net.connected ? "idle" : "offline";
-    syncMenu();
-  }
-
-  function enterLobby(search) {
+  function enterOnline() {
     audio.unlock();
-    if (mode === "online") resetToIdle();
 
     let savedName = "";
     try { savedName = localStorage.getItem(NAME_KEY) || ""; } catch (e) { /* ignore */ }
@@ -1025,75 +985,312 @@
     }
 
     oServer.placeholder = net.defaultUrl();
+
+    if (online.phase === "room") {
+      showPage("lobby");
+      renderLobby();
+      return;
+    }
+
     showPage("online");
-
-    if (online.phase === "offline") connectLobby(search);
-    else if (search && online.phase === "idle") startSearch();
-
+    if (online.phase === "offline") connectLobby();
     syncLobby();
-    oSearch.focus({ preventScroll: true });
   }
 
-  function lobbyAction() {
+  function createRoom() {
     audio.unlock();
 
     // změněná adresa serveru = nové spojení
     if (online.phase === "idle" && oServer.value.trim() !== online.server) {
       net.close();
-      connectLobby(true);
-    } else if (online.phase === "queued") net.send({ t: "unqueue" });
-    else if (online.phase === "idle") startSearch();
-    else if (online.phase === "offline") connectLobby(true);
+      connectLobby();
+    } else if (online.phase === "idle") {
+      rememberName();
+      online.error = "";
+      net.send({ t: "create", map: lobby.mapId, name: playerName() });
+    } else if (online.phase === "offline") {
+      connectLobby();
+    }
   }
 
-  function searchAgain() {
-    if (mode !== "online" || online.phase !== "ended") return;
-    openMenu("online");
-    enterLobby(true);
+  function returnToRoom() {
+    reset();
+    started = false;
+    mode = "ai";
+    openMenu();
+
+    if (net.connected && online.roomId) {
+      online.phase = "room";
+      showPage("lobby");
+      renderLobby();
+    } else {
+      online.phase = net.connected ? "idle" : "offline";
+      enterOnline();
+    }
   }
 
   function leaveOnline() {
     net.close();
-    resetToIdle();
+    reset();
+    started = false;
+    mode = "ai";
     online.phase = "offline";
+    online.roomId = 0;
+    lobby.online = false;
+    syncMenu();
     showPage("main");
+  }
+
+  /* ======================= lobby: obrazovka výběru mapy ======================= */
+  const lobbyMap = () => MAPS.get(lobby.mapId) || MAPS.get(MAPS.DEFAULT);
+  const isHost = () => !lobby.online || lobby.host === lobby.you;
+
+  const sizeLabel = m => {
+    const area = m.size[0] * m.size[1];
+    return area <= 150000 ? "malá" : area <= 450000 ? "střední" : "velká";
+  };
+
+  const SLOT_LABELS = { ai: "Počítač (AI)", open: "Otevřeno", closed: "Zavřeno" };
+
+  function openOfflineLobby() {
+    audio.unlock();
+    lobby.online = false;
+    lobby.you = 0;
+    lobby.host = 0;
+
+    if (lastOffline) {
+      lobby.mapId = lastOffline.mapId;
+      lobby.slots = lastOffline.slots.map(s => ({ ...s }));
+    } else {
+      lobby.mapId = MAPS.DEFAULT;
+      lobby.slots = lobbyMap().slots.map((_, i) => ({ kind: i === 0 ? "human" : "ai", name: i === 0 ? "Ty" : "" }));
+    }
+
+    showPage("lobby");
+    renderLobby();
+  }
+
+  function selectMap(id) {
+    if (!isHost() || id === lobby.mapId) return;
+
+    if (lobby.online) {
+      net.send({ t: "map", map: id });
+      return;
+    }
+
+    const next = MAPS.get(id);
+    lobby.mapId = id;
+    lobby.slots = next.slots.map((_, i) => lobby.slots[i] || { kind: "ai", name: "" });
+    renderLobby();
+  }
+
+  function setSlot(i, kind) {
+    if (!isHost()) return;
+
+    if (lobby.online) {
+      net.send({ t: "slot", i, kind });
+    } else {
+      lobby.slots[i] = { kind, name: "" };
+      renderLobby();
+    }
+  }
+
+  function renderLobby() {
+    const map = lobbyMap();
+    const host = isHost();
+
+    lobbyEl.title.textContent = lobby.online ? "Online místnost" : "Hra proti AI";
+
+    lobbyEl.maps.replaceChildren(...MAPS.list.map(m => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = `map-item${m.id === lobby.mapId ? " selected" : ""}`;
+      item.disabled = !host;
+
+      const title = document.createElement("span");
+      title.className = "map-name";
+      title.textContent = m.name;
+      const tag = document.createElement("span");
+      tag.className = "map-tag";
+      tag.textContent = m.tag;
+
+      item.append(title, tag);
+      item.addEventListener("click", () => selectMap(m.id));
+      return item;
+    }));
+
+    lobbyEl.name.textContent = map.name;
+    lobbyEl.desc.textContent = map.description;
+    lobbyEl.meta.textContent = `Hráči: ${map.players} · Velikost: ${sizeLabel(map)} (${map.size[0] * 2}×${map.size[1] * 2}) · Zlaté doly: ${map.gold.length}`;
+
+    lobbyEl.slots.replaceChildren(...lobby.slots.map((slot, i) => {
+      const team = R.TEAMS[i];
+      const row = document.createElement("div");
+      row.className = "slot";
+
+      const swatch = document.createElement("span");
+      swatch.className = "swatch";
+      swatch.style.background = teamCss(team);
+
+      const label = document.createElement("span");
+      label.className = "slot-team";
+      label.textContent = R.TEAM_NAMES[team];
+      row.append(swatch, label);
+
+      if (slot.kind === "human") {
+        const who = document.createElement("span");
+        who.className = "slot-who";
+        who.textContent = lobby.online
+          ? `${slot.name}${i === lobby.you ? " (ty)" : ""}${i === lobby.host ? " ★" : ""}`
+          : "Ty";
+        row.append(who);
+      } else if (host) {
+        const select = document.createElement("select");
+        select.className = "field";
+        select.setAttribute("aria-label", `Slot ${R.TEAM_NAMES[team]}`);
+
+        for (const kind of lobby.online ? ["open", "ai", "closed"] : ["ai", "closed"]) {
+          const option = document.createElement("option");
+          option.value = kind;
+          option.textContent = SLOT_LABELS[kind];
+          select.append(option);
+        }
+
+        select.value = slot.kind;
+        select.addEventListener("change", () => setSlot(i, select.value));
+        row.append(select);
+      } else {
+        const who = document.createElement("span");
+        who.className = "slot-who muted";
+        who.textContent = SLOT_LABELS[slot.kind];
+        row.append(who);
+      }
+
+      return row;
+    }));
+
+    const active = lobby.slots.filter(s => s.kind === "human" || s.kind === "ai").length;
+    lobbyEl.start.hidden = !host;
+    lobbyEl.start.disabled = active < 2;
+    lobbyEl.status.textContent = !host
+      ? "Čeká se, až hostitel spustí hru."
+      : active < 2 ? "Přidej aspoň jednoho soupeře." : "Vše připraveno.";
+
+    drawPreview();
+  }
+
+  // Náhled = zmenšený terén mapy se značkami startovních pozic. Terén se peče jednou na mapu.
+  function drawPreview() {
+    const map = lobbyMap();
+    const cv = lobbyEl.preview;
+    const c = cv.getContext("2d");
+    const img = previews.get(map.id);
+
+    c.imageSmoothingEnabled = false;
+    c.fillStyle = "#0b0914";
+    c.fillRect(0, 0, cv.width, cv.height);
+
+    if (!img) {
+      c.fillStyle = "#9b94b8";
+      c.font = "12px monospace";
+      c.textAlign = "center";
+      c.fillText("Načítám náhled…", cv.width / 2, cv.height / 2);
+
+      if (!previewBusy.has(map.id)) {
+        previewBusy.add(map.id);
+        setTimeout(() => {
+          previews.set(map.id, world.preview(map, cv.width - 8, cv.height - 8));
+          previewBusy.delete(map.id);
+          if (lobbyMap() === map) drawPreview();
+        }, 30);
+      }
+
+      return;
+    }
+
+    const ox = Math.round((cv.width - img.width) / 2);
+    const oy = Math.round((cv.height - img.height) / 2);
+    const s = img.width / (map.size[0] * 2);
+    c.drawImage(img, ox, oy);
+
+    c.fillStyle = "#ffd36b";
+    for (const [x, y] of map.gold) c.fillRect(ox + Math.round(x * s) - 1, oy + Math.round(y * s) - 1, 3, 3);
+
+    lobby.slots.forEach((slot, i) => {
+      const hq = map.slots[i].hq;
+      const x = ox + Math.round(hq.x * s);
+      const y = oy + Math.round(hq.y * s);
+      const used = slot.kind === "human" || slot.kind === "ai";
+
+      c.globalAlpha = used ? 1 : 0.45;
+      c.fillStyle = "#15121f";
+      c.beginPath();
+      c.arc(x, y, 9, 0, Math.PI * 2);
+      c.fill();
+      c.fillStyle = used ? teamCss(R.TEAMS[i]) : "#6a6480";
+      c.beginPath();
+      c.arc(x, y, 7, 0, Math.PI * 2);
+      c.fill();
+      c.fillStyle = "#15121f";
+      c.font = "bold 10px monospace";
+      c.textAlign = "center";
+      c.textBaseline = "middle";
+      c.fillText(String(i + 1), x, y + 1);
+      c.globalAlpha = 1;
+    });
+
+    c.textBaseline = "alphabetic";
+  }
+
+  function startOffline(cfg) {
+    audio.unlock();
+
+    const c = cfg || { mapId: lobby.mapId, slots: lobby.slots };
+    const next = MAPS.get(c.mapId);
+    const roster = [];
+
+    c.slots.forEach((s, i) => {
+      if (s.kind === "human") roster.push({ slot: i, name: "Ty", ai: false });
+      else if (s.kind === "ai") roster.push({ slot: i, name: `AI ${R.TEAM_NAMES[R.TEAMS[i]]}`, ai: true });
+    });
+
+    if (!next || roster.length < 2) {
+      lobbyEl.status.textContent = "Přidej aspoň jednoho AI soupeře.";
+      return;
+    }
+
+    lastOffline = { mapId: c.mapId, slots: c.slots.map(s => ({ ...s })) };
+    beginMatch({ mode: "ai", map: next, slot: 0, players: roster });
+  }
+
+  function handleRoom(m) {
+    if (!MAPS.get(m.map)) return;
+
+    lobby.online = true;
+    lobby.mapId = m.map;
+    lobby.you = m.you;
+    lobby.host = m.host;
+    lobby.slots = m.slots.map(s => ({ kind: s.kind, name: String(s.name || "") }));
+    online.roomId = m.id;
+
+    // po skončení zápasu se do místnosti vracíš sám (R nebo menu)
+    if (m.state === "playing" || (started && mode === "online")) return;
+
+    online.phase = "room";
+    online.error = "";
+    showPage("lobby");
+    renderLobby();
   }
 
   /* ======================= online: match state ======================= */
   function beginOnlineMatch(m) {
-    reset();
-    units = [];
-    buildings = [];
-    resources = [];
+    const next = MAPS.get(m.map);
+    if (!next) return;
 
-    mode = "online";
-    me = m.team === "red" ? "red" : "blue";
-    foeTeam = me === "blue" ? "red" : "blue";
-    online.phase = "countdown";
-    online.you = m.you;
-    online.opponent = m.opponent;
-    online.why = "";
     online.pendingTrain = 0;
-    gold = 0;
-    wood = 0;
-    waveTimer = 0;
-    waveMax = 1;
-    started = true;
-    closeMenu();
-  }
-
-  function finishOnline(winner, why) {
-    if (online.phase === "ended") return;
-
-    online.phase = "ended";
-    online.why = why;
-    state = winner === me ? "win" : winner ? "lose" : "draw";
-    endT = 0;
-    placement = null;
-    spellMode = null;
-    commandMode = false;
-    audio.play(state === "win" ? "win" : "lose");
-    syncMenu();
+    online.pendingBuild = 0;
+    online.count = 0;
+    beginMatch({ mode: "online", map: next, slot: m.slot, players: m.players });
   }
 
   function netUnit(id, type, team, x, y) {
@@ -1104,7 +1301,7 @@
       hp: s.hp, maxHp: s.hp, speed: s.speed, damage: s.damage, range: s.range,
       attackDelay: s.delay, cooldown: 0, fireCooldown: 0, healCooldown: 0,
       order: null, carry: null, level: 1, xp: 0, walkCycle: 0,
-      facing: team === "red" ? -1 : 1,
+      facing: map.slots[R.TEAMS.indexOf(team)].facing,
       atk: 0, castT: 0, flashT: 0, workT: 0, fxT: 0, moveT: 0, wd: 0, lx: x, ly: y, stepT: 0
     };
   }
@@ -1184,8 +1381,12 @@
         break;
       }
 
+      case "out":
+        playerOut(e.t, e.why);
+        break;
+
       case "end":
-        finishOnline(e.w, e.why);
+        finishMatch(e.w, e.why);
         break;
 
       default:
@@ -1193,7 +1394,7 @@
   }
 
   function applySnapshot(s) {
-    if (mode !== "online" || online.phase === "ended") return;
+    if (matchOver) return;
 
     const first = online.firstSnapshot;
     online.firstSnapshot = false;
@@ -1201,7 +1402,10 @@
     for (const e of s.e) netEvent(e);
     for (const note of s.n) announce(note);
 
-    if (s.p === "countdown" || s.p === "playing") online.phase = s.p;
+    if (s.p === "countdown" || s.p === "playing") {
+      matchPhase = s.p;
+      if (mode === "online") online.phase = s.p;
+    }
     online.count = s.c;
     elapsed = s.el;
     gold = s.g;
@@ -1214,7 +1418,7 @@
       let u = unitMap.get(id);
 
       if (!u) {
-        u = netUnit(id, UNIT_TYPES[t], team ? "red" : "blue", x, y);
+        u = netUnit(id, UNIT_TYPES[t], R.TEAMS[team], x, y);
         unitMap.set(id, u);
         units.push(u);
 
@@ -1257,7 +1461,7 @@
       let b = buildingMap.get(id);
 
       if (!b) {
-        b = netBuilding(id, BUILDING_TYPES[t], team ? "red" : "blue", x, y, !first);
+        b = netBuilding(id, BUILDING_TYPES[t], R.TEAMS[team], x, y, !first);
         buildingMap.set(id, b);
         buildings.push(b);
 
@@ -1288,13 +1492,15 @@
       let r = resourceMap.get(id);
 
       if (!r) {
-        r = { id, type: t ? "wood" : "gold", x, y, amount: 0, shake: 0 };
+        r = { id, type: t ? "wood" : "gold", x, y, amount, max: amount, shake: 0 };
         resourceMap.set(id, r);
         resources.push(r);
       }
 
       seenResources.add(id);
-      r.amount = amount < 0 ? Infinity : amount;
+
+      if (!first && t === 0 && r.amount > 0 && amount === 0) fx.text(r.x, r.y - 30, "Vyčerpáno", 0xb8b0d4);
+      r.amount = amount;
     }
 
     if (seenResources.size !== resources.length) {
@@ -1340,6 +1546,7 @@
     }
 
     selected = selected.filter(alive);
+    if (selected.length) selectedResourceId = 0;
   }
 
   function nearestResource(unit) {
@@ -1361,26 +1568,33 @@
   net.onmessage = m => {
     switch (m.t) {
       case "hello":
-      case "stats":
-        online.stats = { queued: m.queued | 0, playing: m.playing | 0 };
+      case "rooms":
+        online.rooms = Array.isArray(m.list) ? m.list : [];
+        online.playing = m.playing | 0;
 
-        if (m.t === "hello" && online.phase === "connecting") {
+        if (m.t === "hello" && online.phase === "connecting") online.phase = "idle";
+
+        syncLobby();
+        break;
+
+      case "room":
+        handleRoom(m);
+        break;
+
+      case "left":
+        online.roomId = 0;
+        lobby.online = false;
+        if (online.phase === "room") {
           online.phase = "idle";
-          if (online.wantSearch) startSearch();
+          showPage("online");
+          syncLobby();
         }
-
-        syncLobby();
         break;
 
-      case "queued":
-        online.phase = "queued";
-        online.queuedAt = performance.now();
+      case "error":
+        online.error = String(m.text || "");
         syncLobby();
-        break;
-
-      case "unqueued":
-        if (online.phase === "queued") online.phase = "idle";
-        syncLobby();
+        if (online.phase === "room") lobbyEl.status.textContent = online.error;
         break;
 
       case "match":
@@ -1396,22 +1610,25 @@
   };
 
   net.onclose = () => {
-    if (mode === "online" && started && (online.phase === "countdown" || online.phase === "playing")) {
-      finishOnline(foeTeam, "connection");
+    if (mode === "online" && started && !matchOver) {
+      if (state === "playing") {
+        state = "lose";
+        audio.play("lose");
+      }
+
+      finishMatch(-1, "connection");
       return;
     }
 
     if (online.phase !== "ended") {
       online.phase = "offline";
+      online.roomId = 0;
+      lobby.online = false;
       online.error = "Spojení se serverem bylo přerušeno.";
+      if (!started) showPage("online");
       syncLobby();
     }
   };
-
-  setInterval(() => {
-    if (online.phase === "queued" && menuOpen) syncLobby();
-  }, 500);
-
   /* fullscreen */
   const fsRoot = document.documentElement;
 
@@ -1449,23 +1666,28 @@
 
   /* wiring */
   $("m-play").addEventListener("click", play);
-  $("m-online").addEventListener("click", () => enterLobby(mode === "online"));
+  $("m-online").addEventListener("click", () => {
+    if (mode === "online" && started && matchOver) returnToRoom();
+    else enterOnline();
+  });
   $("m-leave").addEventListener("click", leaveOnline);
   $("m-surrender").addEventListener("click", () => {
-    if (!liveOnline() || !window.confirm("Opravdu se chceš vzdát?")) return;
-    net.send({ t: "cmd", c: "surrender" });
+    if (!liveMatch() || state !== "playing" || !window.confirm("Opravdu se chceš vzdát?")) return;
+    sendCmd({ c: "surrender" });
     closeMenu();
   });
-  $("o-search").addEventListener("click", lobbyAction);
+  oCreate.addEventListener("click", createRoom);
   for (const input of [oName, oServer]) {
     input.addEventListener("keydown", event => {
-      if (event.key === "Enter" && online.phase !== "queued") lobbyAction();
+      if (event.key === "Enter") createRoom();
     });
   }
-  $("m-restart").addEventListener("click", () => {
-    audio.unlock();
-    newGame();
+  lobbyEl.start.addEventListener("click", () => {
+    if (lobby.online) net.send({ t: "start" });
+    else startOffline();
   });
+  $("l-back").addEventListener("click", () => goBack("lobby"));
+  $("m-restart").addEventListener("click", openOfflineLobby);
   $("m-settings").addEventListener("click", () => showPage("settings"));
   $("m-help").addEventListener("click", () => showPage("help"));
   $("m-fullscreen").addEventListener("click", toggleFullscreen);
@@ -1473,7 +1695,7 @@
   menuBtn.addEventListener("click", () => openMenu());
 
   for (const back of menuEl.querySelectorAll("[data-back]")) {
-    back.addEventListener("click", () => showPage("main"));
+    back.addEventListener("click", () => goBack(back.closest(".page").dataset.page));
   }
 
   menuEl.addEventListener("click", event => {
@@ -1533,129 +1755,8 @@
   syncMenu();
   showPage("main");
 
-  /* ======================= simulation ======================= */
-  function moveTowards(unit, target, dt, stop = 0) {
-    const dx = target.x - unit.x;
-    const dy = target.y - unit.y;
-    const length = Math.hypot(dx, dy);
-
-    if (length <= stop || length < 0.001) {
-      return true;
-    }
-
-    if (Math.abs(dx) > 0.4) unit.facing = dx < 0 ? -1 : 1;
-
-    const step = Math.min(
-      unit.speed * dt,
-      length - stop
-    );
-
-    unit.x = clamp(
-      unit.x + dx / length * step,
-      12,
-      WIDTH - 12
-    );
-
-    unit.y = clamp(
-      unit.y + dy / length * step,
-      38,
-      MAP_HEIGHT - 14
-    );
-
-    return length - step <= stop + 0.5;
-  }
-
-  function nearestEnemy(entity, maxDistance) {
-    let nearest = null;
-    let bestDistance = maxDistance;
-
-    for (const candidate of [...units, ...buildings]) {
-      if (
-        !alive(candidate) ||
-        candidate.team === entity.team
-      ) continue;
-
-      const currentDistance =
-        distance(entity, candidate);
-
-      if (currentDistance < bestDistance) {
-        nearest = candidate;
-        bestDistance = currentDistance;
-      }
-    }
-
-    return nearest;
-  }
-
-  function awardExperience(attacker, target) {
-    if (
-      target.kind !== "unit" ||
-      target.team !== "red"
-    ) return;
-
-    const hero = units.find(unit =>
-      unit.type === "hero" &&
-      unit.team === "blue" &&
-      alive(unit)
-    );
-
-    if (!hero) return;
-
-    if (
-      attacker !== hero &&
-      distance(hero, target) > 145
-    ) return;
-
-    hero.xp += 25;
-    fx.text(hero.x, hero.y - 44, "+25 XP", 0xd0b4ff);
-
-    while (hero.xp >= xpNeeded(hero.level)) {
-      hero.xp -= xpNeeded(hero.level);
-      hero.level++;
-
-      hero.maxHp += 27;
-      hero.hp = Math.min(
-        hero.maxHp,
-        hero.hp + 55
-      );
-
-      hero.damage += 3;
-
-      announce(
-        `Hrdina dosáhl úrovně ${hero.level}!`
-      );
-
-      fx.levelUp(hero.x, hero.y + 8);
-      audio.play("levelUp");
-    }
-  }
-
-  /* Visual consequences of a hit are scheduled; the numbers apply immediately. */
-  function damage(attacker, target, amount, opts = {}) {
-    if (!alive(target)) return;
-
-    target.hp -= amount;
-    const killed = target.hp <= 0;
-    if (killed) target.hp = 0;
-
-    hitVisuals(attacker, target, amount, opts, killed);
-
-    if (killed) {
-      awardExperience(attacker, target);
-
-      if (target.type === "citadel") {
-        state = "win";
-        fx.later(1.2, () => audio.play("win"));
-      }
-
-      if (target.type === "hall") {
-        state = "lose";
-        fx.later(1.2, () => audio.play("lose"));
-      }
-    }
-  }
-
-  /* Shared by the local simulation and by hit events from the server. */
+  /* ======================= hit visuals ======================= */
+  // Čísla zásahů počítá simulace; tady jsou jen efekty a zvuky (volá je událost "hit").
   function hitVisuals(attacker, target, amount, opts, killed) {
     let wait = opts.delay || 0;
     const ranged = attacker.type === "archer" || attacker.type === "tower";
@@ -1703,243 +1804,10 @@
     }
   }
 
-  function strike(unit, target) {
-    unit.atk = 0.3;
-    unit.facing = target.x < unit.x ? -1 : 1;
-    damage(unit, target, unit.damage);
-    unit.cooldown = unit.attackDelay;
-  }
-
-  function gather(unit, dt) {
-    if (unit.order?.type !== "gather") {
-      return false;
-    }
-
-    const resource = unit.order.target;
-
-    const hall = buildings.find(building =>
-      building.type === "hall" &&
-      building.team === "blue" &&
-      alive(building)
-    );
-
-    if (!resource || resource.amount <= 0) {
-      unit.order = null;
-      unit.carry = null;
-      return false;
-    }
-
-    if (unit.carry) {
-      if (!hall) return true;
-
-      if (moveTowards(unit, hall, dt, 48)) {
-        if (unit.carry === "gold") {
-          gold += 10;
-        } else {
-          wood += 10;
-        }
-
-        fx.coin(unit.x, unit.y, "+10", unit.carry === "wood");
-        audio.play("coin", { x: unit.x });
-        unit.carry = null;
-      }
-
-      return true;
-    }
-
-    const stop =
-      resource.type === "gold" ? 31 : 24;
-
-    if (moveTowards(unit, resource, dt, stop)) {
-      unit.harvestTimer += dt;
-      unit.workT = 0.2;
-      unit.facing = resource.x < unit.x ? -1 : 1;
-      unit.fxT -= dt;
-
-      if (unit.fxT <= 0) {
-        unit.fxT = 0.42;
-        resource.shake = 0.22;
-
-        if (resource.type === "wood") fx.chop(resource.x, resource.y + 14);
-        else fx.mine(resource.x, resource.y + 12);
-        audio.play(resource.type === "wood" ? "wood" : "mine", { x: resource.x });
-      }
-
-      if (unit.harvestTimer >= 0.9) {
-        unit.harvestTimer = 0;
-        unit.carry = resource.type;
-
-        if (resource.type === "wood") {
-          resource.amount -= 10;
-        }
-      }
-    }
-
-    return true;
-  }
-
-  function update(dt) {
-    if (state !== "playing") return;
-
-    elapsed += dt;
-    waveTimer -= dt;
-    messageTimer = Math.max(0, messageTimer - dt);
-
-    if (waveTimer <= 0) {
-      waveTimer = Math.max(
-        8,
-        18 - elapsed / 80
-      );
-      waveMax = waveTimer;
-
-      const citadel = buildings.find(building =>
-        building.type === "citadel" &&
-        alive(building)
-      );
-
-      if (citadel) {
-        const count = Math.min(
-          5,
-          1 + Math.floor(elapsed / 55)
-        );
-
-        for (let i = 0; i < count; i++) {
-          const raider = createUnit(
-            "raider",
-            citadel.x - 50 - i * 15,
-            citadel.y + 43 + i * 17,
-            "red"
-          );
-
-          fx.puff(raider.x, raider.y + 12, 6);
-        }
-
-        waveFlash = 1.6;
-        audio.play("horn", { x: citadel.x });
-
-        announce(
-          `Přichází nepřátelská vlna: ${count} jednotek.`
-        );
-      }
-    }
-
-    for (const building of buildings) {
-      if (!alive(building)) continue;
-
-      building.cooldown -= dt;
-
-      if (
-        building.type === "tower" &&
-        building.cooldown <= 0
-      ) {
-        const target =
-          nearestEnemy(building, 155);
-
-        if (target) {
-          damage(building, target, 20);
-          building.cooldown = 0.85;
-        }
-      }
-    }
-
-    for (const unit of units) {
-      if (!alive(unit) || state !== "playing") {
-        continue;
-      }
-
-      unit.cooldown -= dt;
-
-      const moveIntent =
-        unit.order &&
-        (unit.order.type === "move" ||
-          unit.order.type === "gather" ||
-          (unit.order.type === "attack" &&
-            distance(unit, unit.order.target) >
-              unit.range + 6));
-
-      unit.walkCycle +=
-        moveIntent ? dt * (4 + unit.speed / 22) : 0;
-
-      unit.fireCooldown = Math.max(
-        0,
-        unit.fireCooldown - dt
-      );
-
-      unit.healCooldown = Math.max(
-        0,
-        unit.healCooldown - dt
-      );
-
-      if (
-        unit.team === "blue" &&
-        unit.type === "worker" &&
-        gather(unit, dt)
-      ) {
-        continue;
-      }
-
-      // Přesun má přednost před automatickým útokem.
-      if (unit.order?.type === "move") {
-        if (
-          moveTowards(unit, unit.order, dt, 5)
-        ) {
-          unit.order = null;
-        }
-
-        continue;
-      }
-
-      let target =
-        unit.order?.type === "attack" &&
-        alive(unit.order.target)
-          ? unit.order.target
-          : null;
-
-      if (!target) {
-        target = nearestEnemy(
-          unit,
-          unit.team === "red" ? 1200 : 100
-        );
-      }
-
-      if (!target) continue;
-
-      const reach =
-        unit.range +
-        (target.kind === "building" ? 24 : 0);
-
-      if (distance(unit, target) > reach) {
-        if (
-          unit.team === "red" ||
-          unit.order?.type === "attack"
-        ) {
-          moveTowards(
-            unit,
-            target,
-            dt,
-            reach - 2
-          );
-        }
-      } else if (unit.cooldown <= 0) {
-        strike(unit, target);
-      }
-    }
-
-    units = units.filter(alive);
-    buildings = buildings.filter(alive);
-
-    resources = resources.filter(
-      resource => resource.amount > 0
-    );
-
-    selected = selected.filter(alive);
-  }
-
   /* ======================= visual state ======================= */
   function updateVisuals(dt) {
     clock += dt;
-    waveFlash = Math.max(0, waveFlash - dt);
-    if (state !== "playing") endT += dt;
+    if (matchOver) endT += dt;
     if (keyPress) {
       keyPress.t -= dt;
       if (keyPress.t <= 0) keyPress = null;
@@ -2135,7 +2003,7 @@
   }
 
   function drawMine(r) {
-    const m = PK.props.mine;
+    const m = r.amount > 0 ? PK.props.mine : PK.props.mineEmpty;
     const footX = Math.round(r.x / 2);
     const footY = Math.round(r.y / 2) + 13;
     const sh = world.shadow("ellipse", 34, 8);
@@ -2176,7 +2044,7 @@
     if (!building) {
       g.save();
       g.beginPath();
-      g.rect(0, Math.round(y0 + spr.h * (1 - prog)), 480, 400);
+      g.rect(x0 - 4, Math.round(y0 + spr.h * (1 - prog)), spr.w + 8, 400);
       g.clip();
       g.drawImage(spr.c, x0, y0);
       g.restore();
@@ -2277,7 +2145,7 @@
       const m = PK.props.mine;
 
       for (const r of resources) {
-        if (r.type !== "gold") continue;
+        if (r.type !== "gold" || r.amount <= 0) continue;
         world.light(g, Math.round(r.x / 2) - m.ax + m.glow.x, Math.round(r.y / 2) + 13 - m.ay + m.glow.y, m.glow.r, m.glow.color, 0.35 + Math.sin(clock * 3 + r.x) * 0.06);
       }
     }
@@ -2294,7 +2162,7 @@
     g.fillRect(x, y, fw, 2);
     g.fillStyle = "rgba(255,255,255,0.4)";
     g.fillRect(x, y, fw, 1);
-    g.fillStyle = team === "blue" ? "#58a6e0" : "#e2603c";
+    g.fillStyle = teamCss(team);
     g.fillRect(x - 2, y - 1, 1, 4);
   }
 
@@ -2401,11 +2269,11 @@
   }
 
   function drawPlacementGhost() {
-    if (!placement || mouse.y >= MAP_HEIGHT) return;
+    if (!placement || !hoverWorld) return;
 
-    const ax = Math.round(mouse.x / 2);
-    const ay = Math.round(mouse.y / 2);
-    const ok = !placementProblem(mouse.x, mouse.y);
+    const ax = Math.round(hoverWorld.x / 2);
+    const ay = Math.round(hoverWorld.y / 2);
+    const ok = !placementProblem(hoverWorld.x, hoverWorld.y);
     const spr = PK.buildings.get(placement);
 
     circlePx(ax, ay, 45, ok ? "#7fe08a" : "#ff6a5a", 18);
@@ -2434,11 +2302,11 @@
 
     circlePx(Math.round(hero.x / 2), Math.round(hero.y / 2) + 4, 90, "rgba(255,191,69,0.5)", 30);
 
-    if (mouse.y >= MAP_HEIGHT) return;
+    if (!hoverWorld) return;
 
-    const inRange = distance(hero, mouse) <= 180;
-    const ax = Math.round(mouse.x / 2);
-    const ay = Math.round(mouse.y / 2);
+    const inRange = distance(hero, hoverWorld) <= 180;
+    const ax = Math.round(hoverWorld.x / 2);
+    const ay = Math.round(hoverWorld.y / 2);
     const col = inRange ? "#ff8f4a" : "#8a8085";
 
     circlePx(ax, ay, 23.5, col, 12);
@@ -2448,16 +2316,22 @@
     for (const [dx, dy] of [[0, -4], [0, 4], [-4, 0], [4, 0]]) g.fillRect(ax + dx, ay + dy, 1, 1);
   }
 
+  // Pozice kurzoru ve světě (logické jednotky), nebo null, když kurzor není nad mapou.
+  let hoverWorld = null;
+
   function updateHover() {
     hover = null;
+    hoverWorld = null;
 
-    if (mouse.y >= MAP_HEIGHT || mouse.y < 0 || mouse.x < 0) return;
+    if (mouse.y >= mapAreaH() || mouse.y < 0 || mouse.x < 0 || PK.hud.minimapHit(mouse.x, mouse.y)) return;
+
+    hoverWorld = toWorld(mouse);
 
     const friend =
-      findEntity(mouse.x, mouse.y, units.filter(u => u.team === me), 19) ||
-      findEntity(mouse.x, mouse.y, buildings.filter(b => b.team === me), 42);
-    const enemy = enemyAt(mouse.x, mouse.y);
-    const res = resourceAt(mouse.x, mouse.y);
+      findEntity(hoverWorld.x, hoverWorld.y, units.filter(u => u.team === me), 19) ||
+      findEntity(hoverWorld.x, hoverWorld.y, buildings.filter(b => b.team === me), 42);
+    const enemy = enemyAt(hoverWorld.x, hoverWorld.y);
+    const res = resourceAt(hoverWorld.x, hoverWorld.y);
 
     hover = { friend, enemy, res };
   }
@@ -2467,7 +2341,7 @@
   function updateCursor() {
     let name = "default";
 
-    if (mouse.y >= MAP_HEIGHT || !hover) name = "default";
+    if (!hoverWorld || !hover) name = "default";
     else if (placement || spellMode || commandMode) name = "target";
     else if (hover.enemy && selected.some(s => s.kind === "unit")) name = "attack";
     else if (hover.res && selected.some(s => s.type === "worker")) name = "gather";
@@ -2482,8 +2356,8 @@
     // faint team rings keep factions readable at a glance
     for (const u of units) {
       const rx = u.type === "hero" ? 10 : 8;
-      g.globalAlpha = u.team === "red" ? 0.55 : 0.4;
-      g.drawImage(ellipseRing(rx, 3, u.team === "red" ? 0xe2603c : 0x58a6e0), Math.round(u.x / 2) - rx - 1, Math.round(u.y / 2) + 6 - 4);
+      g.globalAlpha = u.team === me ? 0.4 : 0.55;
+      g.drawImage(ellipseRing(rx, 3, PK.TEAM[u.team].ui), Math.round(u.x / 2) - rx - 1, Math.round(u.y / 2) + 6 - 4);
     }
 
     g.globalAlpha = 1;
@@ -2515,23 +2389,48 @@
     for (const e of selected) {
       if (alive(e)) selectionRing(e);
     }
+
+    const sr = selectedResource();
+
+    if (sr) {
+      const gold = sr.type === "gold";
+      g.globalAlpha = 0.75 + 0.25 * Math.sin(clock * 5);
+      g.drawImage(ellipseRing(gold ? 18 : 11, 5, 0xffe08a), Math.round(sr.x / 2) - (gold ? 19 : 12), Math.round(sr.y / 2) + (gold ? 13 : 15) - 6);
+      g.globalAlpha = 1;
+    }
   }
 
   const list = [];
 
   function render(dt) {
     const T = clock;
+    const vw = view.w;
+    const vh = view.mapH;
+    const worldView = { x: cam.x, y: cam.y, w: vw, h: vh };
+    const visible = (ax, ay) => ax > cam.x - 90 && ax < cam.x + vw + 90 && ay > cam.y - 90 && ay < cam.y + vh + 110;
 
-    world.drawGround(g, T);
+    g.fillStyle = "#15121f";
+    g.fillRect(0, 0, view.w, view.h);
+
+    // všechno nad HUD je oříznuto na mapovou část; svět se kreslí posunutý o kameru
+    g.save();
+    g.beginPath();
+    g.rect(0, 0, vw, vh);
+    g.clip();
+
+    g.save();
+    g.translate(-cam.x, -cam.y);
+
+    world.drawGround(g, T, worldView);
     fx.drawGround(g, T);
     drawGroundMarks();
     drawLights(true);
 
     list.length = 0;
-    for (const r of resources) list.push({ y: r.y / 2 + (r.type === "gold" ? 13.5 : 15), k: r.type === "gold" ? 1 : 0, o: r });
-    for (const d of world.doodads) list.push({ y: d.y, k: 2, o: d });
-    for (const b of buildings) list.push({ y: b.y / 2 + 19.5, k: 3, o: b });
-    for (const u of units) list.push({ y: u.y / 2 + 6, k: 4, o: u });
+    for (const r of resources) if (visible(r.x / 2, r.y / 2)) list.push({ y: r.y / 2 + (r.type === "gold" ? 13.5 : 15), k: r.type === "gold" ? 1 : 0, o: r });
+    for (const d of world.doodads) if (visible(d.x, d.y)) list.push({ y: d.y, k: 2, o: d });
+    for (const b of buildings) if (visible(b.x / 2, b.y / 2)) list.push({ y: b.y / 2 + 19.5, k: 3, o: b });
+    for (const u of units) if (visible(u.x / 2, u.y / 2)) list.push({ y: u.y / 2 + 6, k: 4, o: u });
     list.sort((a, b) => a.y - b.y);
 
     for (const it of list) {
@@ -2544,17 +2443,14 @@
 
     fx.drawAir(g, T);
     drawLights(false);
+    g.restore();
 
-    world.drawClouds(g, T);
-    world.drawMist(g, T);
-    world.drawGrade(g);
+    world.drawClouds(g, T, cam);
+    world.drawMist(g, T, cam);
+    world.drawGrade(g, vw, vh);
 
-    if (waveFlash > 0) {
-      for (let k = 0; k < 6; k++) {
-        g.fillStyle = `rgba(214,90,60,${(waveFlash / 1.6) * (0.24 - k * 0.04)})`;
-        g.fillRect(480 - (k + 1) * 3, 0, 3, 240);
-      }
-    }
+    g.save();
+    g.translate(-cam.x, -cam.y);
 
     fx.drawAmbient(g, T);
 
@@ -2564,11 +2460,16 @@
     drawPlacementGhost();
     drawSpellTarget();
 
-    if (pointerStart && pointerEnd && pointerStart.y < MAP_HEIGHT && !placement && !spellMode && !commandMode) {
-      if (Math.hypot(pointerEnd.x - pointerStart.x, pointerEnd.y - pointerStart.y) > 9) {
-        dashedRect(pointerStart.x / 2, pointerStart.y / 2, pointerEnd.x / 2, pointerEnd.y / 2);
+    if (pointerStart && pointerEnd && pointerStart.y < mapAreaH() && !placement && !spellMode && !commandMode) {
+      const end = toWorld(pointerEnd);
+
+      if (Math.hypot(end.x - pointerStart.wx, end.y - pointerStart.wy) > 9) {
+        dashedRect(pointerStart.wx / 2, pointerStart.wy / 2, end.x / 2, end.y / 2);
       }
     }
+
+    g.restore();
+    g.restore();
 
     // HUD
     const hero = selectedHero();
@@ -2577,7 +2478,7 @@
     const barracks = buildings.some(b => b.team === me && b.type === "barracks" && alive(b));
     const heroAlive = units.some(u => u.team === me && u.type === "hero" && alive(u));
     const afford = type => gold >= costs[type].gold && wood >= costs[type].wood;
-    const hoverBtnObj = mouse.y >= MAP_HEIGHT ? PK.hud.hitButton(mouse.x, mouse.y) : null;
+    const hoverBtnObj = mouse.y >= mapAreaH() ? PK.hud.hitButton(mouse.x, mouse.y) : null;
     const pressed = keyPress ? keyPress.type : pressedBtn;
 
     const btn = {
@@ -2594,65 +2495,97 @@
 
     const vm = {
       gold, wood, army: units.filter(u => u.team === me).length, supplyMax: R.SUPPLY_MAX,
-      waveTimer, waveMax, state, elapsed, selected, units, buildings, resources,
+      state, elapsed, selected, units, buildings, resources,
       message, messageTimer, placement, spellMode, commandMode, names, costs, btn,
       hoverBtn: hoverBtnObj ? hoverBtnObj.type : null,
       pressedBtn: pressed,
-      online: mode === "online",
       myTeam: me,
-      opponent: online.opponent,
-      endReason: mode === "online" && state !== "playing" ? endReason() : ""
+      players,
+      resource: selectedResource(),
+      cam: { x: cam.x, y: cam.y, w: view.w, h: view.mapH },
+      spectating: !matchOver && state !== "playing",
+      endReason: matchOver ? endReason() : "",
+      endHint: mode === "online" ? "R: zpět do místnosti · Esc: menu" : "R: nová hra · Esc: menu"
     };
 
-    if (mode === "online" && online.phase === "countdown") drawCountdown();
+    if (matchPhase === "countdown" && mode === "online") drawCountdown();
 
     PK.hud.draw(g, vm, T, dt);
 
-    if (state !== "playing") PK.hud.drawEnd(g, vm, T, endT);
+    if (matchOver && started) PK.hud.drawEnd(g, vm, T, endT);
   }
 
   function drawCountdown() {
-    g.fillStyle = "rgba(10,8,20,0.45)";
-    g.fillRect(0, 0, 480, PK.MAPH);
+    const cx = Math.round(view.w / 2);
+    const top = Math.max(14, Math.round(view.mapH / 2 - 54));
+    const foes = players.filter(p => !p.me).map(p => p.name).join(", ").slice(0, 46);
 
-    PK.text(g, `ZÁPAS PROTI ${online.opponent}`, 240, 66, 0xffe08a, { align: "center", scale: 1 });
-    PK.text(g, me === "blue" ? "HRAJEŠ ZA MODRÉ KRÁLOVSTVÍ" : "HRAJEŠ ZA RUDOU PEVNOST", 240, 80, me === "blue" ? 0x8fd0ff : 0xff9a7a, { align: "center" });
-    PK.text(g, String(Math.max(1, online.count)), 240, 104, 0xfff6cc, { align: "center", scale: 5, outline: C.ink, shadow: null });
+    g.fillStyle = "rgba(10,8,20,0.45)";
+    g.fillRect(0, 0, view.w, view.mapH);
+
+    PK.text(g, `ZÁPAS PROTI ${foes}`, cx, top, 0xffe08a, { align: "center", scale: 1 });
+    PK.text(g, `HRAJEŠ ZA: ${R.TEAM_NAMES[me].toUpperCase()}`, cx, top + 14, PK.TEAM[me].ui, { align: "center" });
+    PK.text(g, String(Math.max(1, online.count)), cx, top + 38, 0xfff6cc, { align: "center", scale: 5, outline: C.ink, shadow: null });
   }
 
   /* ======================= display scaling ======================= */
   const stage = document.querySelector("#stage");
   let scale = 1;
 
+  // Okno určuje velikost bufferu: výška drží původní poměr (310 art px při největším zvětšení),
+  // šířka se přizpůsobí poměru stran okna, takže na širokém monitoru je vidět víc mapy.
   function fit() {
+    const MIN_W = 480;
+    const MIN_H = 310;
     const dpr = window.devicePixelRatio || 1;
     const availW = Math.max(160, stage.clientWidth);
     const availH = Math.max(120, stage.clientHeight);
-    const k = Math.floor(Math.min(availW * dpr / PK.VW, availH * dpr / PK.VH));
+    const k = Math.floor(Math.min(availW * dpr / MIN_W, availH * dpr / MIN_H));
+    let vw;
+    let vh;
     let cw;
     let ch;
     let cssW;
     let cssH;
 
     if (settings.pixel && k >= 1) {
-      cw = PK.VW * k;
-      ch = PK.VH * k;
+      vw = Math.max(MIN_W, Math.floor(availW * dpr / k));
+      vh = Math.max(MIN_H, Math.floor(availH * dpr / k));
+      cw = vw * k;
+      ch = vh * k;
       cssW = cw / dpr;
       cssH = ch / dpr;
     } else {
-      const s = Math.min(availW / PK.VW, availH / PK.VH);
-      cssW = PK.VW * s;
-      cssH = PK.VH * s;
-      cw = Math.max(PK.VW, Math.round(cssW * dpr));
-      ch = Math.max(PK.VH, Math.round(cssH * dpr));
+      const s = Math.min(availW / MIN_W, availH / MIN_H);
+      vw = Math.max(MIN_W, Math.floor(availW / s));
+      vh = Math.max(MIN_H, Math.floor(availH / s));
+      cssW = vw * s;
+      cssH = vh * s;
+      cw = Math.max(vw, Math.round(cssW * dpr));
+      ch = Math.max(vh, Math.round(cssH * dpr));
+    }
+
+    view.w = vw;
+    view.h = vh;
+    view.mapH = vh - view.hudH;
+
+    if (bufCanvas.width !== vw || bufCanvas.height !== vh) {
+      bufCanvas.width = vw;
+      bufCanvas.height = vh;
+      g.imageSmoothingEnabled = false;
     }
 
     canvas.width = cw;
     canvas.height = ch;
     canvas.style.width = `${cssW}px`;
     canvas.style.height = `${cssH}px`;
-    scale = cw / PK.VW;
+    scale = cw / vw;
+    // pravý horní roh zabírá tlačítko menu (cca 54 css px), HUD se mu vyhne
+    view.inset = Math.ceil(54 / (cssW / vw));
     display.imageSmoothingEnabled = false;
+
+    PK.hud.relayout();
+    setCam(camF.x, camF.y);
   }
 
   function present() {
@@ -2660,14 +2593,15 @@
     const sx = s > 0.05 ? Math.round((Math.random() - 0.5) * 2 * s) : 0;
     const sy = s > 0.05 ? Math.round((Math.random() - 0.5) * 2 * s) : 0;
     const k = scale;
+    const mapH = view.mapH;
 
     display.imageSmoothingEnabled = false;
     display.fillStyle = "#15121f";
 
     if (sx || sy) {
-      display.fillRect(0, 0, canvas.width, PK.MAPH * k);
-      display.drawImage(bufCanvas, 0, 0, PK.VW, PK.MAPH, sx * k, sy * k, PK.VW * k, PK.MAPH * k);
-      display.drawImage(bufCanvas, 0, PK.MAPH, PK.VW, PK.VH - PK.MAPH, 0, PK.MAPH * k, PK.VW * k, (PK.VH - PK.MAPH) * k);
+      display.fillRect(0, 0, canvas.width, mapH * k);
+      display.drawImage(bufCanvas, 0, 0, view.w, mapH, sx * k, sy * k, view.w * k, mapH * k);
+      display.drawImage(bufCanvas, 0, mapH, view.w, view.h - mapH, 0, mapH * k, view.w * k, (view.h - mapH) * k);
     } else {
       display.drawImage(bufCanvas, 0, 0, canvas.width, canvas.height);
     }
@@ -2687,11 +2621,15 @@
 
     previousFrame = now;
 
-    const onlineLive = mode === "online" && started;
+    // online běží i s otevřeným menu, hra proti AI se pauzuje
+    const running = !menuOpen || (mode === "online" && started);
 
-    if (!menuOpen || onlineLive) {
-      if (mode === "online") netUpdate(dt);
-      else update(dt);
+    if (running) {
+      if (started) {
+        if (mode === "ai") pumpSim(dt);
+        netUpdate(dt);
+        updateCamera(dt);
+      }
 
       updateVisuals(dt);
       updateHover();
@@ -2699,6 +2637,9 @@
     } else if (!started) {
       updateVisuals(dt);
     }
+
+    audio.listener.x = cam.x * 2;
+    audio.listener.w = view.w * 2;
     render(dt);
     present();
 
@@ -2706,8 +2647,9 @@
   }
 
   PK.hud.drawLogo(document.querySelector("#logo"));
-  fit();
   reset();
+  loadMap(map, 0);
+  fit();
   requestAnimationFrame(frame);
 
   // read-only handle for tests and debugging
@@ -2719,13 +2661,14 @@
     get buildings() { return buildings; },
     get resources() { return resources; },
     get selected() { return selected; },
-    get waveTimer() { return waveTimer; },
     get mode() { return mode; },
     get me() { return me; },
+    get map() { return map; },
+    get cam() { return cam; },
     online,
-    cheat(k, v) { if (k === "gold") gold = v; if (k === "wood") wood = v; if (k === "wave") waveTimer = v; },
-    spawn: createUnit,
+    cheat(k, v) { if (k === "gold") gold = v; if (k === "wood") wood = v; },
     select(list) { selected = list; },
+    startOffline,
     reset
   };
 })();

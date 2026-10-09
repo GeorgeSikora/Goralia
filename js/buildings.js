@@ -523,7 +523,7 @@
 
       const ex = 3 + Math.round(Math.sin(4 * 0.55 + f * 1.57) * (4 / h) * 1.4);
 
-      if (team === "blue") {
+      if (team !== "red") {
         const ring = [".XX..", "X...X", "X...X", "X...X", ".XXX."];
         ring.forEach((row, r) => {
           for (let i = 0; i < 5; i++) if (row[i] === "X") P.set(ex - 1 + i, 4 + r, T.accent);

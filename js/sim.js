@@ -1,56 +1,82 @@
 /*
- * Autoritativní simulace zápasu 1v1.
- * Klienti posílají jen záměry (rozkazy, nákup, stavba, kouzla). Server je ověří
- * a sám spočítá ekonomiku, pohyb, souboje i výsledek, takže nejde podvádět.
+ * Autoritativní simulace zápasu pro 2 až 4 hráče (každý sám za sebe), lidi i AI.
+ * Klienti posílají jen záměry (rozkazy, nákup, stavba, kouzla). Simulace je ověří
+ * a sáma spočítá ekonomiku, pohyb, souboje i výsledek, takže nejde podvádět.
+ * Běží na serveru (online) i v prohlížeči (hra proti AI).
  */
+(function (root, factory) {
+  if (typeof module === "object" && module.exports) {
+    module.exports = factory(require("./rules.js"), require("./ai.js"));
+  } else {
+    (root.PK = root.PK || {}).sim = factory(root.PK.rules, root.PK.ai);
+  }
+})(typeof window !== "undefined" ? window : globalThis, (R, AI) => {
 "use strict";
-
-const R = require("../js/rules.js");
 
 const TICK = 0.05;
 const MAX_IDS = 40;
 
 const UNIT_TYPES = ["worker", "soldier", "archer", "hero"];
 const BUILDING_TYPES = ["hall", "citadel", "barracks", "tower"];
-const ORDER_CODES = { move: 1, attack: 2, gather: 3 };
+const ORDER_CODES = { move: 1, attack: 2, gather: 3, deliver: 4 };
 
 const alive = entity => !!entity && entity.hp > 0;
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
-const foe = team => (team === "blue" ? "red" : "blue");
 const xpNeeded = level => level * 40;
 const round1 = v => Math.round(v * 10) / 10;
 const isNum = v => typeof v === "number" && Number.isFinite(v);
+const teamIndex = team => R.TEAMS.indexOf(team);
 
 class Match {
-  constructor(names) {
-    this.names = names;
+  // players: pole podle slotů mapy, každý prvek { name, ai } nebo null (prázdný slot bez základny).
+  constructor(map, players, opts = {}) {
+    this.map = map;
+    this.LW = map.size[0] * 2;
+    this.LH = map.size[1] * 2;
+    this.players = map.slots.map((_, i) => players[i] || null);
     this.nextId = 1;
     this.units = [];
     this.buildings = [];
     this.resources = [];
-    this.econ = {
-      blue: { gold: R.BASE_GOLD, wood: R.BASE_WOOD },
-      red: { gold: R.BASE_GOLD, wood: R.BASE_WOOD }
-    };
+    this.active = [];
+    this.out = new Set();
+    this.econ = {};
+    this.notes = {};
+    this.brains = {};
     this.phase = "countdown";
-    this.countdown = R.COUNTDOWN;
+    this.countdown = opts.countdown == null ? R.COUNTDOWN : opts.countdown;
+    if (this.countdown <= 0) this.phase = "playing";
     this.elapsed = 0;
     this.winner = null;
     this.reason = null;
     this.events = [];
-    this.notes = { blue: [], red: [] };
 
-    for (const b of R.LAYOUT.buildings) this.createBuilding(b.type, b.team, b.x, b.y, false);
-    for (const u of R.LAYOUT.units) this.createUnit(u.type, u.team, u.x, u.y);
+    map.slots.forEach((slot, i) => {
+      if (!this.players[i]) return;
 
-    for (const [x, y] of R.LAYOUT.gold) {
-      this.resources.push({ id: this.nextId++, type: "gold", x, y, amount: Infinity });
+      const team = R.TEAMS[i];
+      this.active.push(team);
+      this.econ[team] = { gold: R.BASE_GOLD, wood: R.BASE_WOOD };
+      this.notes[team] = [];
+      if (this.players[i].ai) this.brains[team] = AI.createBrain(team);
+
+      this.createBuilding(slot.hq.type, team, slot.hq.x, slot.hq.y, false);
+      for (const b of slot.buildings) this.createBuilding(b.type, team, b.x, b.y, false);
+      for (const u of slot.units) this.createUnit(u.type, team, u.x, u.y);
+    });
+
+    for (const [x, y, amount] of map.gold) {
+      this.resources.push({ id: this.nextId++, type: "gold", x, y, amount: amount || R.GOLD_AMOUNT });
     }
 
-    for (const [x, y] of R.LAYOUT.trees) {
+    for (const [x, y] of map.trees) {
       this.resources.push({ id: this.nextId++, type: "wood", x, y, amount: 100 });
     }
+  }
+
+  slotOf(team) {
+    return this.map.slots[teamIndex(team)];
   }
 
   /* ---------- entities ---------- */
@@ -71,7 +97,7 @@ class Match {
       hp: s.hp, maxHp: s.hp, speed: s.speed, damage: s.damage, range: s.range,
       attackDelay: s.delay, cooldown: 0, fireCooldown: 0, healCooldown: 0,
       order: null, harvestTimer: 0, carry: null, working: false,
-      level: 1, xp: 0, facing: team === "red" ? -1 : 1
+      level: 1, xp: 0, facing: this.slotOf(team).facing
     };
     this.units.push(unit);
     return unit;
@@ -86,7 +112,8 @@ class Match {
   }
 
   note(team, text) {
-    if (this.notes[team].length < 4) this.notes[team].push(text);
+    const list = this.notes[team];
+    if (list && list.length < 4) list.push(text);
   }
 
   entity(id) {
@@ -111,7 +138,7 @@ class Match {
 
   /* ---------- commands (validated, never trusted) ---------- */
   command(team, msg) {
-    if (this.phase !== "playing" || !msg || typeof msg !== "object") return;
+    if (this.phase !== "playing" || this.out.has(team) || !this.econ[team] || !msg || typeof msg !== "object") return;
 
     switch (msg.c) {
       case "train": return this.train(team, msg.type);
@@ -119,7 +146,7 @@ class Match {
       case "order": return this.order(team, msg);
       case "fire": return this.fire(team, msg);
       case "heal": return this.heal(team);
-      case "surrender": return this.finish(foe(team), "surrender");
+      case "surrender": return this.resign(team, "surrender");
       default:
     }
   }
@@ -158,12 +185,13 @@ class Match {
     if (mine.length >= R.SUPPLY_MAX) return this.note(team, "Maximum je 30 jednotek.");
     if (!this.pay(team, type)) return;
 
-    this.createUnit(type, team, source.x + (team === "blue" ? 58 : -58), source.y + 29);
+    const spawn = this.slotOf(team).spawn;
+    this.createUnit(type, team, source.x + spawn[0], source.y + spawn[1]);
     if (type === "hero") this.note(team, "Hrdina připraven: A ohnivá koule, S léčení.");
   }
 
   placementProblem(team, x, y) {
-    const zone = R.buildZone(team);
+    const zone = this.slotOf(team).zone;
 
     if (x < zone.x0 || x > zone.x1 || y < zone.y0 || y > zone.y1) {
       return "Stavět lze jen ve vlastní části mapy.";
@@ -172,7 +200,7 @@ class Match {
     const spot = { x, y };
     const blocked =
       this.buildings.some(b => alive(b) && distance(b, spot) < 90) ||
-      this.resources.some(r => r.amount > 0 && distance(r, spot) < 48);
+      this.resources.some(r => (r.type === "gold" || r.amount > 0) && distance(r, spot) < 48);
 
     return blocked ? "Na tomto místě není dost prostoru." : null;
   }
@@ -213,6 +241,9 @@ class Match {
     } else if (msg.k === "gather") {
       target = this.resources.find(r => r.id === msg.target && r.amount > 0);
       if (!target) return;
+    } else if (msg.k === "deliver") {
+      target = this.buildings.find(b => b.id === msg.target && b.team === team && b.type === R.HQ[team] && alive(b));
+      if (!target) return;
     } else if (msg.k === "move") {
       if (!isNum(msg.x) || !isNum(msg.y)) return;
     } else {
@@ -220,8 +251,8 @@ class Match {
     }
 
     const point = target || {
-      x: clamp(msg.x, 12, R.WIDTH - 12),
-      y: clamp(msg.y, 38, R.MAP_HEIGHT - 14)
+      x: clamp(msg.x, 12, this.LW - 12),
+      y: clamp(msg.y, 38, this.LH - 14)
     };
 
     for (const unit of units) {
@@ -229,6 +260,10 @@ class Match {
         unit.order = { type: "attack", target };
       } else if (msg.k === "gather" && unit.type === "worker") {
         unit.order = { type: "gather", target };
+      } else if (msg.k === "deliver" && unit.type === "worker") {
+        // po vyložení se pokračuje v předchozí těžbě
+        const resume = unit.order && unit.order.type === "gather" ? unit.order.target : null;
+        unit.order = { type: "deliver", target, resume };
       } else {
         unit.order = { type: "move", x: point.x, y: point.y };
       }
@@ -303,8 +338,8 @@ class Match {
 
     const step = Math.min(unit.speed * dt, length - stop);
 
-    unit.x = clamp(unit.x + dx / length * step, 12, R.WIDTH - 12);
-    unit.y = clamp(unit.y + dy / length * step, 38, R.MAP_HEIGHT - 14);
+    unit.x = clamp(unit.x + dx / length * step, 12, this.LW - 12);
+    unit.y = clamp(unit.y + dy / length * step, 38, this.LH - 14);
 
     return length - step <= stop + 0.5;
   }
@@ -331,7 +366,7 @@ class Match {
   awardExperience(attacker, target) {
     if (target.kind !== "unit") return;
 
-    const hero = this.heroOf(foe(target.team));
+    const hero = this.heroOf(attacker.team);
     if (!hero) return;
     if (attacker !== hero && distance(hero, target) > 145) return;
 
@@ -370,28 +405,73 @@ class Match {
     unit.cooldown = unit.attackDelay;
   }
 
+  dropOff(unit) {
+    this.econ[unit.team][unit.carry] += 10;
+    this.events.push({ e: "coin", id: unit.id, r: unit.carry });
+    unit.carry = null;
+  }
+
+  // Nejbližší zásoba stejného druhu, když se ta původní vyčerpala.
+  nextResource(from) {
+    let best = null;
+    let bestDistance = 700;
+
+    for (const r of this.resources) {
+      if (r.type !== from.type || r.amount <= 0) continue;
+      const d = distance(r, from);
+
+      if (d < bestDistance) {
+        best = r;
+        bestDistance = d;
+      }
+    }
+
+    return best;
+  }
+
+  deliver(unit, dt) {
+    const hq = this.hqOf(unit.team);
+
+    if (!hq) {
+      unit.order = null;
+      return false;
+    }
+
+    if (!this.moveTowards(unit, hq, dt, 48)) return true;
+
+    if (unit.carry) this.dropOff(unit);
+
+    const resume = unit.order.resume;
+    unit.order = resume ? { type: "gather", target: resume } : null;
+    return true;
+  }
+
   gather(unit, dt) {
     const order = unit.order;
-    if (!order || order.type !== "gather") return false;
+    if (!order) return false;
+    if (order.type === "deliver") return this.deliver(unit, dt);
+    if (order.type !== "gather") return false;
 
-    const resource = order.target;
     const hq = this.hqOf(unit.team);
 
     if (unit.carry) {
       if (!hq) return true;
-
-      if (this.moveTowards(unit, hq, dt, 48)) {
-        this.econ[unit.team][unit.carry] += 10;
-        this.events.push({ e: "coin", id: unit.id, r: unit.carry });
-        unit.carry = null;
-      }
-
+      if (this.moveTowards(unit, hq, dt, 48)) this.dropOff(unit);
       return true;
     }
 
+    let resource = order.target;
+
     if (!resource || resource.amount <= 0) {
-      unit.order = null;
-      return false;
+      const next = resource && this.nextResource(resource);
+
+      if (!next) {
+        unit.order = null;
+        return false;
+      }
+
+      order.target = next;
+      resource = next;
     }
 
     if (this.moveTowards(unit, resource, dt, resource.type === "gold" ? 31 : 24)) {
@@ -402,7 +482,7 @@ class Match {
       if (unit.harvestTimer >= 0.9) {
         unit.harvestTimer = 0;
         unit.carry = resource.type;
-        if (resource.type === "wood") resource.amount -= 10;
+        resource.amount = Math.max(0, resource.amount - 10);
       }
     }
 
@@ -419,6 +499,10 @@ class Match {
     if (this.phase !== "playing") return;
 
     this.elapsed += dt;
+
+    for (const team of this.active) {
+      if (this.brains[team] && !this.out.has(team)) AI.think(this, this.brains[team], dt);
+    }
 
     for (const building of this.buildings) {
       if (!alive(building)) continue;
@@ -473,13 +557,52 @@ class Match {
 
     this.units = this.units.filter(alive);
     this.buildings = this.buildings.filter(alive);
-    this.resources = this.resources.filter(r => r.amount > 0);
+    this.resources = this.resources.filter(r => r.type === "gold" || r.amount > 0);
 
-    const blueDown = !this.hqOf("blue");
-    const redDown = !this.hqOf("red");
+    this.updateOutcome();
+  }
 
-    if (blueDown || redDown) {
-      this.finish(blueDown && redDown ? null : blueDown ? "red" : "blue", "hq");
+  /* ---------- konec hry ---------- */
+  // Hráč bez HQ vypadává. Hra končí, když zůstane jeden tým nebo žádný člověk.
+  updateOutcome() {
+    const standing = this.active.filter(t => !this.out.has(t));
+    const down = standing.filter(t => !this.hqOf(t));
+    if (!down.length) return;
+
+    if (down.length === standing.length) {
+      for (const t of down) this.out.add(t);
+      this.finish(null, "hq");
+      return;
+    }
+
+    for (const t of down) this.eliminate(t, "hq");
+    this.checkEnd();
+  }
+
+  eliminate(team, why) {
+    if (this.out.has(team)) return;
+
+    this.out.add(team);
+    this.events.push({ e: "out", t: teamIndex(team), why });
+    this.units = this.units.filter(u => u.team !== team);
+    this.buildings = this.buildings.filter(b => b.team !== team);
+  }
+
+  resign(team, why) {
+    if (this.phase === "ended" || this.out.has(team) || !this.econ[team]) return;
+
+    this.eliminate(team, why);
+    this.checkEnd(why);
+  }
+
+  checkEnd(why = "hq") {
+    if (this.phase === "ended") return;
+
+    const standing = this.active.filter(t => !this.out.has(t));
+    const humans = standing.filter(t => !this.brains[t]);
+
+    if (standing.length <= 1 || !humans.length) {
+      this.finish(standing.length === 1 ? standing[0] : null, standing.length === 1 ? why : "defeat");
     }
   }
 
@@ -489,13 +612,13 @@ class Match {
     this.phase = "ended";
     this.winner = winner;
     this.reason = reason;
-    this.events.push({ e: "end", w: winner, why: reason });
+    this.events.push({ e: "end", w: winner ? teamIndex(winner) : -1, why: reason });
   }
 
   /* ---------- state sent to clients ---------- */
   // Jednotka: [id, typ, tým, x, y, hp, maxHp, facing, nese, úroveň, xp, rozkaz, oheň, léčení, práce, poškození]
   snapshot(team) {
-    const eco = this.econ[team];
+    const eco = this.econ[team] || { gold: 0, wood: 0 };
 
     return {
       t: "s",
@@ -507,7 +630,7 @@ class Match {
       u: this.units.map(u => [
         u.id,
         UNIT_TYPES.indexOf(u.type),
-        u.team === "blue" ? 0 : 1,
+        teamIndex(u.team),
         round1(u.x),
         round1(u.y),
         Math.ceil(u.hp),
@@ -526,7 +649,7 @@ class Match {
       b: this.buildings.map(b => [
         b.id,
         BUILDING_TYPES.indexOf(b.type),
-        b.team === "blue" ? 0 : 1,
+        teamIndex(b.team),
         b.x,
         b.y,
         Math.ceil(b.hp),
@@ -538,18 +661,18 @@ class Match {
         r.type === "gold" ? 0 : 1,
         r.x,
         r.y,
-        r.type === "gold" ? -1 : r.amount
+        r.amount
       ]),
       e: this.events,
-      n: this.notes[team]
+      n: this.notes[team] || []
     };
   }
 
   endTick() {
     this.events = [];
-    this.notes.blue = [];
-    this.notes.red = [];
+    for (const team of this.active) this.notes[team] = [];
   }
 }
 
-module.exports = { Match, TICK };
+return { Match, TICK, UNIT_TYPES, BUILDING_TYPES };
+});

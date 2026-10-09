@@ -1,7 +1,8 @@
 /*
  * The world: baked terrain, animated water, grass sway, doodad placement
  * and the atmosphere layers (cloud shadows, mist, vignette, light glows).
- * Art coordinates are 1 px = 2 logical game units.
+ * Art coordinates are 1 px = 2 logical game units. The terrain is generated
+ * from the recipe in PK.maps (map.terrain) and its size comes from the map.
  */
 (() => {
   "use strict";
@@ -9,8 +10,11 @@
   const PK = window.PK;
   const { C, Pix, mix, hash, fbm, vnoise, tnoise, bayer, dither, clamp, smooth, rng, makeCanvas } = PK;
 
-  const W = 480;
-  const H = 240;
+  // Rozměry a recept aktivní mapy (nastavuje activate()).
+  let W = 480;
+  let H = 240;
+  let rec = null;
+  let zone = new Uint8Array(0);
   const G = C.g;
   const D = C.d;
   const S = C.s;
@@ -24,7 +28,7 @@
   const Z_TERRACE = 5;
   const Z_BANK = 6;
 
-  /* ---------- layout (art px) ---------- */
+  /* ---------- the original brook (Valley map, rivers: [{ legacy: true }]) ---------- */
   const BROOK = [
     [0, 372], [25, 369], [48, 364], [75, 368], [105, 368], [128, 369],
     [160, 368], [190, 376], [215, 388], [240, 384]
@@ -44,32 +48,23 @@
 
   const brookHW = y => 6.2 + 1.5 * Math.sin(y * 0.11) + 1.1 * Math.sin(y * 0.31 + 1);
 
-  const ROADS = [
-    { w: 9, main: true, pts: [[40, 148], [80, 138], [115, 132], [170, 128], [230, 127], [290, 129], [340, 129], [366, 129], [376, 138], [384, 152], [400, 160], [425, 161]] },
-    { w: 4.5, pts: [[95, 200], [98, 172], [106, 150], [114, 135]] },
-    { w: 4, pts: [[160, 74], [163, 96], [168, 116], [172, 128]] },
-    { w: 4, pts: [[195, 208], [196, 182], [198, 152], [200, 130]] }
-  ];
+  // 1 = bujná tráva, 0 = popel. Popel leží za hranicí ash.edge nebo uvnitř kruhů ash.circles.
+  const lushAt = (rc, x, y) => {
+    if (!rc.ash.edge && !rc.ash.circles.length) return 1;
 
-  const PLAZAS = [
-    { x: 60, y: 136, rx: 34, ry: 17, kind: "hall" },
-    { x: 95, y: 196, rx: 23, ry: 11, kind: "yard" }
-  ];
+    const n = (fbm(x / 14, y / 14, 12, 2) - 0.5) * 34;
+    let f = 1;
 
-  const TERRACE = { x0: 380, y0: 112, x1: 470, y1: 146, lip: 4, cx: 425 };
+    if (rc.ash.edge) f = 1 - smooth(rc.ash.edge[0], rc.ash.edge[1], x + n);
 
-  const topEdge = x => 15 + 4 * fbm(x / 11, 3.3, 5, 2);
-  const botEdge = x => 234.5 - 2.5 * fbm(x / 9, 8.1, 6, 2);
-  const leftEdge = y => 4 + 3 * fbm(y / 10, 1.7, 7, 2);
-  const rightEdge = y => 475.5 - 3 * fbm(y / 10, 5.9, 8, 2);
+    for (const [cx, cy, r] of rc.ash.circles) {
+      f = Math.min(f, smooth(r * 0.55, r, Math.hypot(cx - x, cy - y) + n));
+    }
 
-  const lushAt = (x, y) => {
-    const f = 1 - smooth(335, 402, x + (fbm(x / 14, y / 14, 12, 2) - 0.5) * 34);
     return f;
   };
 
   /* ---------- state ---------- */
-  const zone = new Uint8Array(W * H);
   const world = {
     W, H, zone,
     terrain: null,
@@ -77,7 +72,8 @@
     doodads: [],
     tufts: [],
     waterFrames: [],
-    waterRect: { x: 340, y: 0, w: 66, h: H },
+    waterRect: null,
+    map: null,
     ready: false
   };
 
@@ -189,14 +185,16 @@
     return c;
   }
 
-  function buildTerrain() {
+  function buildTerrain(b) {
+    const { W, H, zone } = b;
+    const rec = b.map.terrain;
     const T = new Pix(W, H);
 
     // road raster: normalised distance to nearest road
     const nd = new Float32Array(W * H).fill(9);
     const roadId = new Int8Array(W * H).fill(-1);
 
-    ROADS.forEach((road, id) => {
+    rec.roads.forEach((road, id) => {
       const pad = road.w * 1.6 + 4;
 
       for (let i = 0; i < road.pts.length - 1; i++) {
@@ -228,8 +226,50 @@
       }
     });
 
-    const toneMap = new Uint8Array(W * H);
-    const ashMap = new Uint8Array(W * H);
+    const { toneMap, ashMap, rivE } = b;
+
+    // river raster: distance to the nearest river centre line and its half-width there
+    const legacyRiver = rec.rivers.some(r => r.legacy);
+    const rd = new Float32Array(W * H).fill(1e6);
+    const rhw = new Float32Array(W * H);
+
+    for (const river of rec.rivers) {
+      if (!river.pts) continue;
+      const pad = river.hw * 1.6 + 6;
+
+      for (let i = 0; i < river.pts.length - 1; i++) {
+        const [ax, ay] = river.pts[i];
+        const [bx, by] = river.pts[i + 1];
+        const x0 = Math.max(0, Math.floor(Math.min(ax, bx) - pad));
+        const x1 = Math.min(W - 1, Math.ceil(Math.max(ax, bx) + pad));
+        const y0 = Math.max(0, Math.floor(Math.min(ay, by) - pad));
+        const y1 = Math.min(H - 1, Math.ceil(Math.max(ay, by) + pad));
+        const dx = bx - ax;
+        const dy = by - ay;
+        const len2 = dx * dx + dy * dy;
+
+        for (let y = y0; y <= y1; y++) {
+          for (let x = x0; x <= x1; x++) {
+            const t = clamp(((x - ax) * dx + (y - ay) * dy) / len2, 0, 1);
+            const d = Math.hypot(x - (ax + dx * t), y - (ay + dy * t));
+
+            if (d < rd[y * W + x]) {
+              rd[y * W + x] = d;
+              rhw[y * W + x] = river.hw + 1.3 * Math.sin((x + y) * 0.09);
+            }
+          }
+        }
+      }
+    }
+
+    const paved = (x, y) =>
+      rec.paveX.some(([a, c]) => x >= a && x < c) ||
+      rec.pave.some(([px, py, pr]) => Math.hypot(x - px, y - py) < pr);
+
+    const topEdge = x => 15 + 4 * fbm(x / 11, 3.3, 5, 2);
+    const botEdge = x => H - 5.5 - 2.5 * fbm(x / 9, 8.1, 6, 2);
+    const leftEdge = y => 4 + 3 * fbm(y / 10, 1.7, 7, 2);
+    const rightEdge = y => W - 4.5 - 3 * fbm(y / 10, 5.9, 8, 2);
 
     for (let y = 0; y < H; y++) {
       for (let x = 0; x < W; x++) {
@@ -238,7 +278,7 @@
         /* ---- base: lush grass or ash ---- */
         const m = fbm(x / 34, y / 34, 1, 3);
         const m2 = fbm(x / 9, y / 9, 7, 2);
-        const lf = lushAt(x, y) + (fbm(x / 6, y / 6, 3, 2) - 0.5) * 0.35;
+        const lf = lushAt(rec, x, y) + (fbm(x / 6, y / 6, 3, 2) - 0.5) * 0.35;
         const ash = lf < 0.5;
         let col;
         let tone;
@@ -257,14 +297,27 @@
         toneMap[i] = tone;
         let z = Z_GRASS;
 
-        /* ---- brook + banks ---- */
-        const bx = brookX(y);
-        const hw = brookHW(y);
-        const bdx = Math.abs(x - bx + (vnoise(y / 7, 2.2, 6) - 0.5) * 2.4);
+        /* ---- river + banks ---- */
+        let hw = 0;
+        let bdx = 1e6;
+
+        if (legacyRiver) {
+          hw = brookHW(y);
+          bdx = Math.abs(x - brookX(y) + (vnoise(y / 7, 2.2, 6) - 0.5) * 2.4);
+        }
+
+        if (rd[i] < 1e5) {
+          const pd = rd[i] + (vnoise(y / 7, x / 9, 6) - 0.5) * 2.4;
+          if (pd - rhw[i] < bdx - hw) {
+            bdx = pd;
+            hw = rhw[i];
+          }
+        }
 
         if (bdx < hw) {
           z = Z_WATER;
           col = C.v[1];
+          rivE[i] = clamp((hw - bdx) / hw, 0, 1);
         } else if (bdx < hw + 2.6) {
           z = Z_BANK;
           const wet = bdx < hw + 1.2;
@@ -277,14 +330,12 @@
 
         if (n < 1.28 && z !== Z_FRAME) {
           const id = roadId[i];
-          const road = ROADS[id];
+          const road = rec.roads[id];
           const main = road.main;
 
           if (n < 1) {
             const inFord = z === Z_WATER || z === Z_BANK;
-            const nearHall = main && x < 105;
-            const nearGate = main && x > 336;
-            const wantStone = inFord || nearHall || nearGate;
+            const wantStone = inFord || (main && paved(x, y));
             z = Z_PATH;
 
             if (wantStone && n < 0.86 && vnoise(x / 9, y / 9, 17) > (inFord ? 0.05 : 0.38)) {
@@ -307,7 +358,7 @@
         }
 
         /* ---- plazas ---- */
-        for (const p of PLAZAS) {
+        for (const p of rec.plazas) {
           const dx = (x - p.x) / p.rx;
           const dy = (y - p.y) / p.ry;
           const d2 = dx * dx + dy * dy;
@@ -333,8 +384,8 @@
           }
         }
 
-        /* ---- citadel terrace (raised) ---- */
-        {
+        /* ---- raised basalt terraces (red citadel) ---- */
+        for (const TERRACE of rec.terraces) {
           const tx0 = TERRACE.x0 + (vnoise(y / 6, 1, 9) - 0.5) * 2;
           const tx1 = TERRACE.x1 + (vnoise(y / 6, 2, 9) - 0.5) * 2;
 
@@ -412,9 +463,9 @@
 
     /* ---- ember cracks in the ash ---- */
     const R = rng(77);
-    for (let k = 0; k < 46; k++) {
-      let x = 392 + R() * 82;
-      let y = 22 + R() * 208;
+    for (const cr of rec.cracks) for (let k = 0; k < cr.n; k++) {
+      let x = cr.x + R() * cr.w;
+      let y = cr.y + R() * cr.h;
       let a = R() * Math.PI * 2;
       const len = 8 + R() * 22;
 
@@ -434,7 +485,7 @@
     }
 
     /* ---- steps down from the terrace ---- */
-    for (let k = 0; k < 3; k++) {
+    for (const TERRACE of rec.terraces) for (let k = 0; k < 3; k++) {
       const half = 12 - k * 2;
       const y0 = TERRACE.y1 + TERRACE.lip + k * 2;
 
@@ -448,7 +499,7 @@
     }
 
     /* ---- stepping stones & reeds along the brook ---- */
-    for (let y = 8; y < H - 8; y += 3) {
+    for (let y = 8; legacyRiver && y < H - 8; y += 3) {
       const bx = brookX(y);
       const hw = brookHW(y);
 
@@ -467,33 +518,49 @@
       }
     }
 
-    world.toneMap = toneMap;
-    world.ashMap = ashMap;
     return T.toCanvas();
   }
 
   /* ---------- water (4 animated frames) ---------- */
   function buildWater() {
-    const r = world.waterRect;
+    let x0 = W;
+    let y0 = H;
+    let x1 = -1;
+    let y1 = -1;
+
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        if (zone[y * W + x] !== Z_WATER) continue;
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+
+    if (x1 < 0) {
+      world.waterRect = null;
+      return [];
+    }
+
+    const r = { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+    world.waterRect = r;
     const frames = [];
 
     for (let f = 0; f < 4; f++) {
       const P = new Pix(r.w, r.h);
 
       for (let y = 0; y < r.h; y++) {
-        const bx = brookX(y);
-        const hw = brookHW(y);
-
         for (let x = 0; x < r.w; x++) {
           const ax = x + r.x;
-          if (zone[y * W + ax] !== Z_WATER) continue;
+          const ay = y + r.y;
+          if (zone[ay * W + ax] !== Z_WATER) continue;
 
-          const bdx = Math.abs(ax - bx + (vnoise(y / 7, 2.2, 6) - 0.5) * 2.4);
-          const e = clamp((hw - bdx) / hw, 0, 1);
+          const e = world.rivE[ay * W + ax];
           let c = e < 0.2 ? C.v[3] : e < 0.45 ? C.v[2] : C.v[1];
           if (e < 0.2 && hash(x, y, 70) > 0.6) c = C.v[2];
 
-          const wave = Math.sin((y - f * 2) * (Math.PI * 2 / 8) + ax * 0.55 + vnoise(ax / 6, y / 6, 3) * 4);
+          const wave = Math.sin((ay - f * 2) * (Math.PI * 2 / 8) + ax * 0.55 + vnoise(ax / 6, ay / 6, 3) * 4);
           if (wave > 0.82 && e > 0.12) c = C.v[3];
           else if (wave < -0.9) c = C.v[0];
 
@@ -533,10 +600,11 @@
 
     const R = rng(311);
     const list = [];
+    const tf = rec.tufts;
 
-    for (let k = 0; k < 900 && list.length < 240; k++) {
-      const x = 12 + Math.floor(R() * 340);
-      const y = 22 + Math.floor(R() * 205);
+    for (let k = 0; k < tf.tries && list.length < tf.n; k++) {
+      const x = tf.x + Math.floor(R() * tf.w);
+      const y = tf.y + Math.floor(R() * tf.h);
       if (zone[y * W + x] !== Z_GRASS || world.ashMap[y * W + x]) continue;
       if (world.toneMap[y * W + x] < 2) continue;
       list.push({ x, y, ph: R() * 6.28 });
@@ -549,7 +617,7 @@
 
   /* ---------- doodad scatter ---------- */
   function placeDoodads(layout) {
-    const R = rng(2024);
+    const R = rng(rec.seed);
     const dd = PK.props.doodads;
     const list = [];
 
@@ -588,50 +656,21 @@
       return true;
     };
 
-    const scatter = (name, count, x0, x1, y0, y1, r = 8) => {
+    // ashMode: 0 = jen na bujné trávě, 1 = jen na popelu, bez hodnoty kdekoli
+    const scatter = (name, count, x0, x1, y0, y1, r = 8, ashMode) => {
       let placed = 0;
-      for (let k = 0; k < 90 && placed < count; k++) {
-        if (add(name, x0 + R() * (x1 - x0), y0 + R() * (y1 - y0), false, r)) placed++;
+      const tries = ashMode == null ? 90 : 90 + count * 6;
+
+      for (let k = 0; k < tries && placed < count; k++) {
+        const x = x0 + R() * (x1 - x0);
+        const y = y0 + R() * (y1 - y0);
+        if (ashMode != null && world.ashMap[Math.round(y) * W + Math.round(x)] !== ashMode) continue;
+        if (add(name, x, y, false, r)) placed++;
       }
     };
 
-    // landmarks and storytelling
-    add("ringstone", 292, 80, true, 22);
-    add("column", 340, 111, true, 5);
-    add("column", 340, 149, true, 5);
-    add("columnFallen", 322, 153, true, 9);
-    add("stoneA", 349, 146, true, 6);
-    add("campfire", 32, 168, true, 9);
-    add("stump", 18, 172, true, 6);
-    add("stump", 47, 174, true, 6);
-    add("crates", 18, 150, true, 9);
-    add("signpost", 246, 112, true, 5);
-
-    // lanterns light the way along the road
-    for (const [x, y] of [[100, 118], [158, 142], [214, 113], [270, 143], [326, 115], [66, 160], [134, 150]]) {
-      add("lanternPost", x, y, true, 5);
-    }
-
-    // the east smoulders
-    for (const [x, y] of [[396, 114], [396, 148], [372, 100], [374, 162]]) {
-      add(y > 110 && y < 150 ? "brazier" : "skullStake", x, y, true, 5);
-    }
-
-    // everything else is scattered off the beaten path
-    scatter("crystalCyan", 3, 14, 340, 40, 220, 14);
-    scatter("crystalViolet", 3, 14, 340, 40, 220, 14);
-    scatter("monolith", 4, 180, 340, 40, 220, 7);
-    scatter("shroomGlow", 9, 14, 345, 30, 228, 7);
-    scatter("shroomRed", 7, 14, 345, 30, 228, 6);
-    scatter("stoneA", 5, 14, 345, 30, 228, 8);
-    scatter("stoneB", 9, 14, 470, 30, 228, 5);
-    scatter("fern", 16, 14, 345, 30, 228, 6);
-    scatter("stump", 2, 100, 345, 40, 220, 6);
-    scatter("columnFallen", 1, 200, 345, 40, 220, 9);
-
-    scatter("deadTree", 7, 400, 466, 26, 226, 11);
-    scatter("ribs", 1, 396, 466, 160, 226, 11);
-    scatter("skullStake", 4, 396, 466, 26, 226, 5);
+    for (const [name, x, y, force, r] of rec.doodads.landmarks) add(name, x, y, force, r);
+    for (const entry of rec.doodads.scatter) scatter(...entry);
 
     list.sort((a, b) => a.y - b.y);
     world.doodads = list;
@@ -677,13 +716,19 @@
     return out;
   }
 
-  function buildVignette() {
-    const P = new Pix(W, H);
+  // Vinjeta leží na obrazovce, ne na mapě, proto se generuje podle velikosti okna.
+  let vignetteCache = { key: "", canvas: null };
 
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
-        const dx = (x - W / 2) / (W / 2);
-        const dy = (y - H / 2) / (H / 2);
+  function vignetteFor(w, h) {
+    const key = `${w}x${h}`;
+    if (vignetteCache.key === key) return vignetteCache.canvas;
+
+    const P = new Pix(w, h);
+
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const dx = (x - w / 2) / (w / 2);
+        const dy = (y - h / 2) / (h / 2);
         const d = Math.pow(Math.abs(dx), 2.6) * 0.8 + Math.pow(Math.abs(dy), 2.4) * 0.9;
         const v = smooth(0.35, 1.25, d) * 4.2;
         const lv = Math.floor(v + bayer(x, y) - 0.5 + 0.5);
@@ -691,11 +736,12 @@
       }
     }
 
-    return P.toCanvas();
+    vignetteCache = { key, canvas: P.toCanvas() };
+    return vignetteCache.canvas;
   }
 
   function buildWarmth() {
-    const P = new Pix(W, H);
+    const P = new Pix(300, 150);
 
     for (let y = 0; y < 150; y++) {
       for (let x = 0; x < 300; x++) {
@@ -711,71 +757,132 @@
   }
 
   /* ---------- build ---------- */
-  function build(layout) {
-    world.terrain = buildTerrain();
+  // Teren každé mapy se peče jen jednou; náhled v lobby a samotná hra sdílejí stejný výsledek.
+  const bundles = new Map();
+
+  function bundleFor(map) {
+    let b = bundles.get(map.id);
+
+    if (!b) {
+      const [w, h] = map.size;
+      b = {
+        map, W: w, H: h,
+        zone: new Uint8Array(w * h),
+        toneMap: new Uint8Array(w * h),
+        ashMap: new Uint8Array(w * h),
+        rivE: new Float32Array(w * h)
+      };
+      b.canvas = buildTerrain(b);
+      bundles.set(map.id, b);
+    }
+
+    return b;
+  }
+
+  function activate(b) {
+    W = b.W;
+    H = b.H;
+    rec = b.map.terrain;
+    zone = b.zone;
+    Object.assign(world, {
+      W, H, zone, map: b.map, terrain: b.canvas,
+      toneMap: b.toneMap, ashMap: b.ashMap, rivE: b.rivE
+    });
+  }
+
+  const layoutOf = map => ({
+    buildings: map.slots.flatMap(s => [s.hq, ...s.buildings]),
+    resources: [
+      ...map.gold.map(([x, y]) => ({ type: "gold", x, y })),
+      ...map.trees.map(([x, y]) => ({ type: "wood", x, y }))
+    ]
+  });
+
+  // Zmenšený teren se zachováním poměru stran, vejde se do maxW x maxH.
+  function scaled(src, maxW, maxH) {
+    const s = Math.min(maxW / src.width, maxH / src.height);
+    const mm = makeCanvas(Math.max(1, Math.round(src.width * s)), Math.max(1, Math.round(src.height * s)));
+    mm.g.imageSmoothingEnabled = true;
+    mm.g.drawImage(src, 0, 0, mm.c.width, mm.c.height);
+    mm.g.imageSmoothingEnabled = false;
+    return mm.c;
+  }
+
+  function build(map) {
+    if (world.ready && world.map === map) return;
+
+    activate(bundleFor(map));
     world.waterFrames = buildWater();
     world.tuftFrames = buildTufts();
-    placeDoodads(layout);
-    world.clouds = buildClouds();
-    world.mist = buildMist();
-    world.vignette = buildVignette();
-    world.warmth = buildWarmth();
-
-    const mm = makeCanvas(88, 44);
-    mm.g.imageSmoothingEnabled = true;
-    mm.g.drawImage(world.terrain, 0, 0, 88, 44);
-    mm.g.imageSmoothingEnabled = false;
-    world.minimap = mm.c;
+    placeDoodads(layoutOf(map));
+    if (!world.clouds) world.clouds = buildClouds();
+    if (!world.mist) world.mist = buildMist();
+    if (!world.warmth) world.warmth = buildWarmth();
+    world.mistLanes = rec.mist;
+    world.minimap = scaled(world.terrain, 88, 48);
     world.ready = true;
   }
 
+  const preview = (map, maxW, maxH) => scaled(bundleFor(map).canvas, maxW, maxH);
+
   /* ---------- per-frame drawing ---------- */
-  function drawGround(g, T) {
-    g.drawImage(world.terrain, 0, 0);
+  // v = vydělý obdelník světa v art px: { x, y, w, h }; kreslí se ve světových souřadnicích.
+  function drawGround(g, T, v) {
+    const sx = Math.max(0, v.x);
+    const sy = Math.max(0, v.y);
+    const ex = Math.min(W, v.x + v.w);
+    const ey = Math.min(H, v.y + v.h);
+    if (ex <= sx || ey <= sy) return;
+
+    g.drawImage(world.terrain, sx, sy, ex - sx, ey - sy, sx, sy, ex - sx, ey - sy);
 
     const r = world.waterRect;
-    g.drawImage(world.waterFrames[Math.floor(T * 3.2) & 3], r.x, r.y);
+    if (r && r.x < ex && r.x + r.w > sx && r.y < ey && r.y + r.h > sy) {
+      g.drawImage(world.waterFrames[Math.floor(T * 3.2) & 3], r.x, r.y);
+    }
 
     const frames = world.tuftFrames;
 
     for (const t of world.tufts) {
+      if (t.x < sx - 4 || t.x > ex + 4 || t.y < sy - 2 || t.y > ey + 6) continue;
       const s = Math.sin(T * 1.7 + t.ph + t.x * 0.04);
       const f = s > 0.45 ? 2 : s < -0.45 ? 0 : 1;
       g.drawImage(frames[f], t.x - 3, t.y - 5);
     }
   }
 
-  function drawClouds(g, T) {
+  // Mraky, mlha a vinjeta se kreslí na obrazovku (g bez posunutí kamery); v je pozice kamery.
+  function drawClouds(g, T, v) {
     g.globalAlpha = 0.17;
-    const off = Math.floor(T * 3) % 240;
-    const oy = Math.floor(T * 0.8) % 240;
+    const ox = Math.floor(T * 3);
+    const oy = Math.floor(T * 0.8);
 
-    for (let k = -1; k <= 2; k++) {
-      g.drawImage(world.clouds, k * 240 - off, -oy);
-      g.drawImage(world.clouds, k * 240 - off, 240 - oy);
+    for (let i = Math.floor((v.x + ox) / 240); i * 240 - ox < v.x + v.w; i++) {
+      for (let j = Math.floor((v.y + oy) / 240); j * 240 - oy < v.y + v.h; j++) {
+        g.drawImage(world.clouds, i * 240 - ox - v.x, j * 240 - oy - v.y);
+      }
     }
 
     g.globalAlpha = 1;
   }
 
-  function drawMist(g, T) {
+  function drawMist(g, T, v) {
     g.globalAlpha = 0.1;
-    const lanes = [[372, 60, 6], [380, 160, 5], [150, 205, 3.5], [250, 22, 4]];
 
-    lanes.forEach(([x, y, v], k) => {
-      const w = world.mist[k % 4].width;
-      const px = Math.round(((x + T * v) % (W + w)) - w);
-      g.drawImage(world.mist[k % 4], px, y + Math.round(Math.sin(T * 0.4 + k) * 2));
+    world.mistLanes.forEach(([x, y, vel], k) => {
+      const spr = world.mist[k % 4];
+      const px = Math.round(((x + T * vel) % (W + spr.width)) - spr.width);
+      g.drawImage(spr, px - v.x, y + Math.round(Math.sin(T * 0.4 + k) * 2) - v.y);
     });
 
     g.globalAlpha = 1;
   }
 
-  function drawGrade(g) {
+  function drawGrade(g, w, h) {
     g.globalCompositeOperation = "lighter";
     g.drawImage(world.warmth, 0, 0);
     g.globalCompositeOperation = "source-over";
-    g.drawImage(world.vignette, 0, 0);
+    g.drawImage(vignetteFor(w, h), 0, 0);
   }
 
   /* additive light: draws a banded glow centred on (x, y) */
@@ -788,7 +895,7 @@
   }
 
   Object.assign(world, {
-    build, drawGround, drawClouds, drawMist, drawGrade, light, glow, shadow,
+    build, preview, drawGround, drawClouds, drawMist, drawGrade, light, glow, shadow,
     brookX, brookHW,
     zoneAt: (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? Z_FRAME : zone[(y | 0) * W + (x | 0)]),
     Z: { GRASS: Z_GRASS, PATH: Z_PATH, PLAZA: Z_PLAZA, WATER: Z_WATER, FRAME: Z_FRAME, TERRACE: Z_TERRACE, BANK: Z_BANK }

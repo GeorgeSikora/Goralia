@@ -250,20 +250,36 @@
   };
 
   /* ---------- ambient motes ---------- */
+  // Svitělýči a listy nad bujnou trávou, popel nad popelem; počty rostou s velikostí mapy.
   function initAmbient() {
     state.ambient.length = 0;
 
-    for (let i = 0; i < 18; i++) {
-      state.ambient.push({ kind: "firefly", x: rnd(20, 330), y: rnd(30, 220), ph: R() * 6.28, sp: rnd(0.2, 0.6) });
-    }
+    const w = PK.world;
+    if (!w || !w.ready) return;
 
-    for (let i = 0; i < 22; i++) {
-      state.ambient.push({ kind: "ash", x: rnd(380, 470), y: rnd(20, 230), ph: R() * 6.28, sp: rnd(5, 12) });
-    }
+    const area = w.W * w.H / (480 * 240);
 
-    for (let i = 0; i < 7; i++) {
-      state.ambient.push({ kind: "leaf", x: rnd(10, 340), y: rnd(20, 230), ph: R() * 6.28, sp: rnd(5, 10) });
-    }
+    const spot = ash => {
+      for (let k = 0; k < 60; k++) {
+        const x = rnd(14, w.W - 14);
+        const y = rnd(24, w.H - 10);
+        const i = Math.floor(y) * w.W + Math.floor(x);
+        if (w.zone[i] !== w.Z.FRAME && w.ashMap[i] === (ash ? 1 : 0)) return { x, y };
+      }
+
+      return null;
+    };
+
+    const add = (kind, count, ash, sp0, sp1) => {
+      for (let i = 0; i < count; i++) {
+        const p = spot(ash);
+        if (p) state.ambient.push({ kind, x: p.x, y: p.y, ph: R() * 6.28, sp: rnd(sp0, sp1) });
+      }
+    };
+
+    add("firefly", Math.round(18 * area), false, 0.2, 0.6);
+    add("ash", Math.round(22 * area), true, 5, 12);
+    add("leaf", Math.round(7 * area), false, 5, 10);
   }
 
   function drawAmbient(g, T) {
@@ -278,13 +294,13 @@
         g.fillStyle = tw > 0.2 ? "#fff6cc" : "#ffe08a";
         g.fillRect(Math.round(x), Math.round(y), 1, 1);
       } else if (a.kind === "ash") {
-        const x = ((a.x + Math.sin(T * 0.6 + a.ph) * 6 + T * 2) % 100) + 380;
-        const y = (a.y + T * a.sp) % 230 + 10;
+        const x = a.x + Math.sin(T * 0.6 + a.ph) * 6 + ((T * 2 + a.ph * 10) % 24) - 12;
+        const y = a.y + ((T * a.sp + a.ph * 20) % 60) - 30;
         g.fillStyle = (Math.floor(T * 3 + a.ph * 4) & 3) === 0 ? "#ff8f4a" : "#8a8085";
         g.fillRect(Math.round(x), Math.round(y), 1, 1);
       } else {
-        const x = (a.x + Math.sin(T * 0.7 + a.ph) * 12 + T * 3 * (a.sp / 8)) % 345;
-        const y = (a.y + T * a.sp * 0.7) % 220 + 20;
+        const x = a.x + Math.sin(T * 0.7 + a.ph) * 12 + ((T * 3 * (a.sp / 8) + a.ph * 20) % 40) - 20;
+        const y = a.y + ((T * a.sp * 0.7 + a.ph * 30) % 50) - 25;
         g.fillStyle = (Math.floor(a.ph * 3) & 1) ? "#6ba459" : "#98c76a";
         g.fillRect(Math.round(x), Math.round(y), 2, 1);
         g.fillRect(Math.round(x) + 1, Math.round(y) + 1, 1, 1);
@@ -681,7 +697,7 @@
 
     g.save();
     g.beginPath();
-    g.rect(0, 0, 480, Math.round(f.y) - 1);
+    g.rect(0, 0, 8192, Math.round(f.y) - 1);
     g.clip();
     g.globalAlpha = Math.max(0, 1 - Math.max(0, t - 0.7) / 0.3);
     g.drawImage(spr.c, Math.round(f.x) - spr.ax + jx, Math.round(f.y) - spr.ay + sink);

@@ -22,7 +22,7 @@
 
       <section id="panel-main" class="page" data-page="main">
         <p id="menu-status" class="status"></p>
-        <button id="m-online" class="btn big" type="button">Online 1v1</button>
+        <button id="m-online" class="btn big" type="button">Online hra</button>
         <button id="m-play" class="btn big" type="button">Hra proti AI</button>
         <button id="m-restart" class="btn big" type="button" hidden>Nová hra</button>
         <button id="m-surrender" class="btn big" type="button" hidden>Vzdát se</button>
@@ -33,7 +33,7 @@
       </section>
 
       <section id="panel-online" class="page" data-page="online" hidden>
-        <h2>Online 1v1</h2>
+        <h2>Online hra</h2>
         <label class="row">
           <span>Přezdívka</span>
           <input id="o-name" class="field" type="text" maxlength="14" autocomplete="off" spellcheck="false" placeholder="Hrac">
@@ -43,9 +43,29 @@
           <input id="o-server" class="field" type="text" maxlength="120" autocomplete="off" spellcheck="false">
         </label>
         <p id="o-status" class="status lobby-status" aria-live="polite"></p>
+        <div id="o-rooms" class="rooms" role="list"></div>
         <p id="o-stats" class="status small"></p>
-        <button id="o-search" class="btn big" type="button">Hledat soupeře</button>
+        <button id="o-create" class="btn big" type="button">Vytvořit místnost</button>
         <button class="btn big" type="button" data-back id="o-back">Zpět</button>
+      </section>
+
+      <section id="panel-lobby" class="page" data-page="lobby" hidden>
+        <h2 id="l-title">Hra proti AI</h2>
+        <div class="lobby">
+          <div id="l-maps" class="maps" role="listbox" aria-label="Mapy"></div>
+          <div class="detail">
+            <canvas id="l-preview" class="preview" width="320" height="200" role="img" aria-label="Náhled mapy"></canvas>
+            <h3 id="l-name"></h3>
+            <p id="l-desc" class="desc"></p>
+            <p id="l-meta" class="meta"></p>
+          </div>
+          <div id="l-slots" class="slots" aria-label="Hráči"></div>
+        </div>
+        <p id="l-status" class="status" aria-live="polite"></p>
+        <div class="actions">
+          <button id="l-start" class="btn big" type="button">Spustit hru</button>
+          <button id="l-back" class="btn big" type="button">Zpět</button>
+        </div>
       </section>
 
 
@@ -88,9 +108,12 @@
         <p class="goal">
           Levé kliknutí vybírá jednotky, tažení vybere skupinu.
           Pravé kliknutí vydá rozkaz. Na telefonu použij tlačítko
-          <b>ROZKAZ</b> a potom klepni na cíl. Ve hře proti AI znič rudou pevnost.
-          V <b>online 1v1</b> tě server spáruje se soupeřem a zničit musíš jeho hlavní budovu
-          (radnici nebo pevnost); hra běží i při otevřeném menu.
+          <b>ROZKAZ</b> a potom klepni na cíl. Hraješ proti počítačům nebo online v místnosti
+          (až 4 hráči, každý sám za sebe). Vyhrává poslední, komu zůstane hlavní budova
+          (radnice nebo pevnost). Online hra běží i při otevřeném menu.
+          Na velkých mapách posouvej kameru: <b>šipkami</b>, <b>myší u okraje obrazovky</b>,
+          <b>prostředním tlačítkem myši</b> nebo <b>klikem a tažením v minimapě</b>
+          (pravé tlačítko v minimapě pošle jednotky).
         </p>
         <ul class="keys">
           <li><kbd>Q</kbd>dělník</li>
@@ -102,8 +125,9 @@
           <li><kbd>A</kbd>ohnivá koule</li>
           <li><kbd>S</kbd>léčení</li>
           <li><kbd>M</kbd>rozkaz</li>
+          <li><kbd>←↑→↓</kbd>kamera</li>
           <li><kbd>Esc</kbd>menu / zrušit akci</li>
-          <li><kbd>R</kbd>nová hra po konci</li>
+          <li><kbd>R</kbd>další hra po konci</li>
         </ul>
         <button class="btn big" type="button" data-back>Zpět</button>
       </section>
@@ -112,6 +136,9 @@
 </div>
 
 <script src="js/rules.js"></script>
+<script src="js/maps.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/sim.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/pixel.js"></script>
 <script src="js/font.js"></script>
