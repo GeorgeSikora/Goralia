@@ -10,7 +10,10 @@
 
 * { box-sizing: border-box; }
 
-html, body { height: 100%; }
+html, body {
+  height: 100%;
+  overscroll-behavior: none;
+}
 
 body {
   margin: 0;
@@ -91,6 +94,8 @@ body {
   -webkit-user-select: none;
   background: var(--ink);
   cursor: default;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .btn-icon {
@@ -174,6 +179,24 @@ body {
 
 .goal { margin: 0; color: var(--muted); text-align: center; }
 .goal b { color: #ffe9a8; }
+
+.touch-title {
+  margin: 0;
+  color: #ffe9a8;
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.touch-help {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+}
+
+.touch-help li + li { margin-top: 4px; }
+.touch-help b { color: #ffe9a8; }
 
 .status.small { font-size: 11px; opacity: 0.8; }
 .lobby-status { color: #ffe9a8; min-height: 2.8em; white-space: pre-line; }

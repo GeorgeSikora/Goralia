@@ -81,6 +81,19 @@
   const camF = { x: 0, y: 0 };
   let panning = null;
   let minimapDrag = false;
+
+  // Přiblížení světa (násobek měřítka bufferu); diskrétní stupně drží pixel art čitelný.
+  const ZOOMS = [0.5, 0.75, 1, 1.5, 2, 3];
+  let zoom = 1;
+
+  // Dotyk: prsty na mapě, gesto jednoho prstu, štípnutí, setrvačnost posunu a cíl rozpracované akce.
+  const touches = new Map();
+  let touchGesture = null;
+  let pinch = null;
+  let fling = null;
+  let lastTap = null;
+  let lastTouchAt = 0;
+  let aim = null;
   let selectedResourceId = 0;
   let supplyCap = R.SUPPLY_BASE;
   let upgrades = { armor: 0, weapon: 0 };
@@ -150,6 +163,7 @@
     pressedBtn = null;
     panning = null;
     minimapDrag = false;
+    resetTouch();
     endT = 0;
     matchPhase = "";
     matchOver = true;
@@ -416,17 +430,18 @@
     return null;
   }
 
-  function selectAt(x, y) {
+  // grow > 1 zvětší oblast výběru (prst je méně přesný než myš)
+  function selectAt(x, y, grow = 1) {
     const friendlyUnit = findEntity(
       x, y,
       units.filter(unit => unit.team === me),
-      19
+      19 * grow
     );
 
     const friendlyBuilding = findEntity(
       x, y,
       buildings.filter(building => building.team === me),
-      42
+      42 * grow
     );
 
     selected = friendlyUnit
@@ -440,6 +455,25 @@
     selectedResourceId = res ? res.id : 0;
 
     if (selected.length || res) audio.play("select");
+  }
+
+  // Výběr jednotek v obdélníku daném dvěma světovými body.
+  function selectBox(ax, ay, bx, by) {
+    const left = Math.min(ax, bx);
+    const right = Math.max(ax, bx);
+    const top = Math.min(ay, by);
+    const bottom = Math.max(ay, by);
+
+    selected = units.filter(unit =>
+      alive(unit) &&
+      unit.team === me &&
+      unit.x >= left &&
+      unit.x <= right &&
+      unit.y >= top &&
+      unit.y <= bottom
+    );
+    selectedResourceId = 0;
+    if (selected.length) audio.play("select");
   }
 
   const selectedResource = () => (selected.length ? null : resourceMap.get(selectedResourceId) || null);
@@ -576,20 +610,49 @@
   function setCam(x, y) {
     const mw = map.size[0];
     const mh = map.size[1];
-    camF.x = mw <= view.w ? -(view.w - mw) / 2 : clamp(x, 0, mw - view.w);
-    camF.y = mh <= view.mapH ? -(view.mapH - mh) / 2 : clamp(y, 0, mh - view.mapH);
-    cam.x = Math.round(camF.x);
-    cam.y = Math.round(camF.y);
+    const vw = view.w / zoom;
+    const vh = view.mapH / zoom;
+    camF.x = mw <= vw ? -(vw - mw) / 2 : clamp(x, 0, mw - vw);
+    camF.y = mh <= vh ? -(vh - mh) / 2 : clamp(y, 0, mh - vh);
+    // zaokrouhlení na celé pixely bufferu, ne světa, aby posun při zoomu nezadrhával
+    cam.x = Math.round(camF.x * zoom) / zoom;
+    cam.y = Math.round(camF.y * zoom) / zoom;
   }
 
   // x, y ve světových logických jednotkách
   function centerCamera(x, y) {
-    setCam(x / 2 - view.w / 2, y / 2 - view.mapH / 2);
+    setCam(x / 2 - view.w / zoom / 2, y / 2 - view.mapH / zoom / 2);
+  }
+
+  // Změní zoom tak, aby bod (ax, ay) na obrazovce (art px) zůstal na stejném místě světa.
+  function setZoom(next, ax, ay) {
+    const z = clamp(next, ZOOMS[0], ZOOMS[ZOOMS.length - 1]);
+    if (z === zoom) return;
+    const wx = camF.x + ax / zoom;
+    const wy = camF.y + ay / zoom;
+    zoom = z;
+    setCam(wx - ax / zoom, wy - ay / zoom);
+  }
+
+  const nearestZoom = z => ZOOMS.reduce((best, s) => (Math.abs(Math.log(s / z)) < Math.abs(Math.log(best / z)) ? s : best), ZOOMS[0]);
+
+  function stepZoom(dir, ax, ay) {
+    const i = ZOOMS.indexOf(nearestZoom(zoom));
+    setZoom(ZOOMS[clamp(i + dir, 0, ZOOMS.length - 1)], ax, ay);
   }
 
   function updateCamera(dt) {
     let dx = 0;
     let dy = 0;
+
+    // setrvačnost po švihnutí prstem
+    if (fling) {
+      setCam(camF.x + fling.vx * dt, camF.y + fling.vy * dt);
+      const damp = Math.exp(-dt * 4.5);
+      fling.vx *= damp;
+      fling.vy *= damp;
+      if (Math.hypot(fling.vx, fling.vy) < 12) fling = null;
+    }
 
     if (keysDown.has("arrowleft")) dx -= 1;
     if (keysDown.has("arrowright")) dx += 1;
@@ -620,10 +683,13 @@
   }
 
   const mapAreaH = () => view.mapH * 2;
-  const toWorld = p => ({ x: p.x + cam.x * 2, y: p.y + cam.y * 2 });
+  const toWorld = p => ({ x: p.x / zoom + cam.x * 2, y: p.y / zoom + cam.y * 2 });
 
   canvas.addEventListener("contextmenu", event => {
     event.preventDefault();
+
+    // dlouhé podržení prstu vyvolá contextmenu; to nesmí vydat rozkaz
+    if (event.pointerType === "touch" || touches.size || performance.now() - lastTouchAt < 800) return;
 
     if (state !== "playing") return;
 
@@ -663,6 +729,12 @@
 
     canvas.setPointerCapture(event.pointerId);
     const point = pointerPosition(event);
+
+    if (event.pointerType === "touch" && point.y < mapAreaH() && !PK.hud.minimapHit(point.x, point.y)) {
+      touchDown(event, point);
+      return;
+    }
+
     const mini = PK.hud.minimapHit(point.x, point.y);
 
     if (mini) {
@@ -680,13 +752,18 @@
   });
 
   canvas.addEventListener("pointermove", event => {
+    if (touches.has(event.pointerId)) {
+      touchMove(event);
+      return;
+    }
+
     mouse = pointerPosition(event);
 
     if (panning) {
       const bounds = canvas.getBoundingClientRect();
       setCam(
-        panning.x - (event.clientX - panning.cx) * view.w / bounds.width,
-        panning.y - (event.clientY - panning.cy) * view.h / bounds.height
+        panning.x - (event.clientX - panning.cx) * view.w / bounds.width / zoom,
+        panning.y - (event.clientY - panning.cy) * view.h / bounds.height / zoom
       );
       return;
     }
@@ -706,7 +783,12 @@
     mouse = { x: -100, y: -100 };
   });
 
-  canvas.addEventListener("pointercancel", () => {
+  canvas.addEventListener("pointercancel", event => {
+    if (touches.has(event.pointerId)) {
+      touchEnd(event, true);
+      return;
+    }
+
     pointerStart = null;
     pointerEnd = null;
     pressedBtn = null;
@@ -715,6 +797,11 @@
   });
 
   canvas.addEventListener("pointerup", event => {
+    if (touches.has(event.pointerId)) {
+      touchEnd(event, false);
+      return;
+    }
+
     if (event.button === 1) {
       panning = null;
       return;
@@ -768,21 +855,7 @@
     }
 
     if (Math.hypot(world_.x - start.wx, world_.y - start.wy) > 9) {
-      const left = Math.min(world_.x, start.wx);
-      const right = Math.max(world_.x, start.wx);
-      const top = Math.min(world_.y, start.wy);
-      const bottom = Math.max(world_.y, start.wy);
-
-      selected = units.filter(unit =>
-        alive(unit) &&
-        unit.team === me &&
-        unit.x >= left &&
-        unit.x <= right &&
-        unit.y >= top &&
-        unit.y <= bottom
-      );
-      selectedResourceId = 0;
-      if (selected.length) audio.play("select");
+      selectBox(world_.x, world_.y, start.wx, start.wy);
     } else {
       selectAt(world_.x, world_.y);
     }
@@ -796,7 +869,284 @@
     keysDown.clear();
     panning = null;
     minimapDrag = false;
+    resetTouch();
   });
+
+  /* ======================= zoom kolečkem + dotykové ovládání ======================= */
+  let wheelAcc = 0;
+
+  canvas.addEventListener("wheel", event => {
+    event.preventDefault();
+    if (menuOpen || !started || pointerPosition(event).y >= mapAreaH()) return;
+
+    wheelAcc += event.deltaY * (event.deltaMode === 1 ? 33 : 1);
+    if (Math.abs(wheelAcc) < 40) return;
+
+    const a = clientToArt(event.clientX, event.clientY);
+    stepZoom(wheelAcc < 0 ? 1 : -1, a.x, a.y);
+    wheelAcc = 0;
+  }, { passive: false });
+
+  // Prst na mapě: klepnutí vybere nebo velí, tažení posouvá kameru (se setrvačností), podržení + tažení
+  // vybírá rámečkem, dva prsty zoomují a posouvají, dvojité klepnutí na jednotku vybere všechny stejného typu
+  // na obrazovce, dvojité klepnutí do prázdna zruší výběr. HUD a minimapa fungují jako dřív.
+  const TAP_SLOP = 10; // css px, do kolika je pohyb stále klepnutí
+  const LONG_PRESS = 380; // ms
+  const DOUBLE_TAP = 330; // ms
+  const FINGER = 1.5; // zvětšení oblasti výběru pod prstem
+
+  function clientToArt(cx, cy) {
+    const bounds = canvas.getBoundingClientRect();
+    return { x: (cx - bounds.left) * view.w / bounds.width, y: (cy - bounds.top) * view.h / bounds.height };
+  }
+
+  // světové logické jednotky na jeden css px
+  const worldPerCss = () => view.w * 2 / canvas.getBoundingClientRect().width / zoom;
+
+  function resetTouch() {
+    if (touchGesture) {
+      clearTimeout(touchGesture.timer);
+      if (touchGesture.mode === "box") {
+        pointerStart = null;
+        pointerEnd = null;
+      }
+    }
+
+    touches.clear();
+    touchGesture = null;
+    pinch = null;
+    fling = null;
+    lastTap = null;
+    aim = null;
+  }
+
+  function touchDown(event, point) {
+    lastTouchAt = performance.now();
+    if (touches.size >= 2) return;
+
+    touches.set(event.pointerId, { cx: event.clientX, cy: event.clientY });
+    fling = null;
+
+    if (touches.size === 2) {
+      startPinch();
+      return;
+    }
+
+    const w = toWorld(point);
+    const gesture = {
+      id: event.pointerId, mode: "tap", sx: event.clientX, sy: event.clientY, px: event.clientX, py: event.clientY,
+      lt: lastTouchAt, vx: 0, vy: 0, camX: camF.x, camY: camF.y, wx: w.x, wy: w.y, timer: 0
+    };
+
+    gesture.timer = setTimeout(() => {
+      if (touchGesture !== gesture || gesture.mode !== "tap" || state !== "playing" || placement || spellMode || commandMode) return;
+      gesture.mode = "box";
+      pointerStart = { x: point.x, y: point.y, wx: gesture.wx, wy: gesture.wy };
+      pointerEnd = point;
+      if (navigator.vibrate) navigator.vibrate(12);
+    }, LONG_PRESS);
+
+    touchGesture = gesture;
+  }
+
+  function touchMove(event) {
+    const touch = touches.get(event.pointerId);
+    touch.cx = event.clientX;
+    touch.cy = event.clientY;
+    lastTouchAt = performance.now();
+
+    if (pinch) {
+      updatePinch();
+      return;
+    }
+
+    const gesture = touchGesture;
+    if (!gesture || gesture.id !== event.pointerId) return;
+
+    if (gesture.mode === "tap" && Math.hypot(event.clientX - gesture.sx, event.clientY - gesture.sy) > TAP_SLOP) {
+      clearTimeout(gesture.timer);
+      gesture.mode = "pan";
+    }
+
+    if (gesture.mode === "pan") {
+      const k = view.w / canvas.getBoundingClientRect().width / zoom;
+      setCam(gesture.camX - (event.clientX - gesture.sx) * k, gesture.camY - (event.clientY - gesture.sy) * k);
+
+      const dt = lastTouchAt - gesture.lt;
+
+      if (dt >= 8) {
+        gesture.vx = gesture.vx * 0.5 - (event.clientX - gesture.px) * k / (dt / 1000) * 0.5;
+        gesture.vy = gesture.vy * 0.5 - (event.clientY - gesture.py) * k / (dt / 1000) * 0.5;
+        gesture.px = event.clientX;
+        gesture.py = event.clientY;
+        gesture.lt = lastTouchAt;
+      }
+    } else if (gesture.mode === "box") {
+      pointerEnd = pointerPosition(event);
+    }
+  }
+
+  function touchEnd(event, cancelled) {
+    lastTouchAt = performance.now();
+    touches.delete(event.pointerId);
+
+    if (pinch) {
+      if (touches.size < 2) pinch = null;
+      return;
+    }
+
+    const gesture = touchGesture;
+    if (!gesture || gesture.id !== event.pointerId) return;
+
+    clearTimeout(gesture.timer);
+    touchGesture = null;
+
+    if (gesture.mode === "box") {
+      pointerStart = null;
+      pointerEnd = null;
+      if (cancelled || state !== "playing") return;
+
+      const end = toWorld(pointerPosition(event));
+
+      if (Math.hypot(end.x - gesture.wx, end.y - gesture.wy) > 9) selectBox(end.x, end.y, gesture.wx, gesture.wy);
+      else touchTap(event);
+
+      return;
+    }
+
+    if (cancelled) return;
+
+    if (gesture.mode === "pan") {
+      // švihnutí: prst se těsně před puštěním ještě hýbal
+      if (lastTouchAt - gesture.lt < 90 && Math.hypot(gesture.vx, gesture.vy) > 60) {
+        fling = { vx: clamp(gesture.vx, -1800, 1800), vy: clamp(gesture.vy, -1800, 1800) };
+      }
+
+      return;
+    }
+
+    touchTap(event);
+  }
+
+  function startPinch() {
+    if (touchGesture) {
+      clearTimeout(touchGesture.timer);
+      if (touchGesture.mode === "box") {
+        pointerStart = null;
+        pointerEnd = null;
+      }
+      touchGesture = null;
+    }
+
+    const [a, b] = [...touches.values()];
+    const mid = clientToArt((a.cx + b.cx) / 2, (a.cy + b.cy) / 2);
+
+    pinch = {
+      z0: zoom,
+      d0: Math.max(24, Math.hypot(a.cx - b.cx, a.cy - b.cy)),
+      wx: camF.x + mid.x / zoom,
+      wy: camF.y + mid.y / zoom
+    };
+    lastTap = null;
+  }
+
+  // Bod světa mezi prsty zůstává pod nimi: stejný výpočet řeší zoom i dvouprstý posun.
+  function updatePinch() {
+    const [a, b] = [...touches.values()];
+    const mid = clientToArt((a.cx + b.cx) / 2, (a.cy + b.cy) / 2);
+
+    zoom = nearestZoom(pinch.z0 * Math.hypot(a.cx - b.cx, a.cy - b.cy) / pinch.d0);
+    setCam(pinch.wx - mid.x / zoom, pinch.wy - mid.y / zoom);
+  }
+
+  function touchTap(event) {
+    if (state !== "playing") return;
+
+    const w = toWorld(pointerPosition(event));
+
+    if (placement || spellMode === "fire") {
+      aimTap(w);
+      return;
+    }
+
+    if (commandMode) {
+      issueOrder(w.x, w.y);
+      return;
+    }
+
+    const now = performance.now();
+    const prev = lastTap;
+    const again = !!prev && now - prev.t < DOUBLE_TAP && Math.hypot(event.clientX - prev.x, event.clientY - prev.y) < 36;
+    const unit = findEntity(w.x, w.y, units.filter(u => u.team === me), 19 * FINGER);
+    const building = unit ? null : findEntity(w.x, w.y, buildings.filter(b => b.team === me), 42 * FINGER);
+
+    lastTap = { t: now, x: event.clientX, y: event.clientY, type: unit ? unit.type : "" };
+
+    if (unit) {
+      if (again && prev.type === unit.type) {
+        selectVisible(unit.type);
+        lastTap = null;
+      } else {
+        selectAt(w.x, w.y, FINGER);
+      }
+
+      return;
+    }
+
+    const hasUnits = selected.some(e => e.kind === "unit" && alive(e));
+    const hasWorker = selected.some(e => e.type === "worker" && alive(e));
+
+    if (building) {
+      // dělník na rozestavěnou budovu nebo na základnu: pokračuje ve stavbě, vyloží náklad
+      if (hasWorker && (building.progress < 1 || building.type === R.HQ[me])) issueOrder(w.x, w.y);
+      else selectAt(w.x, w.y, FINGER);
+      return;
+    }
+
+    if (again) {
+      selected = [];
+      selectedResourceId = 0;
+      lastTap = null;
+      return;
+    }
+
+    if (hasUnits) issueOrder(w.x, w.y);
+    else selectAt(w.x, w.y, FINGER);
+  }
+
+  // Všechny vlastní jednotky daného typu v právě viditelné části mapy.
+  function selectVisible(type) {
+    const x0 = cam.x * 2;
+    const y0 = cam.y * 2;
+    const x1 = x0 + view.w / zoom * 2;
+    const y1 = y0 + view.mapH / zoom * 2;
+    const list = units.filter(u => alive(u) && u.team === me && u.type === type && u.x >= x0 && u.x <= x1 && u.y >= y0 && u.y <= y1);
+
+    if (!list.length) return;
+    selected = list;
+    selectedResourceId = 0;
+    audio.play("select");
+  }
+
+  // Stavba a kouzlo na dotyku: první klepnutí ukáže cíl (prst ho nezakrývá), druhé na stejné místo ho potvrdí.
+  function aimTap(w) {
+    const near = !!aim && Math.hypot(w.x - aim.x, w.y - aim.y) <= 28 * worldPerCss();
+
+    if (!near) {
+      aim = { x: w.x, y: w.y };
+      return;
+    }
+
+    const at = aim;
+    aim = null;
+
+    if (placement) {
+      placeBuilding(at.x, at.y);
+      if (placement) aim = at;
+    } else {
+      castFire(at.x, at.y);
+    }
+  }
 
   window.addEventListener("keydown", event => {
     const key = event.key.toLowerCase();
@@ -2578,6 +2928,14 @@
     hover = null;
     hoverWorld = null;
 
+    // na dotyku nahrazuje kurzor rozpracovaný cíl stavby nebo kouzla
+    if (!placement && spellMode !== "fire") aim = null;
+
+    if (aim) {
+      hoverWorld = { x: aim.x, y: aim.y };
+      return;
+    }
+
     if (mouse.y >= mapAreaH() || mouse.y < 0 || mouse.x < 0 || PK.hud.minimapHit(mouse.x, mouse.y)) return;
 
     hoverWorld = toWorld(mouse);
@@ -2661,8 +3019,10 @@
     const T = clock;
     const vw = view.w;
     const vh = view.mapH;
-    const worldView = { x: cam.x, y: cam.y, w: vw, h: vh };
-    const visible = (ax, ay) => ax > cam.x - 90 && ax < cam.x + vw + 90 && ay > cam.y - 90 && ay < cam.y + vh + 110;
+    const zw = vw / zoom;
+    const zh = vh / zoom;
+    const worldView = { x: cam.x, y: cam.y, w: zw, h: zh };
+    const visible = (ax, ay) => ax > cam.x - 90 && ax < cam.x + zw + 90 && ay > cam.y - 90 && ay < cam.y + zh + 110;
 
     g.fillStyle = "#15121f";
     g.fillRect(0, 0, view.w, view.h);
@@ -2674,6 +3034,7 @@
     g.clip();
 
     g.save();
+    g.scale(zoom, zoom);
     g.translate(-cam.x, -cam.y);
 
     world.drawGround(g, T, worldView);
@@ -2700,11 +3061,15 @@
     drawLights(false);
     g.restore();
 
+    g.save();
+    g.scale(zoom, zoom);
     world.drawClouds(g, T, cam);
     world.drawMist(g, T, cam);
+    g.restore();
     world.drawGrade(g, vw, vh);
 
     g.save();
+    g.scale(zoom, zoom);
     g.translate(-cam.x, -cam.y);
 
     fx.drawAmbient(g, T);
@@ -2720,6 +3085,9 @@
 
       if (Math.hypot(end.x - pointerStart.wx, end.y - pointerStart.wy) > 9) {
         dashedRect(pointerStart.wx / 2, pointerStart.wy / 2, end.x / 2, end.y / 2);
+      } else if (touchGesture && touchGesture.mode === "box") {
+        // podržení prstu: kroužek potvrzuje, že se začíná vybírat rámečkem
+        circlePx(Math.round(pointerStart.wx / 2), Math.round(pointerStart.wy / 2), 6 + Math.round(Math.sin(clock * 10)), "#fff6cc");
       }
     }
 
@@ -2794,7 +3162,7 @@
       myTeam: me,
       players,
       resource: selectedResource(),
-      cam: { x: cam.x, y: cam.y, w: view.w, h: view.mapH },
+      cam: { x: cam.x, y: cam.y, w: view.w / zoom, h: view.mapH / zoom },
       spectating: !matchOver && state !== "playing",
       endReason: matchOver ? endReason() : "",
       endHint: mode === "online" ? "R: zpět do místnosti · Esc: menu" : "R: nová hra · Esc: menu"
@@ -2931,7 +3299,7 @@
     }
 
     audio.listener.x = cam.x * 2;
-    audio.listener.w = view.w * 2;
+    audio.listener.w = view.w / zoom * 2;
     render(dt);
     present();
 
