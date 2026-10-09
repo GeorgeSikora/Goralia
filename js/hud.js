@@ -213,7 +213,25 @@
     });
   }
 
+  function drawVersus(g, vm) {
+    const mins = Math.floor(vm.elapsed / 60);
+    const secs = Math.floor(vm.elapsed % 60);
+    const label = `${vm.opponent}  ${mins}:${String(secs).padStart(2, "0")}`;
+    const w = 6 + 8 + 4 + PK.textWidth(label) + 3;
+    const x = 480 - 3 - w;
+    const foeColor = vm.myTeam === "blue" ? "#e2603c" : "#58a6e0";
+
+    g.drawImage(frame(w, 15, "plaque"), x, 3);
+    g.fillStyle = INK;
+    g.fillRect(x + 5, 7, 8, 7);
+    g.fillStyle = foeColor;
+    g.fillRect(x + 6, 8, 6, 5);
+    T(g, label, x + 17, 7, 0xf0d9a8);
+  }
+
   function drawWave(g, vm, T0) {
+    if (vm.online) return drawVersus(g, vm);
+
     const secs = Math.ceil(vm.waveTimer);
     const label = `VLNA ZA ${secs} S`;
     const urgent = vm.waveTimer < 4;
@@ -303,7 +321,7 @@
     for (const u of vm.units) {
       const x = mx + Math.round(u.x * sx);
       const y = my + Math.round(u.y * sy);
-      if (u.team === "blue") {
+      if (u.team === vm.myTeam) {
         g.fillStyle = u.type === "hero" ? "#ffe08a" : "#e8f4ff";
         g.fillRect(x, y, 1, 1);
       } else {
@@ -352,7 +370,7 @@
       const fi = Math.floor(T0 * 1.6 + e.id) & 1;
       g.drawImage(PK.units.portrait(e.type, e.team, fi), wx, wy);
     } else {
-      const spr = PK.buildings.get(e.type);
+      const spr = PK.buildings.get(e.type, e.team);
       const cy = { hall: 30, barracks: 30, tower: 22, citadel: 34 }[e.type] || 30;
       g.drawImage(spr.c, wx + 20 - spr.ax, wy + 20 - cy);
     }
@@ -473,11 +491,12 @@
         T(g, status, x0, L.y + 49, status === "ČEKÁ" ? MUTED : 0xf0d088);
       }
     } else {
+      const own = e.team === vm.myTeam;
       const detail = {
         hall: "Výcvik dělníků.",
         barracks: "Výcvik armády a hrdiny.",
         tower: "Automatická obrana.",
-        citadel: "Cíl tvého útoku."
+        citadel: own ? "Výcvik dělníků." : "Cíl tvého útoku."
       }[e.type];
 
       if (e.type === "tower") {
@@ -655,13 +674,23 @@
     g.drawImage(frame(w, h), x, y);
     g.drawImage(PK.icons.ringEmblem(18, win ? C.a[2] : C.r[3], win ? C.a[4] : C.r[5]), 240 - 9, y - 8 + Math.round(Math.sin(T0 * 2)));
 
-    const title = win ? "VÍTĚZSTVÍ!" : "RADNICE PADLA!";
+    const title = vm.online
+      ? (win ? "VÍTĚZSTVÍ!" : vm.state === "draw" ? "REMÍZA" : "PORÁŽKA!")
+      : (win ? "VÍTĚZSTVÍ!" : "RADNICE PADLA!");
     T(g, title, 240, y + 16, win ? 0xffe08a : 0xff8f7a, { align: "center", scale: 2, outline: C.ink, shadow: null });
 
     const mins = Math.floor(vm.elapsed / 60);
     const secs = Math.floor(vm.elapsed % 60);
-    T(g, `ČAS BOJE ${mins}:${String(secs).padStart(2, "0")}`, 240, y + 40, 0xb8b0d4, { align: "center" });
-    T(g, "Klikni na Nová hra nebo stiskni R.", 240, y + 56, 0xf0d088, { align: "center" });
+    const time = `ČAS BOJE ${mins}:${String(secs).padStart(2, "0")}`;
+
+    if (vm.online) {
+      T(g, vm.endReason, 240, y + 33, 0xe8e2f4, { align: "center" });
+      T(g, time, 240, y + 45, 0xb8b0d4, { align: "center" });
+      T(g, "R: další soupeř, Esc: menu.", 240, y + 59, 0xf0d088, { align: "center" });
+    } else {
+      T(g, time, 240, y + 40, 0xb8b0d4, { align: "center" });
+      T(g, "Stiskni R pro novou hru, Esc pro menu.", 240, y + 56, 0xf0d088, { align: "center" });
+    }
   }
 
   /* ---------- title logo (for the page header) ---------- */

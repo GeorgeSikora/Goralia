@@ -63,11 +63,11 @@
   }
 
   /* ---------- Radnice: the Lanternhall ---------- */
-  function hall() {
+  function hall(team = "blue") {
     const W = 72;
     const H = 64;
     const P = new Pix(W, H);
-    const T = TEAM.blue;
+    const T = TEAM[team];
     const stone = brick([C.s[0], C.s[2], C.s[3], C.s[4]], 7, 3, 5);
     const slate = shingle([C.t[0], C.t[1], C.t[2], C.t[3], C.t[4]], 5, 3, 18, 9);
 
@@ -202,11 +202,11 @@
   }
 
   /* ---------- Kasárna ---------- */
-  function barracks() {
+  function barracks(team = "blue") {
     const W = 64;
     const H = 54;
     const P = new Pix(W, H);
-    const T = TEAM.blue;
+    const T = TEAM[team];
     const stone = brick([C.s[0], C.s[2], C.s[3], C.s[4]], 7, 3, 21);
     const roof = shingle([C.t[0], C.t[1], C.t[2], C.t[3], C.t[4]], 4, 3, 11, 4);
 
@@ -577,17 +577,19 @@
 
   const cache = {};
 
-  function get(type) {
-    if (!cache[type]) {
-      cache[type] = {
+  function get(type, team = "blue") {
+    const key = `${type}|${team}`;
+
+    if (!cache[key]) {
+      cache[key] = {
         hall,
         barracks,
         tower,
         citadel
-      }[type]();
+      }[type](team);
     }
 
-    return cache[type];
+    return cache[key];
   }
 
   PK.buildings = {

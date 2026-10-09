@@ -8,42 +8,110 @@
 </head>
 <body>
 <div class="app">
-  <header class="top">
-    <h1 class="logo">
-      <canvas id="logo" role="img" aria-label="Pixelové království"></canvas>
-    </h1>
-    <div class="actions">
-      <button id="mute" class="btn" type="button" aria-pressed="false">Zvuk: zapnutý</button>
-      <button id="restart" class="btn" type="button">Nová hra</button>
-    </div>
-  </header>
-
   <main class="stage" id="stage">
-    <div class="frame">
-      <canvas id="game" width="960" height="620" aria-label="Herní plocha"></canvas>
-    </div>
+    <canvas id="game" width="960" height="620" aria-label="Herní plocha"></canvas>
   </main>
 
-  <footer class="help">
-    <p class="goal">
-      Levé kliknutí vybírá jednotky, tažení vybere skupinu.
-      Pravé kliknutí vydá rozkaz. Na telefonu použij tlačítko
-      <b>ROZKAZ</b> a potom klepni na cíl. Znič rudou pevnost.
-    </p>
-    <ul class="keys">
-      <li><kbd>Q</kbd>dělník</li>
-      <li><kbd>W</kbd>voják</li>
-      <li><kbd>E</kbd>lučištník</li>
-      <li><kbd>H</kbd>hrdina</li>
-      <li><kbd>T</kbd>věž</li>
-      <li><kbd>F</kbd>kasárna</li>
-      <li><kbd>A</kbd>ohnivá koule</li>
-      <li><kbd>S</kbd>léčení</li>
-      <li><kbd>M</kbd>rozkaz</li>
-    </ul>
-  </footer>
+  <button id="menu-btn" class="btn btn-icon" type="button" aria-label="Menu (Esc)" title="Menu (Esc)" hidden>&#9776;</button>
+
+  <div id="menu" class="menu" role="dialog" aria-modal="true" aria-labelledby="menu-title">
+    <div class="panel">
+      <h1 class="logo" id="menu-title">
+        <canvas id="logo" role="img" aria-label="Pixelové království"></canvas>
+      </h1>
+
+      <section id="panel-main" class="page" data-page="main">
+        <p id="menu-status" class="status"></p>
+        <button id="m-online" class="btn big" type="button">Online 1v1</button>
+        <button id="m-play" class="btn big" type="button">Hra proti AI</button>
+        <button id="m-restart" class="btn big" type="button" hidden>Nová hra</button>
+        <button id="m-surrender" class="btn big" type="button" hidden>Vzdát se</button>
+        <button id="m-leave" class="btn big" type="button" hidden>Hlavní menu</button>
+        <button id="m-settings" class="btn big" type="button">Nastavení</button>
+        <button id="m-help" class="btn big" type="button">Ovládání</button>
+        <button id="m-fullscreen" class="btn big" type="button">Celá obrazovka</button>
+      </section>
+
+      <section id="panel-online" class="page" data-page="online" hidden>
+        <h2>Online 1v1</h2>
+        <label class="row">
+          <span>Přezdívka</span>
+          <input id="o-name" class="field" type="text" maxlength="14" autocomplete="off" spellcheck="false" placeholder="Hrac">
+        </label>
+        <label class="row">
+          <span>Server</span>
+          <input id="o-server" class="field" type="text" maxlength="120" autocomplete="off" spellcheck="false">
+        </label>
+        <p id="o-status" class="status lobby-status" aria-live="polite"></p>
+        <p id="o-stats" class="status small"></p>
+        <button id="o-search" class="btn big" type="button">Hledat soupeře</button>
+        <button class="btn big" type="button" data-back id="o-back">Zpět</button>
+      </section>
+
+
+      <section id="panel-settings" class="page" data-page="settings" hidden>
+        <h2>Nastavení</h2>
+        <label class="row">
+          <span>Hlasitost</span>
+          <input id="s-volume" type="range" min="0" max="100" step="5">
+          <output id="s-volume-out">100 %</output>
+        </label>
+        <label class="row">
+          <span>Zvuk</span>
+          <input id="s-sound" type="checkbox">
+        </label>
+        <label class="row">
+          <span>Ruchy prostředí</span>
+          <input id="s-ambient" type="checkbox">
+        </label>
+        <label class="row">
+          <span>Třes obrazovky</span>
+          <input id="s-shake" type="checkbox">
+        </label>
+        <label class="row">
+          <span>Ostré pixely (celočíselné měřítko)</span>
+          <input id="s-pixel" type="checkbox">
+        </label>
+        <label class="row">
+          <span>Celá obrazovka při startu</span>
+          <input id="s-autofs" type="checkbox">
+        </label>
+        <label class="row">
+          <span>Celá obrazovka</span>
+          <button id="s-fullscreen" class="btn" type="button">Zapnout</button>
+        </label>
+        <button class="btn big" type="button" data-back>Zpět</button>
+      </section>
+
+      <section id="panel-help" class="page" data-page="help" hidden>
+        <h2>Ovládání</h2>
+        <p class="goal">
+          Levé kliknutí vybírá jednotky, tažení vybere skupinu.
+          Pravé kliknutí vydá rozkaz. Na telefonu použij tlačítko
+          <b>ROZKAZ</b> a potom klepni na cíl. Ve hře proti AI znič rudou pevnost.
+          V <b>online 1v1</b> tě server spáruje se soupeřem a zničit musíš jeho hlavní budovu
+          (radnici nebo pevnost); hra běží i při otevřeném menu.
+        </p>
+        <ul class="keys">
+          <li><kbd>Q</kbd>dělník</li>
+          <li><kbd>W</kbd>voják</li>
+          <li><kbd>E</kbd>lučištník</li>
+          <li><kbd>H</kbd>hrdina</li>
+          <li><kbd>T</kbd>věž</li>
+          <li><kbd>F</kbd>kasárna</li>
+          <li><kbd>A</kbd>ohnivá koule</li>
+          <li><kbd>S</kbd>léčení</li>
+          <li><kbd>M</kbd>rozkaz</li>
+          <li><kbd>Esc</kbd>menu / zrušit akci</li>
+          <li><kbd>R</kbd>nová hra po konci</li>
+        </ul>
+        <button class="btn big" type="button" data-back>Zpět</button>
+      </section>
+    </div>
+  </div>
 </div>
 
+<script src="js/rules.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/pixel.js"></script>
 <script src="js/font.js"></script>
@@ -54,6 +122,7 @@
 <script src="js/world.js"></script>
 <script src="js/fx.js"></script>
 <script src="js/hud.js"></script>
+<script src="js/net.js"></script>
 <script src="js/game.js"></script>
 </body>
 </html>

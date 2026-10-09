@@ -12,6 +12,8 @@
   const fx = PK.fx;
   const world = PK.world;
   const audio = PK.audio;
+  const R = PK.rules;
+  const net = PK.net;
 
   const canvas = document.querySelector("#game");
   const display = canvas.getContext("2d");
@@ -72,6 +74,34 @@
   let lastBattle = 0;
   let hover = null;
 
+  // "ai": původní hra proti počítači. "online": zápas 1v1, o všem rozhoduje server.
+  let mode = "ai";
+  let me = "blue";
+  let foeTeam = "red";
+
+  const UNIT_TYPES = ["worker", "soldier", "archer", "hero"];
+  const BUILDING_TYPES = ["hall", "citadel", "barracks", "tower"];
+  const ORDER_TYPES = [null, "move", "attack", "gather"];
+
+  const online = {
+    phase: "offline", // offline | connecting | idle | queued | countdown | playing | ended
+    you: "",
+    opponent: "",
+    why: "",
+    stats: { queued: 0, playing: 0 },
+    queuedAt: 0,
+    wantSearch: false,
+    firstSnapshot: true,
+    pendingTrain: 0,
+    pendingBuild: 0,
+    server: "",
+    count: 0,
+    error: ""
+  };
+
+  const unitMap = new Map();
+  const buildingMap = new Map();
+  const resourceMap = new Map();
   const alive = entity => !!entity && entity.hp > 0;
   const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
   const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
@@ -166,10 +196,17 @@
   }
 
   function reset() {
+    mode = "ai";
+    me = "blue";
+    foeTeam = "red";
     units = [];
     buildings = [];
     resources = [];
     selected = [];
+    unitMap.clear();
+    buildingMap.clear();
+    resourceMap.clear();
+    online.firstSnapshot = true;
 
     gold = 260;
     wood = 120;
@@ -225,7 +262,16 @@
       });
     }
 
-    if (!world.ready) world.build({ buildings, resources });
+    if (!world.ready) {
+      // Terén se staví jednou pro obě hry, proto zná i základny a doly soupeře z online zápasu.
+      world.build({
+        buildings: R.LAYOUT.buildings,
+        resources: [
+          ...R.LAYOUT.gold.map(([x, y]) => ({ type: "gold", x, y })),
+          ...R.LAYOUT.trees.map(([x, y]) => ({ type: "wood", x, y }))
+        ]
+      });
+    }
     fx.reset();
   }
 
@@ -301,6 +347,12 @@
         );
       }
 
+      if (mode === "online") {
+        audio.play("click");
+        net.send({ t: "cmd", c: "heal" });
+        return;
+      }
+
       let healed = 0;
       const amount = 42 + hero.level * 10;
 
@@ -343,6 +395,13 @@
       commandMode = false;
       audio.play("click");
       announce("Klikni na volné místo ve vlastní části mapy.");
+      return;
+    }
+
+    if (mode === "online") {
+      audio.play("click");
+      online.pendingTrain = 1.5;
+      net.send({ t: "cmd", c: "train", type });
       return;
     }
 
@@ -421,13 +480,13 @@
   function selectAt(x, y) {
     const friendlyUnit = findEntity(
       x, y,
-      units.filter(unit => unit.team === "blue"),
+      units.filter(unit => unit.team === me),
       19
     );
 
     const friendlyBuilding = findEntity(
       x, y,
-      buildings.filter(building => building.team === "blue"),
+      buildings.filter(building => building.team === me),
       42
     );
 
@@ -442,8 +501,8 @@
 
   function enemyAt(x, y) {
     return (
-      findEntity(x, y, units.filter(unit => unit.team === "red"), 20) ||
-      findEntity(x, y, buildings.filter(building => building.team === "red"), 46)
+      findEntity(x, y, units.filter(unit => unit.team === foeTeam), 20) ||
+      findEntity(x, y, buildings.filter(building => building.team === foeTeam), 46)
     );
   }
 
@@ -461,18 +520,40 @@
     let ordered = false;
     let kind = "move";
 
-    for (const unit of selected) {
-      if (unit.kind !== "unit" || !alive(unit)) continue;
-      ordered = true;
+    if (mode === "online") {
+      const ids = selected
+        .filter(unit => unit.kind === "unit" && alive(unit))
+        .map(unit => unit.id);
 
-      if (enemy) {
-        unit.order = { type: "attack", target: enemy };
-        kind = "attack";
-      } else if (resource && unit.type === "worker") {
-        unit.order = { type: "gather", target: resource };
-        kind = "gather";
-      } else {
-        unit.order = { type: "move", x, y };
+      if (ids.length) {
+        kind = enemy ? "attack" : resource ? "gather" : "move";
+
+        net.send({
+          t: "cmd",
+          c: "order",
+          k: kind,
+          ids,
+          target: enemy ? enemy.id : resource ? resource.id : 0,
+          x: Math.round(x),
+          y: Math.round(y)
+        });
+
+        ordered = true;
+      }
+    } else {
+      for (const unit of selected) {
+        if (unit.kind !== "unit" || !alive(unit)) continue;
+        ordered = true;
+
+        if (enemy) {
+          unit.order = { type: "attack", target: enemy };
+          kind = "attack";
+        } else if (resource && unit.type === "worker") {
+          unit.order = { type: "gather", target: resource };
+          kind = "gather";
+        } else {
+          unit.order = { type: "move", x, y };
+        }
       }
     }
 
@@ -487,11 +568,15 @@
   }
 
   function placementProblem(x, y) {
+    const zone = mode === "online"
+      ? R.buildZone(me)
+      : { x0: 45, x1: 715, y0: 85, y1: MAP_HEIGHT - 45 };
+
     if (
-      x < 45 ||
-      x > 715 ||
-      y < 85 ||
-      y > MAP_HEIGHT - 45
+      x < zone.x0 ||
+      x > zone.x1 ||
+      y < zone.y0 ||
+      y > zone.y1
     ) {
       return "Stavět lze jen ve vlastní části mapy.";
     }
@@ -517,6 +602,21 @@
     const problem = placementProblem(x, y);
     if (problem) return announce(problem);
 
+    if (mode === "online") {
+      net.send({
+        t: "cmd",
+        c: "build",
+        type: placement,
+        x: Math.round(x),
+        y: Math.round(y),
+        ids: selected.filter(e => e.type === "worker" && alive(e)).map(e => e.id)
+      });
+      placement = null;
+      online.pendingBuild = 1.5;
+      audio.play("click");
+      return;
+    }
+
     if (!pay(placement)) return;
 
     const newBuilding = createBuilding(placement, x, y, "blue", true);
@@ -537,6 +637,11 @@
 
     if (distance(hero, { x, y }) > 180) {
       return announce("Cíl je příliš daleko od hrdiny.");
+    }
+
+    if (mode === "online") {
+      net.send({ t: "cmd", c: "fire", x: Math.round(x), y: Math.round(y) });
+      return;
     }
 
     hero.fireCooldown = 10;
@@ -676,7 +781,7 @@
 
       selected = units.filter(unit =>
         alive(unit) &&
-        unit.team === "blue" &&
+        unit.team === me &&
         unit.x >= left &&
         unit.x <= right &&
         unit.y >= top &&
@@ -692,6 +797,24 @@
     if (event.repeat) return;
 
     const key = event.key.toLowerCase();
+
+    if (key === "escape" || key === "p") {
+      if (menuOpen) {
+        const page = pages.find(p => !p.hidden);
+        if (key === "p" && event.target.matches("input")) return;
+        if (page && page.dataset.page !== "main") showPage("main");
+        else if (started) closeMenu();
+      } else if (key === "escape" && (placement || spellMode || commandMode)) {
+        placement = null;
+        spellMode = null;
+        commandMode = false;
+      } else if (started) {
+        openMenu();
+      }
+      return;
+    }
+
+    if (menuOpen || !started) return;
 
     const shortcuts = {
       q: "worker",
@@ -710,36 +833,705 @@
       action(shortcuts[key]);
     }
 
-    if (key === "escape") {
-      placement = null;
-      spellMode = null;
-      commandMode = false;
-    }
-
     if (key === "r" && state !== "playing") {
-      reset();
+      if (mode === "online") searchAgain();
+      else newGame();
     }
   });
 
-  document
-    .querySelector("#restart")
-    .addEventListener("click", reset);
+  /* ======================= menu + settings ======================= */
+  const SETTINGS_KEY = "pk-settings";
+  const settings = { shake: true, pixel: false, autoFullscreen: false };
 
-  const muteBtn = document.querySelector("#mute");
+  try {
+    Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {});
+  } catch (e) { /* storage unavailable or corrupt */ }
 
-  function syncMute() {
-    muteBtn.textContent = audio.muted ? "Zvuk: vypnutý" : "Zvuk: zapnutý";
-    muteBtn.setAttribute("aria-pressed", audio.muted ? "true" : "false");
+  function saveSettings() {
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* ignore */ }
   }
 
-  muteBtn.addEventListener("click", () => {
+  const $ = id => document.getElementById(id);
+  const menuEl = $("menu");
+  const menuBtn = $("menu-btn");
+  const statusEl = $("menu-status");
+  const pages = [...menuEl.querySelectorAll(".page")];
+  let menuOpen = true;
+  let started = false;
+
+  function showPage(name) {
+    if (name !== "online") leaveLobby();
+    for (const page of pages) page.hidden = page.dataset.page !== name;
+    const first = menuEl.querySelector(`.page[data-page="${name}"] button:not([hidden]):not(:disabled)`);
+    if (first) first.focus({ preventScroll: true });
+  }
+
+  const liveOnline = () =>
+    mode === "online" && started && (online.phase === "countdown" || online.phase === "playing");
+
+  function endReason() {
+    const won = state === "win";
+
+    switch (online.why) {
+      case "surrender": return won ? "Soupeř se vzdal." : "Vzdal ses.";
+      case "disconnect": return "Soupeř se odpojil.";
+      case "connection": return "Spojení se serverem bylo přerušeno.";
+      default: return won ? "Soupeřova základna padla." : "Tvoje základna padla.";
+    }
+  }
+
+  function syncMenu() {
+    const onl = mode === "online" && started;
+    const live = liveOnline();
+    const over = onl && !live;
+
+    $("m-online").hidden = onl && !over;
+    $("m-online").textContent = over ? "Hledat dalšího soupeře" : "Online 1v1";
+    $("m-play").textContent = started ? "Pokračovat" : "Hra proti AI";
+    $("m-restart").hidden = !started || onl;
+    $("m-surrender").hidden = !live;
+    $("m-leave").hidden = !over;
+    menuBtn.hidden = !started || menuOpen;
+
+    if (!started) statusEl.textContent = "";
+    else if (live) statusEl.textContent = `Zápas proti ${online.opponent}. Hra běží i s otevřeným menu.`;
+    else if (onl) {
+      statusEl.textContent = `${state === "win" ? "Vítězství!" : state === "lose" ? "Porážka." : "Remíza."} ${endReason()}`;
+    } else if (state === "win") statusEl.textContent = "Vítězství! Rudá pevnost padla.";
+    else if (state === "lose") statusEl.textContent = "Porážka. Zkus to znovu.";
+    else statusEl.textContent = "Hra je pozastavena.";
+
+    // a finished game cannot be resumed
+    $("m-play").hidden = onl ? !live : started && state !== "playing";
+  }
+
+  function openMenu(page = "main") {
+    menuOpen = true;
+    pointerStart = null;
+    pointerEnd = null;
+    pressedBtn = null;
+    mouse = { x: -100, y: -100 };
+    menuEl.hidden = false;
+    syncMenu();
+    showPage(page);
+  }
+
+  function closeMenu() {
+    menuOpen = false;
+    menuEl.hidden = true;
+    syncMenu();
+    previousFrame = performance.now();
+    document.activeElement && document.activeElement.blur();
+  }
+
+  function newGame() {
+    reset();
+    started = true;
+    closeMenu();
+  }
+
+  function play() {
     audio.unlock();
-    audio.toggle();
-    syncMute();
-    audio.play("click");
+    if (settings.autoFullscreen && !isFullscreen()) toggleFullscreen();
+    if (started) closeMenu();
+    else newGame();
+  }
+
+  /* ======================= online: lobby ======================= */
+  const NAME_KEY = "pk-name";
+  const oStatus = $("o-status");
+  const oStats = $("o-stats");
+  const oSearch = $("o-search");
+  const oName = $("o-name");
+  const oServer = $("o-server");
+
+  const playerName = () => oName.value.trim() || "Hrac";
+
+  function syncLobby() {
+    const phase = online.phase;
+    const busy = phase === "connecting" || phase === "queued";
+
+    oName.disabled = busy;
+    oServer.disabled = busy;
+    oSearch.disabled = phase === "connecting";
+    oSearch.textContent = phase === "queued" ? "Zrušit hledání" : phase === "idle" ? "Hledat soupeře" : "Připojit k serveru";
+
+    if (phase === "connecting") {
+      oStatus.textContent = "Připojuji se k serveru…";
+    } else if (phase === "queued") {
+      const s = Math.floor((performance.now() - online.queuedAt) / 1000);
+      oStatus.textContent = `Hledám soupeře… ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}\nAž se někdo najde, hra začne sama.`;
+    } else if (phase === "idle") {
+      oStatus.textContent = "Připojeno. Klikni na Hledat soupeře.";
+    } else {
+      oStatus.textContent = online.error || "Nejsi připojený k serveru.";
+    }
+
+    oStats.textContent = phase === "idle" || phase === "queued"
+      ? `Ve frontě: ${online.stats.queued} · Ve hře: ${online.stats.playing}`
+      : "";
+  }
+
+  function connectLobby(search) {
+    online.wantSearch = !!search;
+    online.error = "";
+    online.phase = "connecting";
+    online.server = oServer.value.trim();
+    syncLobby();
+
+    net.connect(online.server).catch(() => {
+      if (online.phase !== "connecting") return;
+      online.phase = "offline";
+      online.error = "Server není dostupný. Zkontroluj adresu a jestli server běží.";
+      syncLobby();
+    });
+  }
+
+  function startSearch() {
+    try { localStorage.setItem(NAME_KEY, playerName()); } catch (e) { /* ignore */ }
+    net.send({ t: "queue", name: playerName() });
+  }
+
+  function leaveLobby() {
+    const phase = online.phase;
+
+    if (phase === "queued") net.send({ t: "unqueue" });
+
+    if (phase === "queued" || phase === "idle" || phase === "connecting") {
+      online.phase = "offline";
+      online.wantSearch = false;
+      online.error = "";
+      net.close();
+    }
+  }
+
+  function resetToIdle() {
+    reset();
+    started = false;
+    online.phase = net.connected ? "idle" : "offline";
+    syncMenu();
+  }
+
+  function enterLobby(search) {
+    audio.unlock();
+    if (mode === "online") resetToIdle();
+
+    let savedName = "";
+    try { savedName = localStorage.getItem(NAME_KEY) || ""; } catch (e) { /* ignore */ }
+    if (!oName.value) oName.value = savedName;
+
+    if (!oServer.value) {
+      try { oServer.value = localStorage.getItem("pk-server") || ""; } catch (e) { /* ignore */ }
+    }
+
+    oServer.placeholder = net.defaultUrl();
+    showPage("online");
+
+    if (online.phase === "offline") connectLobby(search);
+    else if (search && online.phase === "idle") startSearch();
+
+    syncLobby();
+    oSearch.focus({ preventScroll: true });
+  }
+
+  function lobbyAction() {
+    audio.unlock();
+
+    // změněná adresa serveru = nové spojení
+    if (online.phase === "idle" && oServer.value.trim() !== online.server) {
+      net.close();
+      connectLobby(true);
+    } else if (online.phase === "queued") net.send({ t: "unqueue" });
+    else if (online.phase === "idle") startSearch();
+    else if (online.phase === "offline") connectLobby(true);
+  }
+
+  function searchAgain() {
+    if (mode !== "online" || online.phase !== "ended") return;
+    openMenu("online");
+    enterLobby(true);
+  }
+
+  function leaveOnline() {
+    net.close();
+    resetToIdle();
+    online.phase = "offline";
+    showPage("main");
+  }
+
+  /* ======================= online: match state ======================= */
+  function beginOnlineMatch(m) {
+    reset();
+    units = [];
+    buildings = [];
+    resources = [];
+
+    mode = "online";
+    me = m.team === "red" ? "red" : "blue";
+    foeTeam = me === "blue" ? "red" : "blue";
+    online.phase = "countdown";
+    online.you = m.you;
+    online.opponent = m.opponent;
+    online.why = "";
+    online.pendingTrain = 0;
+    gold = 0;
+    wood = 0;
+    waveTimer = 0;
+    waveMax = 1;
+    started = true;
+    closeMenu();
+  }
+
+  function finishOnline(winner, why) {
+    if (online.phase === "ended") return;
+
+    online.phase = "ended";
+    online.why = why;
+    state = winner === me ? "win" : winner ? "lose" : "draw";
+    endT = 0;
+    placement = null;
+    spellMode = null;
+    commandMode = false;
+    audio.play(state === "win" ? "win" : "lose");
+    syncMenu();
+  }
+
+  function netUnit(id, type, team, x, y) {
+    const s = R.UNITS[type];
+
+    return {
+      id, kind: "unit", type, team, x, y, sx: x, sy: y,
+      hp: s.hp, maxHp: s.hp, speed: s.speed, damage: s.damage, range: s.range,
+      attackDelay: s.delay, cooldown: 0, fireCooldown: 0, healCooldown: 0,
+      order: null, carry: null, level: 1, xp: 0, walkCycle: 0,
+      facing: team === "red" ? -1 : 1,
+      atk: 0, castT: 0, flashT: 0, workT: 0, fxT: 0, moveT: 0, wd: 0, lx: x, ly: y, stepT: 0
+    };
+  }
+
+  function netBuilding(id, type, team, x, y, fresh) {
+    return {
+      id, kind: "building", type, team, x, y, hp: 1, maxHp: 1, cooldown: 0,
+      age: fresh ? 0 : 99, flashT: 0, fireT: 0, smokeAcc: 0
+    };
+  }
+
+  const entityById = id => unitMap.get(id) || buildingMap.get(id) || null;
+
+  function netEvent(e) {
+    switch (e.e) {
+      case "hit": {
+        const attacker = entityById(e.a);
+        const target = entityById(e.t);
+        if (!attacker || !target) return;
+
+        if (!e.s && attacker.kind === "unit") {
+          attacker.atk = 0.3;
+          attacker.facing = target.x < attacker.x ? -1 : 1;
+        }
+
+        hitVisuals(attacker, target, e.n, { silent: !!e.s, delay: e.d || 0 }, !!e.k);
+        break;
+      }
+
+      case "fire": {
+        const hero = unitMap.get(e.h);
+        if (!hero) return;
+        hero.castT = 0.5;
+        hero.facing = e.x < hero.x ? -1 : 1;
+        fx.fireball(hero.x + hero.facing * 14, hero.y - 6, e.x, e.y + 8, 47);
+        audio.play("fireCast", { x: hero.x });
+        fx.later(0.3, () => audio.play("explosion", { x: e.x }));
+        break;
+      }
+
+      case "heal": {
+        const hero = unitMap.get(e.h);
+        if (!hero) return;
+
+        for (const id of e.ids) {
+          const ally = unitMap.get(id);
+          if (!ally) continue;
+          fx.healOn(ally.x, ally.y + 4);
+          fx.text(ally.x, ally.y - 30, `+${e.n}`, 0x9ef7c8);
+        }
+
+        hero.castT = 0.5;
+        fx.healBurst(hero.x, hero.y + 8, 90);
+        audio.play("heal", { x: hero.x });
+        break;
+      }
+
+      case "xp": {
+        const hero = unitMap.get(e.id);
+        if (hero && hero.team === me) fx.text(hero.x, hero.y - 44, `+${e.n} XP`, 0xd0b4ff);
+        break;
+      }
+
+      case "lvl": {
+        const hero = unitMap.get(e.id);
+        if (!hero) return;
+        fx.levelUp(hero.x, hero.y + 8);
+        if (hero.team === me) audio.play("levelUp");
+        break;
+      }
+
+      case "coin": {
+        const unit = unitMap.get(e.id);
+        if (!unit) return;
+        fx.coin(unit.x, unit.y, "+10", e.r === "wood");
+        if (unit.team === me) audio.play("coin", { x: unit.x });
+        break;
+      }
+
+      case "end":
+        finishOnline(e.w, e.why);
+        break;
+
+      default:
+    }
+  }
+
+  function applySnapshot(s) {
+    if (mode !== "online" || online.phase === "ended") return;
+
+    const first = online.firstSnapshot;
+    online.firstSnapshot = false;
+
+    for (const e of s.e) netEvent(e);
+    for (const note of s.n) announce(note);
+
+    if (s.p === "countdown" || s.p === "playing") online.phase = s.p;
+    online.count = s.c;
+    elapsed = s.el;
+    gold = s.g;
+    wood = s.w;
+
+    const seenUnits = new Set();
+
+    for (const d of s.u) {
+      const [id, t, team, x, y, hp, maxHp, face, carry, level, xp, order, fcd, hcd, work, dmg] = d;
+      let u = unitMap.get(id);
+
+      if (!u) {
+        u = netUnit(id, UNIT_TYPES[t], team ? "red" : "blue", x, y);
+        unitMap.set(id, u);
+        units.push(u);
+
+        if (!first) {
+          fx.spawn(u.x, u.y + 12);
+          audio.play("spawn", { x: u.x });
+
+          if (u.team === me && online.pendingTrain > 0) {
+            selected = [u];
+            online.pendingTrain = 0;
+          }
+        }
+      }
+
+      seenUnits.add(id);
+      u.sx = x;
+      u.sy = y;
+      u.hp = hp;
+      u.maxHp = maxHp;
+      u.facing = face ? 1 : -1;
+      u.carry = carry === 1 ? "gold" : carry === 2 ? "wood" : null;
+      u.level = level;
+      u.xp = xp;
+      u.order = order ? { type: ORDER_TYPES[order] } : null;
+      u.fireCooldown = fcd;
+      u.healCooldown = hcd;
+      u.working = !!work;
+      u.damage = dmg;
+    }
+
+    if (seenUnits.size !== units.length) {
+      for (const u of units) if (!seenUnits.has(u.id)) unitMap.delete(u.id);
+      units = units.filter(u => seenUnits.has(u.id));
+    }
+
+    const seenBuildings = new Set();
+
+    for (const d of s.b) {
+      const [id, t, team, x, y, hp, maxHp] = d;
+      let b = buildingMap.get(id);
+
+      if (!b) {
+        b = netBuilding(id, BUILDING_TYPES[t], team ? "red" : "blue", x, y, !first);
+        buildingMap.set(id, b);
+        buildings.push(b);
+
+        if (!first) {
+          fx.build(x, y + 39, b.type === "tower" ? 26 : 56);
+          audio.play("build", { x });
+          if (b.team === me && online.pendingBuild > 0) {
+            selected = [b];
+            online.pendingBuild = 0;
+          }
+        }
+      }
+
+      seenBuildings.add(id);
+      b.hp = hp;
+      b.maxHp = maxHp;
+    }
+
+    if (seenBuildings.size !== buildings.length) {
+      for (const b of buildings) if (!seenBuildings.has(b.id)) buildingMap.delete(b.id);
+      buildings = buildings.filter(b => seenBuildings.has(b.id));
+    }
+
+    const seenResources = new Set();
+
+    for (const d of s.r) {
+      const [id, t, x, y, amount] = d;
+      let r = resourceMap.get(id);
+
+      if (!r) {
+        r = { id, type: t ? "wood" : "gold", x, y, amount: 0, shake: 0 };
+        resourceMap.set(id, r);
+        resources.push(r);
+      }
+
+      seenResources.add(id);
+      r.amount = amount < 0 ? Infinity : amount;
+    }
+
+    if (seenResources.size !== resources.length) {
+      for (const r of resources) if (!seenResources.has(r.id)) resourceMap.delete(r.id);
+      resources = resources.filter(r => seenResources.has(r.id));
+    }
+  }
+
+  function netUpdate(dt) {
+    messageTimer = Math.max(0, messageTimer - dt);
+    online.pendingTrain = Math.max(0, online.pendingTrain - dt);
+    online.pendingBuild = Math.max(0, online.pendingBuild - dt);
+    const k = 1 - Math.exp(-dt * 16);
+
+    for (const u of units) {
+      const dx = u.sx - u.x;
+      const dy = u.sy - u.y;
+
+      if (Math.abs(dx) + Math.abs(dy) > 90) {
+        u.x = u.sx;
+        u.y = u.sy;
+      } else {
+        u.x += dx * k;
+        u.y += dy * k;
+      }
+
+      if (u.working) {
+        u.workT = 0.2;
+        u.fxT -= dt;
+
+        if (u.fxT <= 0) {
+          u.fxT = 0.42;
+          const resource = nearestResource(u);
+
+          if (resource) {
+            resource.shake = 0.22;
+            if (resource.type === "wood") fx.chop(resource.x, resource.y + 14);
+            else fx.mine(resource.x, resource.y + 12);
+            audio.play(resource.type === "wood" ? "wood" : "mine", { x: resource.x });
+          }
+        }
+      }
+    }
+
+    selected = selected.filter(alive);
+  }
+
+  function nearestResource(unit) {
+    let best = null;
+    let bestDistance = 60;
+
+    for (const r of resources) {
+      const d = distance(unit, r);
+
+      if (d < bestDistance) {
+        best = r;
+        bestDistance = d;
+      }
+    }
+
+    return best;
+  }
+
+  net.onmessage = m => {
+    switch (m.t) {
+      case "hello":
+      case "stats":
+        online.stats = { queued: m.queued | 0, playing: m.playing | 0 };
+
+        if (m.t === "hello" && online.phase === "connecting") {
+          online.phase = "idle";
+          if (online.wantSearch) startSearch();
+        }
+
+        syncLobby();
+        break;
+
+      case "queued":
+        online.phase = "queued";
+        online.queuedAt = performance.now();
+        syncLobby();
+        break;
+
+      case "unqueued":
+        if (online.phase === "queued") online.phase = "idle";
+        syncLobby();
+        break;
+
+      case "match":
+        beginOnlineMatch(m);
+        break;
+
+      case "s":
+        applySnapshot(m);
+        break;
+
+      default:
+    }
+  };
+
+  net.onclose = () => {
+    if (mode === "online" && started && (online.phase === "countdown" || online.phase === "playing")) {
+      finishOnline(foeTeam, "connection");
+      return;
+    }
+
+    if (online.phase !== "ended") {
+      online.phase = "offline";
+      online.error = "Spojení se serverem bylo přerušeno.";
+      syncLobby();
+    }
+  };
+
+  setInterval(() => {
+    if (online.phase === "queued" && menuOpen) syncLobby();
+  }, 500);
+
+  /* fullscreen */
+  const fsRoot = document.documentElement;
+
+  function isFullscreen() {
+    return !!(document.fullscreenElement || document.webkitFullscreenElement);
+  }
+
+  function toggleFullscreen() {
+    try {
+      if (isFullscreen()) {
+        (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      } else {
+        const request = fsRoot.requestFullscreen || fsRoot.webkitRequestFullscreen;
+        const result = request && request.call(fsRoot);
+        if (result && result.catch) result.catch(() => {});
+      }
+    } catch (e) { /* fullscreen not available */ }
+  }
+
+  function onFullscreenChange() {
+    const on = isFullscreen();
+    $("m-fullscreen").textContent = on ? "Okno" : "Celá obrazovka";
+    $("s-fullscreen").textContent = on ? "Vypnout" : "Zapnout";
+
+    // lets Escape reach the game so it can open the menu instead of leaving fullscreen
+    if (navigator.keyboard && navigator.keyboard.lock) {
+      if (on) navigator.keyboard.lock(["Escape"]).catch(() => {});
+      else navigator.keyboard.unlock();
+    }
+    fit();
+  }
+
+  document.addEventListener("fullscreenchange", onFullscreenChange);
+  document.addEventListener("webkitfullscreenchange", onFullscreenChange);
+
+  /* wiring */
+  $("m-play").addEventListener("click", play);
+  $("m-online").addEventListener("click", () => enterLobby(mode === "online"));
+  $("m-leave").addEventListener("click", leaveOnline);
+  $("m-surrender").addEventListener("click", () => {
+    if (!liveOnline() || !window.confirm("Opravdu se chceš vzdát?")) return;
+    net.send({ t: "cmd", c: "surrender" });
+    closeMenu();
+  });
+  $("o-search").addEventListener("click", lobbyAction);
+  for (const input of [oName, oServer]) {
+    input.addEventListener("keydown", event => {
+      if (event.key === "Enter" && online.phase !== "queued") lobbyAction();
+    });
+  }
+  $("m-restart").addEventListener("click", () => {
+    audio.unlock();
+    newGame();
+  });
+  $("m-settings").addEventListener("click", () => showPage("settings"));
+  $("m-help").addEventListener("click", () => showPage("help"));
+  $("m-fullscreen").addEventListener("click", toggleFullscreen);
+  $("s-fullscreen").addEventListener("click", toggleFullscreen);
+  menuBtn.addEventListener("click", () => openMenu());
+
+  for (const back of menuEl.querySelectorAll("[data-back]")) {
+    back.addEventListener("click", () => showPage("main"));
+  }
+
+  menuEl.addEventListener("click", event => {
+    if (event.target.closest(".btn")) {
+      audio.unlock();
+      audio.play("click");
+    }
   });
 
-  syncMute();
+  const volumeEl = $("s-volume");
+  const soundEl = $("s-sound");
+
+  function syncSettings() {
+    volumeEl.value = Math.round(audio.volume * 100);
+    $("s-volume-out").textContent = `${volumeEl.value} %`;
+    soundEl.checked = !audio.muted;
+    $("s-ambient").checked = audio.ambient;
+    $("s-shake").checked = settings.shake;
+    $("s-pixel").checked = settings.pixel;
+    $("s-autofs").checked = settings.autoFullscreen;
+  }
+
+  volumeEl.addEventListener("input", () => {
+    audio.unlock();
+    audio.setVolume(volumeEl.value / 100);
+    $("s-volume-out").textContent = `${volumeEl.value} %`;
+  });
+  volumeEl.addEventListener("change", () => audio.play("click"));
+
+  soundEl.addEventListener("change", () => {
+    audio.unlock();
+    audio.setMuted(!soundEl.checked);
+  });
+
+  $("s-ambient").addEventListener("change", event => {
+    audio.unlock();
+    audio.setAmbient(event.target.checked);
+  });
+
+  $("s-shake").addEventListener("change", event => {
+    settings.shake = event.target.checked;
+    saveSettings();
+  });
+
+  $("s-pixel").addEventListener("change", event => {
+    settings.pixel = event.target.checked;
+    saveSettings();
+    fit();
+  });
+
+  $("s-autofs").addEventListener("change", event => {
+    settings.autoFullscreen = event.target.checked;
+    saveSettings();
+  });
+
+  syncSettings();
+  syncMenu();
+  showPage("main");
 
   /* ======================= simulation ======================= */
   function moveTowards(unit, target, dt, stop = 0) {
@@ -843,13 +1635,34 @@
     if (!alive(target)) return;
 
     target.hp -= amount;
+    const killed = target.hp <= 0;
+    if (killed) target.hp = 0;
 
+    hitVisuals(attacker, target, amount, opts, killed);
+
+    if (killed) {
+      awardExperience(attacker, target);
+
+      if (target.type === "citadel") {
+        state = "win";
+        fx.later(1.2, () => audio.play("win"));
+      }
+
+      if (target.type === "hall") {
+        state = "lose";
+        fx.later(1.2, () => audio.play("lose"));
+      }
+    }
+  }
+
+  /* Shared by the local simulation and by hit events from the server. */
+  function hitVisuals(attacker, target, amount, opts, killed) {
     let wait = opts.delay || 0;
     const ranged = attacker.type === "archer" || attacker.type === "tower";
     const tx = target.x;
     const ty = target.kind === "building" ? target.y - 8 : target.y - 6;
     const dirTo = attacker.x <= target.x ? 1 : -1;
-    const friendlyFire = target.team === "blue";
+    const friendlyFire = target.team === me;
 
     const impact = () => {
       if (!opts.silent) fx.hit(tx, ty, amount >= 20);
@@ -874,9 +1687,7 @@
 
     fx.later(wait, impact);
 
-    if (target.hp <= 0) {
-      target.hp = 0;
-
+    if (killed) {
       if (target.kind === "unit") {
         fx.later(wait, () => audio.play("death", { x: tx }));
         fx.corpse({
@@ -888,18 +1699,6 @@
           fx.collapse({ type: target.type, team: target.team, x: target.x, y: target.y });
           audio.play("collapse", { x: tx });
         });
-      }
-
-      awardExperience(attacker, target);
-
-      if (target.type === "citadel") {
-        state = "win";
-        fx.later(1.2, () => audio.play("win"));
-      }
-
-      if (target.type === "hall") {
-        state = "lose";
-        fx.later(1.2, () => audio.play("lose"));
       }
     }
   }
@@ -1163,7 +1962,7 @@
           u.stepT = 14;
           const z = world.zoneAt(u.x / 2, u.y / 2 + 6);
           fx.footstep(u.x, u.y + 12, z === world.Z.WATER || z === world.Z.BANK);
-          audio.play("step", { x: u.x, vol: u.team === "blue" ? 0.5 : 0.35 });
+          audio.play("step", { x: u.x, vol: u.team === me ? 0.5 : 0.35 });
         }
       } else {
         u.moveT = Math.max(0, u.moveT - dt);
@@ -1363,7 +2162,7 @@
   }
 
   function drawBuilding(b) {
-    const spr = PK.buildings.get(b.type);
+    const spr = PK.buildings.get(b.type, b.team);
     const footX = Math.round(b.x / 2);
     const footY = Math.round(b.y / 2) + 19;
     const x0 = footX - spr.ax;
@@ -1655,8 +2454,8 @@
     if (mouse.y >= MAP_HEIGHT || mouse.y < 0 || mouse.x < 0) return;
 
     const friend =
-      findEntity(mouse.x, mouse.y, units.filter(u => u.team === "blue"), 19) ||
-      findEntity(mouse.x, mouse.y, buildings.filter(b => b.team === "blue"), 42);
+      findEntity(mouse.x, mouse.y, units.filter(u => u.team === me), 19) ||
+      findEntity(mouse.x, mouse.y, buildings.filter(b => b.team === me), 42);
     const enemy = enemyAt(mouse.x, mouse.y);
     const res = resourceAt(mouse.x, mouse.y);
 
@@ -1774,9 +2573,9 @@
     // HUD
     const hero = selectedHero();
     const hasWorker = selected.some(e => e.type === "worker" && alive(e));
-    const hall = buildings.some(b => b.type === "hall" && alive(b));
-    const barracks = buildings.some(b => b.type === "barracks" && alive(b));
-    const heroAlive = units.some(u => u.team === "blue" && u.type === "hero" && alive(u));
+    const hall = buildings.some(b => b.team === me && b.type === R.HQ[me] && alive(b));
+    const barracks = buildings.some(b => b.team === me && b.type === "barracks" && alive(b));
+    const heroAlive = units.some(u => u.team === me && u.type === "hero" && alive(u));
     const afford = type => gold >= costs[type].gold && wood >= costs[type].wood;
     const hoverBtnObj = mouse.y >= MAP_HEIGHT ? PK.hud.hitButton(mouse.x, mouse.y) : null;
     const pressed = keyPress ? keyPress.type : pressedBtn;
@@ -1794,16 +2593,31 @@
     };
 
     const vm = {
-      gold, wood, army: units.filter(u => u.team === "blue").length, supplyMax: 30,
+      gold, wood, army: units.filter(u => u.team === me).length, supplyMax: R.SUPPLY_MAX,
       waveTimer, waveMax, state, elapsed, selected, units, buildings, resources,
       message, messageTimer, placement, spellMode, commandMode, names, costs, btn,
       hoverBtn: hoverBtnObj ? hoverBtnObj.type : null,
-      pressedBtn: pressed
+      pressedBtn: pressed,
+      online: mode === "online",
+      myTeam: me,
+      opponent: online.opponent,
+      endReason: mode === "online" && state !== "playing" ? endReason() : ""
     };
+
+    if (mode === "online" && online.phase === "countdown") drawCountdown();
 
     PK.hud.draw(g, vm, T, dt);
 
     if (state !== "playing") PK.hud.drawEnd(g, vm, T, endT);
+  }
+
+  function drawCountdown() {
+    g.fillStyle = "rgba(10,8,20,0.45)";
+    g.fillRect(0, 0, 480, PK.MAPH);
+
+    PK.text(g, `ZÁPAS PROTI ${online.opponent}`, 240, 66, 0xffe08a, { align: "center", scale: 1 });
+    PK.text(g, me === "blue" ? "HRAJEŠ ZA MODRÉ KRÁLOVSTVÍ" : "HRAJEŠ ZA RUDOU PEVNOST", 240, 80, me === "blue" ? 0x8fd0ff : 0xff9a7a, { align: "center" });
+    PK.text(g, String(Math.max(1, online.count)), 240, 104, 0xfff6cc, { align: "center", scale: 5, outline: C.ink, shadow: null });
   }
 
   /* ======================= display scaling ======================= */
@@ -1812,25 +2626,25 @@
 
   function fit() {
     const dpr = window.devicePixelRatio || 1;
-    const availW = Math.max(160, stage.clientWidth - 32);
-    const availH = Math.max(120, stage.clientHeight - 32);
+    const availW = Math.max(160, stage.clientWidth);
+    const availH = Math.max(120, stage.clientHeight);
     const k = Math.floor(Math.min(availW * dpr / PK.VW, availH * dpr / PK.VH));
     let cw;
     let ch;
     let cssW;
     let cssH;
 
-    if (k >= 1) {
+    if (settings.pixel && k >= 1) {
       cw = PK.VW * k;
       ch = PK.VH * k;
       cssW = cw / dpr;
       cssH = ch / dpr;
     } else {
-      cw = PK.VW;
-      ch = PK.VH;
       const s = Math.min(availW / PK.VW, availH / PK.VH);
       cssW = PK.VW * s;
       cssH = PK.VH * s;
+      cw = Math.max(PK.VW, Math.round(cssW * dpr));
+      ch = Math.max(PK.VH, Math.round(cssH * dpr));
     }
 
     canvas.width = cw;
@@ -1842,7 +2656,7 @@
   }
 
   function present() {
-    const s = fx.shake;
+    const s = settings.shake ? fx.shake : 0;
     const sx = s > 0.05 ? Math.round((Math.random() - 0.5) * 2 * s) : 0;
     const sy = s > 0.05 ? Math.round((Math.random() - 0.5) * 2 * s) : 0;
     const k = scale;
@@ -1873,10 +2687,18 @@
 
     previousFrame = now;
 
-    update(dt);
-    updateVisuals(dt);
-    updateHover();
-    updateCursor();
+    const onlineLive = mode === "online" && started;
+
+    if (!menuOpen || onlineLive) {
+      if (mode === "online") netUpdate(dt);
+      else update(dt);
+
+      updateVisuals(dt);
+      updateHover();
+      updateCursor();
+    } else if (!started) {
+      updateVisuals(dt);
+    }
     render(dt);
     present();
 
@@ -1898,6 +2720,9 @@
     get resources() { return resources; },
     get selected() { return selected; },
     get waveTimer() { return waveTimer; },
+    get mode() { return mode; },
+    get me() { return me; },
+    online,
     cheat(k, v) { if (k === "gold") gold = v; if (k === "wood") wood = v; if (k === "wave") waveTimer = v; },
     spawn: createUnit,
     select(list) { selected = list; },

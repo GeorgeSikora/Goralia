@@ -18,7 +18,18 @@
   const AMB_LEVEL = 0.3;
   const lastPlayed = {};
 
-  try { muted = localStorage.getItem("pk-muted") === "1"; } catch (e) { /* storage unavailable */ }
+  let volume = 1;
+  let ambientOn = true;
+  let intensity = 0;
+  try {
+    muted = localStorage.getItem("pk-muted") === "1";
+    const v = parseFloat(localStorage.getItem("pk-volume"));
+    if (isFinite(v)) volume = Math.max(0, Math.min(1, v));
+    ambientOn = localStorage.getItem("pk-ambient") !== "0";
+  } catch (e) { /* storage unavailable */ }
+
+  const masterLevel = () => (muted ? 0 : 0.5 * volume);
+  const ambLevel = () => (ambientOn ? AMB_LEVEL * (1 - 0.6 * intensity) : 0.0001);
 
   function ensure() {
     if (!ctx) {
@@ -26,7 +37,7 @@
       if (!AC) return null;
       ctx = new AC();
       master = ctx.createGain();
-      master.gain.value = muted ? 0 : 0.5;
+      master.gain.value = masterLevel();
       master.connect(ctx.destination);
 
       noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
@@ -280,7 +291,7 @@
 
     amb.gain.cancelScheduledValues(t);
     amb.gain.setValueAtTime(0.0001, t);
-    amb.gain.linearRampToValueAtTime(AMB_LEVEL, t + 4);
+    amb.gain.linearRampToValueAtTime(ambLevel(), t + 4);
 
     ambTimer = setInterval(() => {
       if (muted || !ctx || ctx.state !== "running") return;
@@ -293,14 +304,27 @@
 
   /* the soundscape sits lower while the battle is loud */
   function setIntensity(v) {
+    intensity = Math.max(0, Math.min(1, v));
     if (!amb) return;
-    amb.gain.setTargetAtTime(AMB_LEVEL * (1 - 0.6 * Math.max(0, Math.min(1, v))), ctx.currentTime, 0.5);
+    amb.gain.setTargetAtTime(ambLevel(), ctx.currentTime, 0.5);
   }
 
   function setMuted(value) {
     muted = !!value;
     try { localStorage.setItem("pk-muted", muted ? "1" : "0"); } catch (e) { /* ignore */ }
-    if (master) master.gain.value = muted ? 0 : 0.5;
+    if (master) master.gain.value = masterLevel();
+  }
+
+  function setVolume(value) {
+    volume = Math.max(0, Math.min(1, value));
+    try { localStorage.setItem("pk-volume", String(volume)); } catch (e) { /* ignore */ }
+    if (master) master.gain.value = masterLevel();
+  }
+
+  function setAmbient(value) {
+    ambientOn = !!value;
+    try { localStorage.setItem("pk-ambient", ambientOn ? "1" : "0"); } catch (e) { /* ignore */ }
+    if (amb) amb.gain.setTargetAtTime(ambLevel(), ctx.currentTime, 0.3);
   }
 
   PK.audio = {
@@ -308,7 +332,11 @@
     setIntensity,
     unlock: ensure,
     setMuted,
+    setVolume,
+    setAmbient,
     toggle() { setMuted(!muted); return muted; },
-    get muted() { return muted; }
+    get muted() { return muted; },
+    get volume() { return volume; },
+    get ambient() { return ambientOn; }
   };
 })();

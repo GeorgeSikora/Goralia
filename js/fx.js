@@ -675,7 +675,7 @@
   }
 
   function drawCollapse(g, f, t) {
-    const spr = PK.buildings.get(f.type);
+    const spr = PK.buildings.get(f.type, f.team);
     const sink = Math.round(Math.min(1, t * 1.15) * spr.h * 0.7);
     const jx = t < 0.6 ? Math.round(Math.sin(t * 90) * (1.5 - t * 1.5)) : 0;
 

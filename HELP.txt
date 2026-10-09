@@ -1,0 +1,4 @@
+$env:Path += ";C:\Program Files\nodejs"
+cd C:\Users\jiri.sikora\Desktop\goralia
+npm.cmd install
+npm.cmd start
