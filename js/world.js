@@ -824,6 +824,12 @@
 
   const preview = (map, maxW, maxH) => scaled(bundleFor(map).canvas, maxW, maxH);
 
+  // Upravená mapa se stejným id se musí upečt znovu.
+  function forget(id) {
+    bundles.delete(id);
+    if (world.map && world.map.id === id) world.ready = false;
+  }
+
   /* ---------- per-frame drawing ---------- */
   // v = vydělý obdelník světa v art px: { x, y, w, h }; kreslí se ve světových souřadnicích.
   function drawGround(g, T, v) {
@@ -894,7 +900,7 @@
   }
 
   Object.assign(world, {
-    build, preview, drawGround, drawClouds, drawMist, drawGrade, light, glow, shadow,
+    build, preview, forget, drawGround, drawClouds, drawMist, drawGrade, light, glow, shadow,
     brookX, brookHW,
     zoneAt: (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? Z_FRAME : zone[(y | 0) * W + (x | 0)]),
     Z: { GRASS: Z_GRASS, PATH: Z_PATH, PLAZA: Z_PLAZA, WATER: Z_WATER, FRAME: Z_FRAME, TERRACE: Z_TERRACE, BANK: Z_BANK }

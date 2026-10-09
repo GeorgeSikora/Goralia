@@ -456,3 +456,6 @@ kbd {
 .btn-icon { right: 54px; }
 
 .step { display: grid; gap: 16px; }
+
+.footer a { color: #c09c5a; text-decoration: none; }
+.footer a:hover { color: #f0d088; text-decoration: underline; }

@@ -11,6 +11,7 @@ const { WebSocketServer } = require("ws");
 const { Match, TICK } = require("../js/sim.js");
 const R = require("../js/rules.js");
 const MAPS = require("../js/maps.js");
+const mapstore = require("./mapstore.js");
 
 const PORT = Number(process.env.PORT) || 3000;
 const ROOT = path.resolve(__dirname, "..");
@@ -19,6 +20,8 @@ const MAX_CLIENTS = 400;
 const MAX_ROOMS = 100;
 const MAX_MSG_PER_SEC = 80;
 const BUFFER_LIMIT = 2 * 1024 * 1024;
+const MAX_MAP_BYTES = 1024 * 1024;
+const PAGES = ["index.html", "editor.html"];
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -28,13 +31,72 @@ const MIME = {
   ".ico": "image/x-icon"
 };
 
-/* ---------- static files ---------- */
-const server = http.createServer((req, res) => {
-  if (req.method !== "GET" && req.method !== "HEAD") {
-    res.writeHead(405);
-    return res.end();
+/* ---------- vlastní mapy (editor) ---------- */
+const LOCAL_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
+
+// Ukládání a mazání map jen z místního počítače: přímé spojení z loopbacku, bez proxy a s odpovídajícím Hostem i Originem.
+function isLocalRequest(req) {
+  const addr = req.socket.remoteAddress;
+  const loopback = addr === "127.0.0.1" || addr === "::1" || addr === "::ffff:127.0.0.1";
+  const host = req.headers.host || "";
+  let originOk = true;
+
+  if (req.headers.origin) {
+    try { originOk = new URL(req.headers.origin).host === host; } catch (e) { originOk = false; }
   }
 
+  return loopback && LOCAL_HOST.test(host) && originOk && !req.headers["x-forwarded-for"] && !req.headers.forwarded;
+}
+
+function sendJson(res, status, body) {
+  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+  res.end(JSON.stringify(body));
+}
+
+function handleMapApi(req, res, pathname) {
+  const parts = pathname.split("/").filter(Boolean);
+  const id = parts[2];
+
+  if (parts.length > 3) return sendJson(res, 404, { errors: ["Nenalezeno."] });
+  if (req.method === "GET" && !id) return sendJson(res, 200, { maps: mapstore.list() });
+
+  if (!id || (req.method !== "PUT" && req.method !== "DELETE")) return sendJson(res, 405, { errors: ["Nepodporovaná metoda."] });
+  if (!isLocalRequest(req)) return sendJson(res, 403, { errors: ["Mapy lze upravovat jen z místního počítače."] });
+
+  if (req.method === "DELETE") {
+    return mapstore.remove(id) ? sendJson(res, 200, { ok: true }) : sendJson(res, 404, { errors: ["Taková vlastní mapa neexistuje."] });
+  }
+
+  if (!/^application\/json/.test(req.headers["content-type"] || "")) return sendJson(res, 415, { errors: ["Ocekává se JSON."] });
+
+  const chunks = [];
+  let size = 0;
+
+  req.on("data", chunk => {
+    size += chunk.length;
+    if (size > MAX_MAP_BYTES) {
+      sendJson(res, 413, { errors: ["Mapa je příliš velká."] });
+      req.destroy();
+      return;
+    }
+    chunks.push(chunk);
+  });
+
+  req.on("end", () => {
+    if (res.writableEnded) return;
+
+    let raw;
+    try { raw = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch (e) { return sendJson(res, 400, { errors: ["Neplatný JSON."] }); }
+    if (!raw || raw.id !== id) return sendJson(res, 400, { errors: ["Id v adrese a v mapě se neshoduje."] });
+
+    const result = mapstore.save(raw);
+    if (result.errors.length) return sendJson(res, 400, { errors: result.errors });
+    sendJson(res, 200, { ok: true });
+  });
+}
+
+/* ---------- static files ---------- */
+const server = http.createServer((req, res) => {
   let pathname;
 
   try {
@@ -44,11 +106,18 @@ const server = http.createServer((req, res) => {
     return res.end();
   }
 
+  if (pathname === "/api/maps" || pathname.startsWith("/api/maps/")) return handleMapApi(req, res, pathname);
+
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    res.writeHead(405);
+    return res.end();
+  }
+
   if (pathname === "/") pathname = "/index.html";
 
   const file = path.resolve(ROOT, "." + pathname);
   const rel = path.relative(ROOT, file).split(path.sep);
-  const allowed = rel.length === 1 ? rel[0] === "index.html" : PUBLIC_DIRS.includes(rel[0]);
+  const allowed = rel.length === 1 ? PAGES.includes(rel[0]) : PUBLIC_DIRS.includes(rel[0]);
 
   if (!allowed || rel.includes("..")) {
     res.writeHead(404);
@@ -403,6 +472,8 @@ setInterval(() => {
     client.ws.ping();
   }
 }, 20000);
+
+mapstore.load();
 
 server.listen(PORT, () => {
   console.log(`Goralia běží na http://localhost:${PORT}`);

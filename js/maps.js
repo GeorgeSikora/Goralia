@@ -179,7 +179,7 @@
   function autoTerrain(seed, W, H, slots, rivers, extraAsh, opts = {}) {
     const r = mulberry(seed);
     const center = [W / 2, H / 2];
-    const area = W * H / (480 * 240);
+    const area = Math.min(30, W * H / (480 * 240)); // obří mapy mají dekorace řidší, aby se nezahltilo vykreslování
     const plazas = [];
     const terraces = [];
     const roads = [];
@@ -187,8 +187,7 @@
     const ashCircles = [];
     const mirror = opts.mirror || null;
     const landmarks = [];
-    if (!mirror) landmarks.push(["ringstone", center[0] - 45, center[1] - 40, true, 22]);
-    else if (opts.stone) landmarks.push(["ringstone", opts.stone[0], opts.stone[1], true, 22]);
+    if (opts.stone) landmarks.push(["ringstone", opts.stone[0], opts.stone[1], true, 22]);
 
     for (const s of slots) {
       const ax = s.hq.x / 2;
@@ -204,11 +203,13 @@
       plazas.push({ x: bx, y: by + 19 * fy, rx: 23, ry: 11, kind: "yard" });
       pave.push([ax, ay + 17 * fy, 52]);
       // zrcadlené mapy: oblouk cesty se zrcadlí spolu se základnou, střední základny jdou rovně
-      const jog = !mirror ? (r() - 0.5) * 50 : Math.abs(ax - center[0]) < 8 ? 0 : 22 * fx * fy;
-      roads.push({ w: 7, main: true, pts: roadTo([ax, ay + 17 * fy], center, jog) });
+      const jog = opts.straight ? 0 : !mirror ? (r() - 0.5) * 50 : Math.abs(ax - center[0]) < 8 ? 0 : 22 * fx * fy;
+      if (opts.autoRoads !== false) roads.push({ w: 7, main: true, pts: roadTo([ax, ay + 17 * fy], center, jog) });
       roads.push({ w: 4.5, pts: [[bx, by + 12 * fy], [(bx + ax) / 2, ay + 20 * fy], [ax + fx * 24, ay + 19 * fy]] });
       landmarks.push(["lanternPost", ax + fx * 44, ay + 34 * fy, true, 5], ["lanternPost", ax + fx * 90, ay + 40 * fy, true, 5]);
     }
+
+    roads.push(...(opts.roads || []));
 
     const cracks = ashCircles.map(([x, y, rad]) => ({
       x: x - rad * 0.8, y: y - rad * 0.8, w: rad * 1.6, h: rad * 1.6, n: Math.round(Math.PI * rad * rad * 0.0027)
@@ -472,10 +473,164 @@
   const list = [valley, crowns, highland, six];
   const byId = new Map(list.map(m => [m.id, m]));
 
+  /* ---------- soubor mapy (goralia-map, verze 1) ---------- */
+  // Z editoru se mapa ukládá jako JSON: základny, doly a stromy v logických souřadnicích,
+  // voda a cesty (tahy štětcem) v art px. Ze souboru se ve hře sestaví stejná mapa na serveru i v prohlížeči.
+  const DOC = {
+    FORMAT: "goralia-map", VERSION: 1,
+    MIN_W: 320, MAX_W: 5000, MIN_H: 200, MAX_H: 5000,
+    MAX_TREES: 3000, MAX_GOLD: 60, MAX_WATER: 300, MAX_ROADS: 80, MAX_PTS: 600, MAX_TOTAL_PTS: 20000
+  };
+
+  const isNum = v => typeof v === "number" && Number.isFinite(v);
+  const cleanText = (v, max) => (typeof v === "string" ? v.replace(/[\u0000-\u001f<>]/g, "").trim().slice(0, max) : "");
+
+  // Nedůvěryhodný vstup (soubor, požadavek na server) -> { doc, errors }; doc je očištěný a oříznutý na meze.
+  function normalizeDoc(raw) {
+    const errors = [];
+
+    if (!raw || typeof raw !== "object" || raw.format !== DOC.FORMAT) {
+      return { doc: null, errors: ["Soubor není mapa Goralia."] };
+    }
+
+    const id = typeof raw.id === "string" ? raw.id : "";
+    if (!/^[a-z0-9][a-z0-9-]{0,30}$/.test(id)) errors.push("Identifikátor mapy: 1 až 31 znaků a-z, 0-9 a pomlčka.");
+
+    const name = cleanText(raw.name, 32);
+    if (!name) errors.push("Mapa potřebuje název.");
+
+    const w = Array.isArray(raw.size) ? Math.round(raw.size[0]) : NaN;
+    const h = Array.isArray(raw.size) ? Math.round(raw.size[1]) : NaN;
+
+    if (!(w >= DOC.MIN_W && w <= DOC.MAX_W && h >= DOC.MIN_H && h <= DOC.MAX_H)) {
+      errors.push(`Velikost mapy: šířka ${DOC.MIN_W}–${DOC.MAX_W}, výška ${DOC.MIN_H}–${DOC.MAX_H}.`);
+    }
+
+    if (errors.length) return { doc: null, errors };
+
+    const LW = w * 2;
+    const LH = h * 2;
+    const point = (p, W, H, pad = 0) =>
+      Array.isArray(p) && isNum(p[0]) && isNum(p[1]) && p[0] >= -pad && p[0] <= W + pad && p[1] >= -pad && p[1] <= H + pad;
+    const take = (v, max, what) => {
+      if (v == null) return [];
+      if (!Array.isArray(v)) { errors.push(`${what}: očekává se seznam.`); return []; }
+      if (v.length > max) errors.push(`${what}: nejvýše ${max}.`);
+      return v.slice(0, max);
+    };
+    const stroke = (s, W, H, key, lo, hi) => {
+      if (!s || !isNum(s[key]) || !Array.isArray(s.pts) || s.pts.length < 2) return null;
+      const pts = s.pts.slice(0, DOC.MAX_PTS);
+      if (!pts.every(p => point(p, W, H, 60))) return null;
+      return { pts: pts.map(p => [Math.round(p[0] * 10) / 10, Math.round(p[1] * 10) / 10]), [key]: Math.min(hi, Math.max(lo, s[key])) };
+    };
+
+    const bases = take(raw.bases, 6, "Základny").filter(b => b && point([b.x, b.y], LW, LH)).map(b => ({ x: Math.round(b.x), y: Math.round(b.y) }));
+    const gold = take(raw.gold, DOC.MAX_GOLD, "Doly").filter(g => point(g, LW, LH)).map(g =>
+      (isNum(g[2]) ? [Math.round(g[0]), Math.round(g[1]), Math.min(20000, Math.max(500, Math.round(g[2])))] : [Math.round(g[0]), Math.round(g[1])]));
+    const trees = take(raw.trees, DOC.MAX_TREES, "Stromy").filter(t => point(t, LW, LH)).map(t => [Math.round(t[0]), Math.round(t[1])]);
+    const water = take(raw.water, DOC.MAX_WATER, "Voda").map(s => stroke(s, w, h, "hw", 2, 20)).filter(Boolean);
+    const roads = take(raw.roads, DOC.MAX_ROADS, "Cesty").map(s => {
+      const r = stroke(s, w, h, "w", 2, 12);
+      return r && { pts: r.pts, w: r.w, main: !!s.main };
+    }).filter(Boolean);
+
+    if (bases.length < 2) errors.push("Mapa potřebuje aspoň dvě základny.");
+    if (water.reduce((n, s) => n + s.pts.length, 0) + roads.reduce((n, s) => n + s.pts.length, 0) > DOC.MAX_TOTAL_PTS) {
+      errors.push("Voda a cesty jsou moc podrobné.");
+    }
+
+    if (errors.length) return { doc: null, errors };
+
+    const doc = {
+      format: DOC.FORMAT, version: DOC.VERSION, id, name,
+      description: cleanText(raw.description, 400) || "Vlastní mapa.",
+      size: [w, h], seed: isNum(raw.seed) ? Math.abs(Math.round(raw.seed)) % 1000000 : 1,
+      autoRoads: raw.autoRoads !== false,
+      bases, gold, trees, water, roads
+    };
+
+    return { doc, errors };
+  }
+
+  // Hráčův prostor: obdélník kolem základny; se sousedy se dělí v polovině spojnice, takže se nikdy nepřekrývají.
+  function zonesFor(bases, LW, LH) {
+    return bases.map((b, i) => {
+      const z = { x0: 45, y0: 85, x1: LW - 45, y1: LH - 65 };
+
+      bases.forEach((o, j) => {
+        if (i === j) return;
+        const dx = o.x - b.x;
+        const dy = o.y - b.y;
+
+        if (Math.abs(dx) >= Math.abs(dy)) {
+          if (dx > 0) z.x1 = Math.min(z.x1, (b.x + o.x) / 2 - 15);
+          else z.x0 = Math.max(z.x0, (b.x + o.x) / 2 + 15);
+        } else if (dy > 0) {
+          z.y1 = Math.min(z.y1, (b.y + o.y) / 2 - 15);
+        } else {
+          z.y0 = Math.max(z.y0, (b.y + o.y) / 2 + 15);
+        }
+      });
+
+      return z;
+    });
+  }
+
+  // Dva doly u základny, stejně jako na vestavěných mapách (strana ke středu mapy).
+  function baseMinesFor(x, y, LW, LH) {
+    const fx = x <= LW / 2 ? 1 : -1;
+    const fy = y <= LH / 2 ? 1 : -1;
+    return baseMines({ hq: { x, y } }, fx, fy);
+  }
+
+  // Základna na daném místě; zrcadlí se podle toho, na které straně mapy leží (směr ke středu).
+  const baseAt = (x, y, LW, LH, zone) => base(0, x, y, x <= LW / 2 ? 1 : -1, y <= LH / 2 ? 1 : -1, zone);
+
+  function compileDoc(d) {
+    const [w, h] = d.size;
+    const LW = w * 2;
+    const LH = h * 2;
+    const zones = zonesFor(d.bases, LW, LH);
+    const slots = d.bases.map((b, i) => baseAt(b.x, b.y, LW, LH, zones[i]));
+    const n = slots.length;
+    const terrain = autoTerrain(d.seed, w, h, slots, d.water.map(s => ({ pts: s.pts, hw: s.hw })), [], {
+      straight: true, autoRoads: d.autoRoads, roads: d.roads.map(s => ({ w: s.w, main: s.main, pts: s.pts }))
+    });
+
+    return {
+      id: d.id, name: d.name, players: n, size: [w, h],
+      tag: `${n === 2 ? "1v1" : n < 5 ? `${n} hráči` : `${n} hráčů`}${w > 480 || h > 240 ? " · velká" : ""}`,
+      description: d.description,
+      slots, gold: d.gold, trees: d.trees, terrain, custom: true
+    };
+  }
+
+  const builtIn = new Set(list.map(m => m.id));
+
+  // Vlastní mapy se přidávají za vestavěné; stejné id přepíše jen dřívější vlastní mapu.
+  function register(map) {
+    if (builtIn.has(map.id)) throw new Error("Vestavěné mapy nelze přepsat.");
+
+    const old = byId.get(map.id);
+    if (old) list[list.indexOf(old)] = map;
+    else list.push(map);
+    byId.set(map.id, map);
+  }
+
+  function unregister(id) {
+    const old = byId.get(id);
+    if (!old || builtIn.has(id)) return false;
+    list.splice(list.indexOf(old), 1);
+    byId.delete(id);
+    return true;
+  }
+
   return {
     list,
     get: id => byId.get(id) || null,
     isWater, waterNear, brookX, brookHW,
+    DOC, normalizeDoc, compileDoc, zonesFor, baseAt, baseMinesFor, register, unregister, isBuiltIn: id => builtIn.has(id),
     DEFAULT: "valley"
   };
 });

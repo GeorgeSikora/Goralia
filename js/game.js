@@ -990,6 +990,19 @@
   const previewBusy = new Set();
   let lastOffline = null;
 
+  // Vlastní mapy z editoru; změněné mapy ztratí starý náhled.
+  function refreshCustomMaps() {
+    return PK.customMaps.load().then(changed => {
+      for (const id of changed) previews.delete(id);
+      return changed;
+    });
+  }
+
+  const lobbyVisible = () => {
+    const page = pages.find(p => !p.hidden);
+    return !!page && page.dataset.page === "lobby";
+  };
+
   function renderRooms() {
     oRooms.replaceChildren();
     if (online.phase !== "idle") return;
@@ -1062,6 +1075,7 @@
 
   function enterOnline() {
     audio.unlock();
+    refreshCustomMaps();
 
     let savedName = "";
     try { savedName = localStorage.getItem(NAME_KEY) || ""; } catch (e) { /* ignore */ }
@@ -1147,7 +1161,7 @@
     lobby.you = 0;
     lobby.host = 0;
 
-    if (lastOffline) {
+    if (lastOffline && MAPS.get(lastOffline.mapId)) {
       lobby.mapId = lastOffline.mapId;
       lobby.slots = lastOffline.slots.map(s => ({ ...s }));
     } else {
@@ -1157,6 +1171,10 @@
 
     showPage("lobby");
     renderLobby();
+
+    refreshCustomMaps().then(changed => {
+      if (changed.length && lobbyVisible() && !lobby.online) renderLobby();
+    });
   }
 
   function selectMap(id) {
@@ -1269,6 +1287,33 @@
   }
 
   // Náhled = zmenšený terén mapy se značkami startovních pozic. Terén se peče jednou na mapu.
+  const bigMap = map => map.size[0] * map.size[1] > 4e6;
+
+  // Pečení terénu obří mapy trvá dlouho, proto se v lobby kreslí jen schéma (voda, cesty).
+  function sketchPreview(map, maxW, maxH) {
+    const [w, h] = map.size;
+    const s = Math.min(maxW / w, maxH / h);
+    const cv = document.createElement("canvas");
+    cv.width = Math.max(1, Math.round(w * s));
+    cv.height = Math.max(1, Math.round(h * s));
+    const c = cv.getContext("2d");
+    c.fillStyle = "#2f5d34";
+    c.fillRect(0, 0, cv.width, cv.height);
+    c.lineCap = "round";
+    c.lineJoin = "round";
+
+    const draw = (pts, width, color) => {
+      c.strokeStyle = color;
+      c.lineWidth = Math.max(1, width * 2 * s);
+      c.beginPath();
+      pts.forEach(([x, y], i) => (i ? c.lineTo(x * s, y * s) : c.moveTo(x * s, y * s)));
+      c.stroke();
+    };
+
+    for (const r of map.terrain.rivers) if (r.pts) draw(r.pts, r.hw, "#2f6fb0");
+    for (const r of map.terrain.roads) draw(r.pts, r.w, "#b09060");
+    return cv;
+  }
   function drawPreview() {
     const map = lobbyMap();
     const cv = lobbyEl.preview;
@@ -1288,7 +1333,7 @@
       if (!previewBusy.has(map.id)) {
         previewBusy.add(map.id);
         setTimeout(() => {
-          previews.set(map.id, world.preview(map, cv.width - 8, cv.height - 8));
+          previews.set(map.id, bigMap(map) ? sketchPreview(map, cv.width - 8, cv.height - 8) : world.preview(map, cv.width - 8, cv.height - 8));
           previewBusy.delete(map.id);
           if (lobbyMap() === map) drawPreview();
         }, 30);
@@ -1353,7 +1398,10 @@
   }
 
   function handleRoom(m) {
-    if (!MAPS.get(m.map)) return;
+    if (!MAPS.get(m.map)) {
+      refreshCustomMaps().then(() => { if (MAPS.get(m.map)) handleRoom(m); });
+      return;
+    }
 
     lobby.online = true;
     lobby.mapId = m.map;
@@ -1374,7 +1422,11 @@
   /* ======================= online: match state ======================= */
   function beginOnlineMatch(m) {
     const next = MAPS.get(m.map);
-    if (!next) return;
+
+    if (!next) {
+      refreshCustomMaps().then(() => { if (MAPS.get(m.map)) beginOnlineMatch(m); });
+      return;
+    }
 
     online.pendingTrain = 0;
     online.pendingBuild = 0;
@@ -1890,6 +1942,16 @@
   syncSettings();
   syncMenu();
   showPage("main");
+
+  // Odkaz z editoru (?map=id) otevře výběr hry proti AI s danou vlastní mapou.
+  refreshCustomMaps().then(() => {
+    const id = new URLSearchParams(location.search).get("map");
+    const wanted = id && MAPS.get(id);
+    if (!wanted || started) return;
+
+    lastOffline = { mapId: id, slots: wanted.slots.map((_, i) => ({ kind: i === 0 ? "human" : "ai", name: i === 0 ? "Ty" : "" })) };
+    openOfflineLobby();
+  });
 
   /* ======================= hit visuals ======================= */
   // Čísla zásahů počítá simulace; tady jsou jen efekty a zvuky (volá je událost "hit").

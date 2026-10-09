@@ -13,6 +13,9 @@ const MAPS = require("../js/maps.js");
 const R = require("../js/rules.js");
 const { Match, TICK } = require("../js/sim.js");
 const NAV = require("../js/nav.js");
+const CHECK = require("../js/mapcheck.js");
+const fs = require("fs");
+const os = require("os");
 
 const PORT = 3100 + Math.floor(Math.random() * 500);
 const URL = `ws://localhost:${PORT}`;
@@ -378,8 +381,9 @@ class Bot {
 }
 
 async function testServer() {
+  const mapsDir = fs.mkdtempSync(path.join(os.tmpdir(), "goralia-maps-"));
   const proc = spawn(process.execPath, [path.join(__dirname, "server.js")], {
-    env: { ...process.env, PORT: String(PORT) },
+    env: { ...process.env, PORT: String(PORT), GORALIA_MAPS_DIR: mapsDir },
     stdio: ["ignore", "pipe", "inherit"]
   });
 
@@ -408,6 +412,51 @@ async function testServer() {
     assert.strictEqual(await get("/package.json"), 404);
     assert.strictEqual(await get("/js/..%2Fpackage.json"), 404);
     assert.strictEqual(await get("/%2e%2e/package.json"), 404);
+    assert.strictEqual(await get("/editor.html"), 200);
+    assert.strictEqual(await get("/maps/x.json"), 404);
+
+    // vlastní mapy: ukládání jen z místního počítače a jen platné mapy
+    const api = (method, p, body, headers = {}) => new Promise((resolve, reject) => {
+      const data = body === undefined ? null : typeof body === "string" ? body : JSON.stringify(body);
+      const req = http.request({ host: "localhost", port: PORT, path: p, method, headers: { "Content-Type": "application/json", ...headers } }, res => {
+        let text = "";
+        res.on("data", chunk => { text += chunk; });
+        res.on("end", () => resolve({ status: res.statusCode, json: text ? JSON.parse(text) : null }));
+      });
+      req.on("error", reject);
+      req.end(data);
+    });
+
+    const doc = sampleDoc("test-arena");
+    assert.deepStrictEqual((await api("GET", "/api/maps")).json, { maps: [] });
+    assert.strictEqual((await api("PUT", "/api/maps/test-arena", doc)).status, 200, "platná mapa se uloží");
+    assert(fs.existsSync(path.join(mapsDir, "test-arena.json")), "mapa je v souboru");
+    assert.strictEqual((await api("GET", "/api/maps")).json.maps[0].id, "test-arena");
+    assert.strictEqual((await api("PUT", "/api/maps/valley", { ...doc, id: "valley" })).status, 400, "vestavěnou mapu nelze přepsat");
+    assert.strictEqual((await api("PUT", "/api/maps/jina", doc)).status, 400, "id v adrese musí sedět");
+    assert.strictEqual((await api("PUT", "/api/maps/test-arena", { ...doc, bases: doc.bases.slice(0, 1) })).status, 400, "mapa s jednou základnou");
+    assert.strictEqual((await api("PUT", "/api/maps/test-arena", "{nejson")).status, 400);
+    assert.strictEqual((await api("PUT", "/api/maps/test-arena", doc, { Origin: "http://evil.example" })).status, 403, "cizi Origin");
+    assert.strictEqual((await api("PUT", "/api/maps/test-arena", doc, { "X-Forwarded-For": "1.2.3.4" })).status, 403, "za proxy");
+    assert.strictEqual((await api("PUT", "/api/maps/test-arena", doc, { Host: "example.com" })).status, 403, "cizi Host");
+    assert.strictEqual((await api("PUT", "/api/maps/test-arena", doc, { "Content-Type": "text/plain" })).status, 415);
+
+    const water = { ...doc, water: [{ pts: [[150, 0], [150, 340]], hw: 20 }, { pts: [[0, 170], [300, 170]], hw: 20 }], roads: [], autoRoads: false };
+    const flooded = await api("PUT", "/api/maps/test-arena", water);
+    assert.strictEqual(flooded.status, 400, "nehratelná mapa se neuloží");
+    assert(flooded.json.errors.length > 0);
+
+    const room = bot("D");
+    await room.opened;
+    room.send({ t: "create", map: "test-arena", name: "d" });
+    await room.until(() => room.room, 2000, "místnost na vlastní mapě");
+    assert.strictEqual(room.room.map, "test-arena");
+    room.send({ t: "leave" });
+
+    assert.strictEqual((await api("DELETE", "/api/maps/valley")).status, 404, "vestavěnou mapu nelze smazat");
+    assert.strictEqual((await api("DELETE", "/api/maps/test-arena")).status, 200);
+    assert(!fs.existsSync(path.join(mapsDir, "test-arena.json")), "soubor je pryč");
+    assert.deepStrictEqual((await api("GET", "/api/maps")).json, { maps: [] });
 
     const a = bot("A");
     const b = bot("B");
@@ -606,11 +655,135 @@ async function testServer() {
   } finally {
     for (const p of bots) p.ws.terminate();
     proc.kill();
+    fs.rmSync(mapsDir, { recursive: true, force: true });
   }
+}
+
+// Malá vlastní mapa pro testy: dvě základny, řeka uprostřed a dostatečné doly.
+function sampleDoc(id) {
+  const bases = [{ x: 200, y: 340 }, { x: 1000, y: 340 }];
+  const gold = bases.flatMap(b => MAPS.baseMinesFor(b.x, b.y, 1200, 680));
+
+  return {
+    format: "goralia-map", version: 1, id, name: "Zkušební aréna", description: "Mapa z testu.",
+    size: [600, 340], seed: 5, autoRoads: true, bases, gold,
+    trees: [[100, 80], [1100, 600], [400, 100]],
+    water: [{ pts: [[300, 0], [305, 100], [295, 200], [300, 340]], hw: 5 }],
+    roads: []
+  };
+}
+
+/* ---------- formát vlastní mapy ---------- */
+function testMapDocs() {
+  for (const map of MAPS.list.filter(m => !m.custom)) {
+    assert.deepStrictEqual(CHECK.check(map), [], `${map.id}: vestavěná mapa projde kontrolou`);
+  }
+
+  const doc = sampleDoc("sample");
+  const { doc: clean, errors } = MAPS.normalizeDoc(doc);
+  assert.deepStrictEqual(errors, []);
+
+  const map = MAPS.compileDoc(clean);
+  assert.strictEqual(map.players, 2);
+  assert.strictEqual(map.tag, "1v1 · velká");
+  assert.deepStrictEqual(CHECK.check(map), [], "vzorová mapa je hratelná");
+
+  // mapa se dá zahrát: AI hra poběží bez chyby
+  const match = new Match(map, [{ name: "A", ai: true }, { name: "B", ai: true }], { countdown: 0 });
+  for (let t = 0; t < 30; t += TICK) { match.step(TICK); match.endTick(); }
+  assert.strictEqual(match.phase, "playing");
+
+  // špatné vstupy
+  const bad = (patch, text) => assert(MAPS.normalizeDoc({ ...doc, ...patch }).errors.length > 0, text);
+  assert(MAPS.normalizeDoc(null).errors.length > 0);
+  assert(MAPS.normalizeDoc({ ...doc, format: "jine" }).errors.length > 0);
+  bad({ id: "../etc" }, "id s lomítkem");
+  bad({ id: "" }, "prázdné id");
+  bad({ name: "  " }, "prázdný název");
+  bad({ size: [10, 10] }, "malá mapa");
+  bad({ size: [5001, 5000] }, "obrovská mapa");
+  bad({ bases: [{ x: 100, y: 100 }] }, "jedna základna");
+
+  // nesmysly uvnitř se ořížnou nebo zahodí
+  const messy = MAPS.normalizeDoc({
+    ...doc,
+    description: "<b>x</b>".repeat(200),
+    trees: [[1, 1], ["a", 2], [99999, 5], null],
+    gold: [[300, 300, 999999999]],
+    water: [{ pts: [[0, 0]], hw: 5 }, { pts: [[0, 0], [10, 10]], hw: 999 }]
+  }).doc;
+  assert(messy.description.length <= 400 && !/[<>]/.test(messy.description));
+  assert.deepStrictEqual(messy.trees, [[1, 1]]);
+  assert.strictEqual(messy.gold[0][2], 20000);
+  assert.strictEqual(messy.water.length, 1);
+  assert.strictEqual(messy.water[0].hw, 20);
+
+  // vestavěné mapy nejde přepsat; vlastní se registruje a zase odebere
+  assert.throws(() => MAPS.register({ ...map, id: "valley" }));
+  MAPS.register(map);
+  assert.strictEqual(MAPS.get("sample"), map);
+  assert(MAPS.unregister("sample") && !MAPS.get("sample"));
+  assert(!MAPS.unregister("valley"));
+
+  // dvě základny vedle sebe nemají místo: kontrola to ohlásí
+  const close = MAPS.compileDoc(MAPS.normalizeDoc({ ...doc, bases: [{ x: 200, y: 340 }, { x: 280, y: 340 }] }).doc);
+  assert(CHECK.check(close).length > 0, "blízké základny jsou chyba");
+
+  // území základen se nikdy nepřekrývají
+  const six = MAPS.zonesFor([{ x: 300, y: 260 }, { x: 1000, y: 260 }, { x: 1700, y: 260 }, { x: 300, y: 940 }, { x: 1000, y: 940 }, { x: 1700, y: 940 }], 2000, 1200);
+  six.forEach((z, i) => six.forEach((o, j) => {
+    if (j > i) assert(!(z.x0 < o.x1 && o.x0 < z.x1 && z.y0 < o.y1 && o.y0 < z.y1), `zóny ${i} a ${j} se překrývají`);
+  }));
+}
+
+/* ---------- obří mapy ---------- */
+function testHugeMap() {
+  // rastrová mřížka vody dává stejný výsledek jako bodový test
+  for (const map of MAPS.list.filter(m => !m.custom)) {
+    const nav = NAV.forMap(map);
+    let diff = 0;
+
+    for (let cy = 0; cy < nav.h; cy++) {
+      for (let cx = 0; cx < nav.w; cx++) {
+        const water = MAPS.isWater(map.terrain, (cx + 0.5) * 4, (cy + 0.5) * 4);
+        if (water !== (nav.blocked[cy * nav.w + cx] === 1)) diff++;
+      }
+    }
+
+    assert.strictEqual(diff, 0, `${map.id}: mřížka vody se shoduje s isWater`);
+  }
+
+  // 10 000 × 10 000 jednotek: řeka přes celou mapu s brodem a dva týmy daleko od sebe
+  const bases = [{ x: 600, y: 5000 }, { x: 9400, y: 5000 }];
+  const gold = bases.flatMap(b => MAPS.baseMinesFor(b.x, b.y, 10000, 10000));
+  const doc = {
+    format: "goralia-map", version: 1, id: "obri", name: "Obří", description: "Test obří mapy.",
+    size: [5000, 5000], seed: 3, autoRoads: true, bases, gold, trees: [[3000, 3000]],
+    water: [{ pts: Array.from({ length: 51 }, (_, i) => [2500 + (i % 2) * 6, i * 100]), hw: 8 }],
+    roads: [{ pts: [[2300, 2500], [2700, 2500]], w: 5, main: true }]
+  };
+
+  const { doc: clean, errors } = MAPS.normalizeDoc(doc);
+  assert.deepStrictEqual(errors, []);
+
+  const started = Date.now();
+  const map = MAPS.compileDoc(clean);
+  assert.deepStrictEqual(CHECK.check(map), [], "obří mapa je hratelná");
+  assert(Date.now() - started < 5000, "kontrola obří mapy je rychlá");
+
+  // bez brodu jsou základny odříznuté
+  const cut = MAPS.compileDoc(MAPS.normalizeDoc({ ...doc, roads: [], autoRoads: false }).doc);
+  assert(CHECK.check(cut).some(p => /nejsou propojené/.test(p)), "řeka bez brodu odděluje základny");
+
+  const match = new Match(map, [{ name: "A", ai: true }, { name: "B", ai: true }], { countdown: 0 });
+  for (let t = 0; t < 5; t += TICK) { match.step(TICK); match.endTick(); }
+  assert.strictEqual(match.phase, "playing");
 }
 
 async function main() {
   testMaps();
+  testHugeMap();
+  testMapDocs();
   testSimulation();
   await testServer();
 }

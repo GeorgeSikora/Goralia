@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Goralia · Editor map</title>
+  <link rel="stylesheet" href="css/editor.css">
+</head>
+<body>
+  <header class="bar">
+    <h1>Editor map</h1>
+    <nav class="menus" id="e-menus">
+      <button type="button" data-menu="file">Soubor</button>
+      <button type="button" data-menu="edit">Úpravy</button>
+      <button type="button" data-menu="view">Zobrazení</button>
+    </nav>
+    <button id="e-title" type="button" class="title" title="Vlastnosti mapy"></button>
+    <span class="grow"></span>
+    <button id="e-save" type="button" class="primary" title="Ctrl+S">Uložit</button>
+    <a id="e-play" class="button" href="#" target="_blank" rel="noopener" hidden>Hrát</a>
+  </header>
+
+  <main class="layout">
+    <aside class="tools">
+      <div class="palette" id="e-tools">
+        <button type="button" data-tool="move" title="Přesun objektů a posun mapy (V)"><b>V</b> Přesun</button>
+        <button type="button" data-tool="water" title="Voda (W)"><b>W</b> Voda</button>
+        <button type="button" data-tool="road" title="Cesta (R)"><b>R</b> Cesta</button>
+        <button type="button" data-tool="tree" title="Stromy (T)"><b>T</b> Stromy</button>
+        <button type="button" data-tool="gold" title="Zlatý důl (G)"><b>G</b> Důl</button>
+        <button type="button" data-tool="base" title="Základna (B)"><b>B</b> Základna</button>
+        <button type="button" data-tool="erase" title="Guma (E)"><b>E</b> Guma</button>
+      </div>
+
+      <div class="options" id="e-options">
+        <label id="o-size-row">
+          <span><span id="o-size-label">Štětec</span> <output id="o-size-val"></output></span>
+          <input id="o-size" type="range">
+        </label>
+        <label class="check" id="o-main-row"><input id="o-main" type="checkbox"> Hlavní cesta</label>
+        <label id="o-amount-row">Zásoba dolu
+          <select id="o-amount">
+            <option value="1000">1 000</option>
+            <option value="2000" selected>2 000</option>
+            <option value="4000">4 000</option>
+            <option value="8000">8 000</option>
+          </select></label>
+        <label id="o-erase-row">Guma maže
+          <select id="o-erase">
+            <option value="all">vše</option>
+            <option value="tree">stromy</option>
+            <option value="water">vodu</option>
+            <option value="road">cesty</option>
+            <option value="gold">doly</option>
+            <option value="base">základny</option>
+          </select></label>
+        <p id="o-hint" class="muted"></p>
+      </div>
+
+      <div class="symmetry">
+        <span class="muted">Symetrie</span>
+        <label class="chip" title="Zrcadlit vodorovně"><input id="e-mx" type="checkbox"><span>↔</span></label>
+        <label class="chip" title="Zrcadlit svisle"><input id="e-my" type="checkbox"><span>↕</span></label>
+      </div>
+    </aside>
+
+    <section class="stage" id="e-stage"><canvas id="e-canvas"></canvas></section>
+
+    <aside class="info">
+      <h2>Kontrola mapy</h2>
+      <p id="e-summary" class="muted"></p>
+      <ul id="e-problems"></ul>
+      <details>
+        <summary>Nápověda</summary>
+        <ul class="help">
+          <li>Levé tlačítko kreslí. Pravé otevře nabídku (smazat, zásoba dolu…).</li>
+          <li>Mapu posouvej prostředním tlačítkem, mezerníkem nebo šipkami, kolečko přibližuje.</li>
+          <li>Základny se číslují podle pořadí. Čárkovaně je území, kde hráč smí stavět.</li>
+          <li>Přes vodu se chodí jen po cestách. Každá základna potřebuje aspoň dva doly poblíž.</li>
+        </ul>
+      </details>
+    </aside>
+  </main>
+
+  <footer class="status" id="e-status">Připraveno.</footer>
+
+  <div id="e-popup" class="popup" hidden></div>
+  <input id="e-file" type="file" accept=".json,application/json" hidden>
+
+  <dialog id="d-props">
+    <form method="dialog" id="f-props">
+      <h2 id="p-title">Vlastnosti mapy</h2>
+      <label>Název <input id="p-name" maxlength="32" autocomplete="off"></label>
+      <label>Identifikátor (název souboru) <input id="p-id" maxlength="31" autocomplete="off" spellcheck="false"></label>
+      <label>Popis (zobrazí se v lobby) <textarea id="p-desc" rows="3" maxlength="400"></textarea></label>
+      <div class="two">
+        <label>Šířka <input id="p-w" type="number" min="640" max="10000" step="40"></label>
+        <label>Výška <input id="p-h" type="number" min="400" max="10000" step="40"></label>
+      </div>
+      <p class="muted">Rozměry v herních jednotkách, jak je ukazuje lobby (640–10 000). Velké mapy se načítají déle.</p>
+      <div class="two">
+        <label>Zrno terénu
+          <span class="row"><input id="p-seed" type="number" min="0" max="999999"><button id="p-dice" type="button">Náhodné</button></span></label>
+        <label class="check"><input id="p-auto" type="checkbox"> Cesty ze základen do středu</label>
+      </div>
+      <p id="p-error" class="error"></p>
+      <menu>
+        <button type="button" id="p-cancel">Zrušit</button>
+        <button type="submit" class="primary" id="p-ok">OK</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="d-open">
+    <h2>Otevřít mapu</h2>
+    <div class="list" id="o-list"></div>
+    <menu>
+      <button type="button" id="o-import">Ze souboru…</button>
+      <span class="grow"></span>
+      <button type="button" id="o-close">Zavřít</button>
+    </menu>
+  </dialog>
+
+  <script src="js/pixel.js"></script>
+  <script src="js/font.js"></script>
+  <script src="js/props.js"></script>
+  <script src="js/buildings.js"></script>
+  <script src="js/rules.js"></script>
+  <script src="js/maps.js"></script>
+  <script src="js/nav.js"></script>
+  <script src="js/mapcheck.js"></script>
+  <script src="js/world.js"></script>
+  <script src="js/editor.js"></script>
+</body>
+</html>

@@ -19,22 +19,68 @@
       this.w = Math.ceil(map.size[0] * 2 / CELL);
       this.h = Math.ceil(map.size[1] * 2 / CELL);
       this.blocked = new Uint8Array(this.w * this.h);
-
-      for (let cy = 0; cy < this.h; cy++) {
-        for (let cx = 0; cx < this.w; cx++) {
-          const ax = (cx + 0.5) * CELL / 2;
-          const ay = (cy + 0.5) * CELL / 2;
-          if (MAPS.isWater(map.terrain, ax, ay)) this.blocked[cy * this.w + cx] = 1;
-        }
-      }
+      this.rasterize(map.terrain);
 
       const n = this.w * this.h;
+      this.maxExpand = Math.max(MAX_EXPAND, Math.floor(n / 3));
       this.seq = 0;
       this.stamp = new Uint32Array(n);
       this.gs = new Float32Array(n);
       this.fs = new Float32Array(n);
       this.parent = new Int32Array(n);
       this.closed = new Uint32Array(n);
+    }
+
+    // Stejný výsledek jako MAPS.isWater ve středu buňky, ale prochází jen buňky kolem tahů (zvládne i obří mapy).
+    rasterize(rec) {
+      const { w, h, blocked } = this;
+      const step = CELL / 2;
+      const ford = new Uint8Array(w * h);
+
+      const paint = (pts, radius, out) => {
+        if (radius <= 0) return;
+
+        for (let i = 0; i < pts.length - 1; i++) {
+          const [ax, ay] = pts[i];
+          const [bx, by] = pts[i + 1];
+          const dx = bx - ax;
+          const dy = by - ay;
+          const len2 = dx * dx + dy * dy || 1;
+          const x0 = Math.max(0, Math.floor((Math.min(ax, bx) - radius) / step) - 1);
+          const x1 = Math.min(w - 1, Math.ceil((Math.max(ax, bx) + radius) / step) + 1);
+          const y0 = Math.max(0, Math.floor((Math.min(ay, by) - radius) / step) - 1);
+          const y1 = Math.min(h - 1, Math.ceil((Math.max(ay, by) + radius) / step) + 1);
+
+          for (let cy = y0; cy <= y1; cy++) {
+            const py = (cy + 0.5) * step;
+
+            for (let cx = x0; cx <= x1; cx++) {
+              const px = (cx + 0.5) * step;
+              const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2));
+              if (Math.hypot(px - (ax + dx * t), py - (ay + dy * t)) < radius) out[cy * w + cx] = 1;
+            }
+          }
+        }
+      };
+
+      for (const r of rec.rivers) {
+        if (r.legacy) {
+          for (let cy = 0; cy < h; cy++) {
+            const ay = (cy + 0.5) * step;
+            const half = MAPS.brookHW(ay) - 1;
+            const bx = MAPS.brookX(ay);
+
+            for (let cx = 0; cx < w; cx++) {
+              if (Math.abs((cx + 0.5) * step - bx) < half) blocked[cy * w + cx] = 1;
+            }
+          }
+        } else {
+          paint(r.pts, r.hw - 1, blocked);
+        }
+      }
+
+      for (const road of rec.roads) paint(road.pts, road.w * (road.main ? 0.8 : 0.5), ford);
+      for (let i = 0; i < blocked.length; i++) if (ford[i]) blocked[i] = 0;
     }
 
     index(x, y) {
@@ -165,7 +211,7 @@
       let bestH = fs[start];
       let reached = false;
 
-      for (let expanded = 0; heap.length && expanded < MAX_EXPAND; expanded++) {
+      for (let expanded = 0; heap.length && expanded < this.maxExpand; expanded++) {
         const cur = pop();
         if (closed[cur] === seq) continue;
         closed[cur] = seq;
@@ -239,6 +285,9 @@
         cache.set(map.id, nav);
       }
       return nav;
+    },
+    forget(id) {
+      cache.delete(id);
     }
   };
 });
