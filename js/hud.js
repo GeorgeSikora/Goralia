@@ -35,7 +35,8 @@
   const ALL = [
     ["worker", "Q", "Dělník"], ["soldier", "W", "Voják"], ["archer", "E", "Lučištník"],
     ["hero", "H", "Hrdina"], ["command", "M", "Rozkaz"],
-    ["tower", "T", "Strážní věž"], ["barracks", "F", "Kasárna"], ["hut", "G", "Chatrč"],
+    ["tower", "T", "Strážní věž"], ["barracks", "F", "Kasárna"], ["hut", "G", "Buda"], ["smithy", "K", "Kovárna"],
+    ["armor", "Z", "Zbroj"], ["weapon", "X", "Zbraně"],
     ["fire", "A", "Ohnivá koule"], ["heal", "S", "Léčení"]
   ];
 
@@ -44,7 +45,8 @@
     none: [],
     hq: ["worker"],
     barracks: ["soldier", "archer", "hero"],
-    worker: ["command", "tower", "barracks", "hut"],
+    worker: ["command", "tower", "barracks", "hut", "smithy"],
+    smithy: ["armor", "weapon"],
     hero: ["command", "fire", "heal"],
     army: ["command"]
   };
@@ -57,6 +59,7 @@
     tower: "Střílí na nepřátele v dosahu. Staví dělník (10 s).",
     barracks: "Cvičí vojáky, lučištníky a hrdinu. Staví dělník (12 s).",
     hut: "Zvýší limit jednotek o 5. Staví dělník (8 s).",
+    smithy: "Vyzkoumá lepší zbroj a zbraně pro vojáky. Staví dělník (14 s).",
     fire: "Hrdina vrhne ohnivou kouli na cíl (10 s).",
     heal: "Hrdina vyléčí spojence v okolí (14 s).",
     command: "Klepni na cíl: pohyb, útok, těžba nebo stavba."
@@ -615,12 +618,20 @@
         barracks: "Výcvik armády a hrdiny.",
         tower: "Automatická obrana.",
         hut: "Limit jednotek +5.",
+        smithy: "Zbroj a zbraně vojáků.",
         citadel: own ? "Výcvik dělníků." : "Cíl tvého útoku."
       }[e.type];
 
       if (e.type === "tower") {
         stat(PK.icons.small.sword, 20, x0);
         stat(PK.icons.small.range, 155, x0 + 40);
+      }
+
+      if (e.research) {
+        const label = e.research.kind === "armor" ? "V\u00ddZKUM ZBROJE" : "V\u00ddZKUM ZBRAN\u00cd";
+        T(g, `${label} ${Math.round(e.research.frac * 100)} %`, x0, L.y + 38, 0xf0d088);
+        bar(g, x0, L.y + 49, iw, 4, e.research.frac, css(0xf0a040), 8);
+        return;
       }
 
       T(g, detail, x0, L.y + 49, 0xb8b0d4);
@@ -749,15 +760,16 @@
     if (!b) return;
 
     const cost = vm.costs[b.type];
+    const title = (vm.titles && vm.titles[b.type]) || b.title;
     const innerW = 118;
-    const lines = PK.wrap(b.tip, innerW);
+    const lines = PK.wrap((vm.tips && vm.tips[b.type]) || b.tip, innerW);
     const w = innerW + 12;
     const h = 10 + 10 + lines.length * 10 + (cost ? 11 : 0) + 4;
     const x = Math.min(V.w - 4 - w, b.x + BW / 2 - w / 2);
     const y = LAYOUT.card.y - h - 3;
 
     g.drawImage(frame(w, h, "plaque"), x, y);
-    T(g, b.title, x + 6, y + 6, 0xf0d088);
+    T(g, title, x + 6, y + 6, 0xf0d088);
     T3(g, `[${b.key}]`, x + w - 6, y + 8, MUTED, { align: "right", shadow: null });
 
     let yy = y + 18;

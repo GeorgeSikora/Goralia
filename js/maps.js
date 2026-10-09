@@ -84,7 +84,7 @@
   /* ---------- základny ---------- */
   // fx/fy jsou směry ke středu mapy (+1 nebo -1), podle nich se zrcadlí rozestavění kolem radnice.
   function base(slotIndex, x, y, fx, fy, zone) {
-    const type = slotIndex === 1 ? "citadel" : "hall";
+    const type = "hall";
 
     return {
       hq: { type, x, y },
@@ -184,7 +184,7 @@
     const terraces = [];
     const roads = [];
     const pave = [];
-    const ashCircles = [...(extraAsh || [])];
+    const ashCircles = [];
     const mirror = opts.mirror || null;
     const landmarks = [];
     if (!mirror) landmarks.push(["ringstone", center[0] - 45, center[1] - 40, true, 22]);
@@ -198,17 +198,8 @@
       const fx = s.facing;
       const fy = s.buildings[0].y > s.hq.y ? 1 : -1;
 
-      if (s.hq.type === "citadel") {
-        terraces.push({ x0: ax - 45, y0: ay - 5, x1: ax + 45, y1: ay + 29, lip: 4, cx: ax });
-        ashCircles.push([ax, ay, 110]);
-
-        for (const [dx, dy, name] of [[-29, -3, "brazier"], [-29, 31, "brazier"], [-53, -17, "skullStake"], [-51, 45, "skullStake"]]) {
-          landmarks.push([name, ax + dx * -fx, ay + dy * fy, true, 5]);
-        }
-      } else {
-        plazas.push({ x: ax, y: ay + 17 * fy, rx: 34, ry: 17, kind: "hall" });
-        landmarks.push(["campfire", ax - fx * 28, ay + fy * 49, true, 9], ["crates", ax - fx * 42, ay + fy * 31, true, 9]);
-      }
+      plazas.push({ x: ax, y: ay + 17 * fy, rx: 34, ry: 17, kind: "hall" });
+      landmarks.push(["campfire", ax - fx * 28, ay + fy * 49, true, 9], ["crates", ax - fx * 42, ay + fy * 31, true, 9]);
 
       plazas.push({ x: bx, y: by + 19 * fy, rx: 23, ry: 11, kind: "yard" });
       pave.push([ax, ay + 17 * fy, 52]);
@@ -266,7 +257,7 @@
       spawn: [58, 29]
     },
     {
-      hq: { type: "citadel", x: 850, y: 234 },
+      hq: { type: "hall", x: 840, y: 238 },
       buildings: [{ type: "barracks", x: 769, y: 354 }],
       units: [
         { type: "worker", x: 787, y: 194 }, { type: "worker", x: 796, y: 266 },
@@ -285,8 +276,8 @@
     size: [480, 240],
     tag: "1v1",
     description:
-      "Klidné údolí rozdělené potokem. Modré království sídlí na zelené straně, " +
-      "Rudá pevnost na popelavé vyvýšenině. Každý má dva doly a hustý les za zády. " +
+      "Klidné údolí rozdělené potokem. Obě království sídlí na zelených březích. " +
+      "Každý má dva doly a hustý les za zády. " +
       "Rychlá mapa pro souboj dvou hráčů, celá se vejde na obrazovku.",
     slots: valleySlots,
     gold: [[320, 112], [390, 394], [640, 112], [570, 394]],
@@ -304,17 +295,20 @@
         { w: 9, main: true, pts: [[40, 148], [80, 138], [115, 132], [170, 128], [230, 127], [290, 129], [340, 129], [366, 129], [376, 138], [384, 152], [400, 160], [425, 161]] },
         { w: 4.5, pts: [[95, 200], [98, 172], [106, 150], [114, 135]] },
         { w: 4, pts: [[160, 74], [163, 96], [168, 116], [172, 128]] },
-        { w: 4, pts: [[195, 208], [196, 182], [198, 152], [200, 130]] }
+        { w: 4, pts: [[195, 208], [196, 182], [198, 152], [200, 130]] },
+        { w: 4.5, pts: [[385, 200], [382, 172], [374, 150], [366, 135]] }
       ],
       plazas: [
         { x: 60, y: 136, rx: 34, ry: 17, kind: "hall" },
-        { x: 95, y: 196, rx: 23, ry: 11, kind: "yard" }
+        { x: 95, y: 196, rx: 23, ry: 11, kind: "yard" },
+        { x: 420, y: 136, rx: 34, ry: 17, kind: "hall" },
+        { x: 385, y: 196, rx: 23, ry: 11, kind: "yard" }
       ],
-      terraces: [{ x0: 380, y0: 112, x1: 470, y1: 146, lip: 4, cx: 425 }],
+      terraces: [],
       pave: [],
-      paveX: [[0, 105], [336, 480]],
-      ash: { edge: [335, 402], circles: [] },
-      cracks: [{ x: 392, y: 22, w: 82, h: 208, n: 46 }],
+      paveX: [[0, 105], [375, 480]],
+      ash: { circles: [] },
+      cracks: [],
       doodads: {
         landmarks: [
           ["ringstone", 292, 80, true, 22],
@@ -326,9 +320,12 @@
           ["stump", 18, 172, true, 6],
           ["stump", 47, 174, true, 6],
           ["crates", 18, 150, true, 9],
+          ["campfire", 448, 168, true, 9],
+          ["stump", 462, 172, true, 6],
+          ["stump", 433, 174, true, 6],
+          ["crates", 462, 150, true, 9],
           ["signpost", 246, 112, true, 5],
           ...[[100, 118], [158, 142], [214, 113], [270, 143], [326, 115], [66, 160], [134, 150]].map(([x, y]) => ["lanternPost", x, y, true, 5]),
-          ...[[396, 114], [396, 148], [372, 100], [374, 162]].map(([x, y]) => [y > 110 && y < 150 ? "brazier" : "skullStake", x, y, true, 5])
         ],
         scatter: [
           ["crystalCyan", 3, 14, 340, 40, 220, 14],
@@ -340,10 +337,7 @@
           ["stoneB", 9, 14, 470, 30, 228, 5],
           ["fern", 16, 14, 345, 30, 228, 6],
           ["stump", 2, 100, 345, 40, 220, 6],
-          ["columnFallen", 1, 200, 345, 40, 220, 9],
-          ["deadTree", 7, 400, 466, 26, 226, 11],
-          ["ribs", 1, 396, 466, 160, 226, 11],
-          ["skullStake", 4, 396, 466, 26, 226, 5]
+          ["columnFallen", 1, 200, 345, 40, 220, 9]
         ]
       },
       tufts: { x: 12, y: 22, w: 340, h: 205, n: 240, tries: 900 },

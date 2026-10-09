@@ -105,6 +105,15 @@
 
     if (!ready.length) return;
 
+    const smithies = match.buildings.filter(b => b.team === team && b.type === "smithy" && alive(b));
+
+    if (builder && !smithies.length && army.length >= 4 && match.elapsed > 150 && canPay(eco, "smithy")) {
+      buildNear(match, brain, hq, "smithy", builder);
+    }
+
+    if (smithies.some(s => s.progress >= 1) && eco.gold > 260) {
+      match.command(team, { c: "research", kind: brain.flip % 2 ? "armor" : "weapon" });
+    }
     if (!hasHero && canPay(eco, "hero")) match.command(team, { c: "train", type: "hero" });
 
     for (let i = 0; i < 2; i++) {

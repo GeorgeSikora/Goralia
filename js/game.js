@@ -29,10 +29,11 @@
     soldier: "Voják",
     archer: "Lučištník",
     hero: "Hrdina",
-    hall: "Radnice",
+    hall: "Gmina",
     barracks: "Kasárna",
     tower: "Strážní věž",
-    hut: "Chatrč",
+    hut: "Buda",
+    smithy: "Kovárna",
     citadel: "Rudá pevnost"
   };
 
@@ -82,6 +83,7 @@
   let minimapDrag = false;
   let selectedResourceId = 0;
   let supplyCap = R.SUPPLY_BASE;
+  let upgrades = { armor: 0, weapon: 0 };
   let focus = "";
   let focusKey = "";
   const keysDown = new Set();
@@ -112,7 +114,7 @@
   const xpNeeded = level => level * 40;
   const hash3 = (a, b, c) => PK.hash(a, b, c);
 
-  const FAIL_MSG = /^(Potřebuješ|Nejdřív|Pro stavbu|Současně|Maximum|Stavět lze|Na tomto|Hrdina už|Cíl je|Ohnivá koule: ještě|Léčení: ještě)/;
+  const FAIL_MSG = /^(Potřebuješ|Nejdřív|Pro stavbu|Současně|Maximum|Stavět lze|Na tomto|Hrdina už|Cíl je|Ohnivá koule: ještě|Léčení: ještě|Tento výzkum|Kovárna|Zbroj:|Zbraně:)/;
 
   function announce(value) {
     message = value;
@@ -135,6 +137,7 @@
 
     gold = 0;
     wood = 0;
+    upgrades = { armor: 0, weapon: 0 };
     elapsed = 0;
     state = "playing";
     placement = null;
@@ -262,7 +265,7 @@
   }
 
   // Typ, který se právě ovládá (nabídka tlačítek); Tab přepíná mezi typy ve výběru.
-  const FOCUS_ORDER = ["hero", "worker", "soldier", "archer", "hall", "citadel", "barracks", "tower", "hut"];
+  const FOCUS_ORDER = ["hero", "worker", "soldier", "archer", "hall", "citadel", "barracks", "tower", "hut", "smithy"];
 
   function selectionTypes() {
     const present = new Set(selected.map(e => e.type));
@@ -296,7 +299,7 @@
 
     if (e.kind === "unit") return f === "hero" ? "hero" : f === "worker" ? "worker" : "army";
     if (e.progress < 1) return "none";
-    return f === "hall" || f === "citadel" ? "hq" : f === "barracks" ? "barracks" : "none";
+    return f === "hall" || f === "citadel" ? "hq" : f === "barracks" ? "barracks" : f === "smithy" ? "smithy" : "none";
   }
 
   // Klik na avatar ve výběru: jedna jednotka; Shift ji ze výběru vyjme, Ctrl vybere všechny stejného typu.
@@ -363,7 +366,14 @@
       return;
     }
 
-    if (type === "tower" || type === "barracks" || type === "hut") {
+    if (type === "armor" || type === "weapon") {
+      audio.play("click");
+      const src = selected.find(e => e.kind === "building" && e.type === "smithy" && e.progress >= 1);
+      sendCmd({ c: "research", kind: type, src: src ? src.id : 0 });
+      return;
+    }
+
+    if (type === "tower" || type === "barracks" || type === "hut" || type === "smithy") {
       const hasWorker = selected.some(entity =>
         entity.kind === "unit" &&
         entity.type === "worker" &&
@@ -833,6 +843,9 @@
       t: "tower",
       f: "barracks",
       g: "hut",
+      k: "smithy",
+      z: "armor",
+      x: "weapon",
       a: "fire",
       s: "heal",
       m: "command"
@@ -1449,6 +1462,15 @@
         break;
       }
 
+      case "upg": {
+        if (R.TEAMS[e.t] === me) {
+          audio.play("levelUp");
+          const h = buildings.find(b => b.team === me && b.type === R.HQ[me]);
+          if (h) fx.levelUp(h.x, h.y + 8);
+        }
+        break;
+      }
+
       case "coin": {
         const unit = unitMap.get(e.id);
         if (!unit) return;
@@ -1484,6 +1506,7 @@
     }
     online.count = s.c;
     supplyCap = s.sc || R.SUPPLY_BASE;
+    if (s.up) upgrades = { armor: s.up[0], weapon: s.up[1] };
     elapsed = s.el;
     gold = s.g;
     wood = s.w;
@@ -1535,7 +1558,7 @@
     const seenBuildings = new Set();
 
     for (const d of s.b) {
-      const [id, t, team, x, y, hp, maxHp, progress] = d;
+      const [id, t, team, x, y, hp, maxHp, progress, research, researchT] = d;
       let b = buildingMap.get(id);
 
       if (!b) {
@@ -1556,6 +1579,7 @@
       b.hp = hp;
       b.maxHp = maxHp;
       b.progress = progress;
+      b.research = research ? { kind: research === 1 ? "armor" : "weapon", frac: researchT } : null;
     }
 
     if (seenBuildings.size !== buildings.length) {
@@ -2647,6 +2671,34 @@
     const barracks = buildings.some(b => b.team === me && b.type === "barracks" && alive(b));
     const heroAlive = units.some(u => u.team === me && u.type === "hero" && alive(u));
     const afford = type => gold >= costs[type].gold && wood >= costs[type].wood;
+    const smithies = buildings.filter(b => b.team === me && b.type === "smithy" && b.progress >= 1 && alive(b));
+    const vmCosts = { ...costs };
+    const vmTitles = {};
+    const vmTips = {};
+    const research = {};
+
+    for (const kind of ["armor", "weapon"]) {
+      const up = R.UPGRADES[kind];
+      const lvl = upgrades[kind];
+      const def = up.levels[lvl];
+      const run = smithies.find(s => s.research && s.research.kind === kind);
+      const busyElsewhere = !run && smithies.every(s => s.research);
+      const effect = kind === "armor"
+        ? `Vojáci dostanou o ${Math.round(R.ARMOR_PER_LEVEL * 100)} % méně poškození.`
+        : `Vojáci dají o ${R.WEAPON_PER_LEVEL} více poškození.`;
+
+      vmCosts[kind] = def && !run ? def : null;
+      vmTitles[kind] = `${up.name} ${lvl}/${up.levels.length}`;
+      vmTips[kind] = def
+        ? `${effect} Výzkum trvá ${def.time} s. Platí pro všechny vojáky.`
+        : "Nejvyšší stupeň vylepšení.";
+      research[kind] = {
+        afford: !def || (gold >= def.gold && wood >= def.wood),
+        enabled: !!def && smithies.length > 0 && !busyElsewhere && !run,
+        cd: run ? up.levels[lvl].time * (1 - run.research.frac) : 0,
+        cdMax: def ? def.time : 1
+      };
+    }
     const hoverBtnObj = mouse.y >= mapAreaH() ? PK.hud.hitButton(mouse.x, mouse.y) : null;
     const pressed = keyPress ? keyPress.type : pressedBtn;
 
@@ -2658,6 +2710,9 @@
       tower: { afford: afford("tower"), enabled: hasWorker, active: placement === "tower" },
       barracks: { afford: afford("barracks"), enabled: hasWorker, active: placement === "barracks" },
       hut: { afford: afford("hut"), enabled: hasWorker, active: placement === "hut" },
+      smithy: { afford: afford("smithy"), enabled: hasWorker, active: placement === "smithy" },
+      armor: research.armor,
+      weapon: research.weapon,
       fire: { enabled: !!hero, cd: hero ? hero.fireCooldown : 0, cdMax: 10, active: spellMode === "fire" },
       heal: { enabled: !!hero, cd: hero ? hero.healCooldown : 0, cdMax: 14 },
       command: { enabled: true, active: commandMode }
@@ -2671,7 +2726,7 @@
       typeCount: selectionTypes().length,
       primary: selected.find(e => e.type === focus) || selected[0],
       state, elapsed, selected, units, buildings, resources,
-      message, messageTimer, placement, spellMode, commandMode, names, costs, btn,
+      message, messageTimer, placement, spellMode, commandMode, names, costs: vmCosts, titles: vmTitles, tips: vmTips, btn,
       hoverBtn: hoverBtnObj ? hoverBtnObj.type : null,
       pressedBtn: pressed,
       myTeam: me,

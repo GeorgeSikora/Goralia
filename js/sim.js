@@ -17,7 +17,8 @@ const TICK = 0.05;
 const MAX_IDS = 40;
 
 const UNIT_TYPES = ["worker", "soldier", "archer", "hero"];
-const BUILDING_TYPES = ["hall", "citadel", "barracks", "tower", "hut"];
+const BUILDING_TYPES = ["hall", "citadel", "barracks", "tower", "hut", "smithy"];
+const RESEARCH_KINDS = ["armor", "weapon"];
 const ORDER_CODES = { move: 1, attack: 2, gather: 3, deliver: 4, build: 5 };
 const UNIT_RADIUS = 15; // nejmenší odstup středů dvou jednotek
 
@@ -44,6 +45,7 @@ class Match {
     this.active = [];
     this.out = new Set();
     this.econ = {};
+    this.upgrades = {};
     this.notes = {};
     this.brains = {};
     this.phase = "countdown";
@@ -60,6 +62,7 @@ class Match {
       const team = R.TEAMS[i];
       this.active.push(team);
       this.econ[team] = { gold: R.BASE_GOLD, wood: R.BASE_WOOD };
+      this.upgrades[team] = { armor: 0, weapon: 0 };
       this.notes[team] = [];
       if (this.players[i].ai) this.brains[team] = AI.createBrain(team);
 
@@ -87,7 +90,7 @@ class Match {
     const building = {
       id: this.nextId++, kind: "building", type, team, x, y,
       hp: fresh ? Math.ceil(hp * 0.1) : hp, maxHp: hp,
-      cooldown: 0, fresh, progress: fresh ? 0 : 1
+      cooldown: 0, fresh, progress: fresh ? 0 : 1, research: null
     };
     this.buildings.push(building);
     return building;
@@ -104,6 +107,7 @@ class Match {
       level: 1, xp: 0, facing: this.slotOf(team).facing
     };
     this.units.push(unit);
+    if (type === "soldier") unit.damage += R.WEAPON_PER_LEVEL * this.upgrades[team].weapon;
     return unit;
   }
 
@@ -151,6 +155,7 @@ class Match {
 
     switch (msg.c) {
       case "train": return this.train(team, msg.type, msg.src);
+      case "research": return this.research(team, msg.kind, msg.src);
       case "build": return this.build(team, msg);
       case "order": return this.order(team, msg);
       case "fire": return this.fire(team, msg);
@@ -184,7 +189,7 @@ class Match {
         this.buildings.find(b => b.type === "barracks" && done(b));
 
     if (!source) {
-      return this.note(team, type === "worker" ? "Potřebuješ radnici." : "Potřebuješ kasárna.");
+      return this.note(team, type === "worker" ? "Potřebuješ gminu." : "Potřebuješ kasárna.");
     }
 
     const mine = this.units.filter(u => u.team === team && alive(u));
@@ -194,12 +199,53 @@ class Match {
     }
 
     const cap = this.supplyCap(team);
-    if (mine.length >= cap) return this.note(team, `Maximum jednotek je ${cap}. Postav chatrč.`);
+    if (mine.length >= cap) return this.note(team, `Maximum jednotek je ${cap}. Postav budu.`);
     if (!this.pay(team, type)) return;
 
     const spawn = this.slotOf(team).spawn;
     this.createUnit(type, team, source.x + spawn[0], source.y + spawn[1]);
     if (type === "hero") this.note(team, "Hrdina připraven: A ohnivá koule, S léčení.");
+  }
+
+  // Výzkum zbroje a zbraní v dostavěné kovárně; každý druh jen jednou najednou, kovárna jeden výzkum.
+  research(team, kind, srcId) {
+    if (!RESEARCH_KINDS.includes(kind)) return;
+
+    const level = this.upgrades[team][kind];
+    const def = R.UPGRADES[kind].levels[level];
+
+    if (!def) return this.note(team, `${R.UPGRADES[kind].name}: nejvyšší stupeň.`);
+
+    const mine = this.buildings.filter(b => b.team === team && b.type === "smithy" && b.progress >= 1 && alive(b));
+
+    if (!mine.length) return this.note(team, "Potřebuješ kovárnu.");
+    if (mine.some(b => b.research && b.research.kind === kind)) return this.note(team, "Tento výzkum už probíhá.");
+
+    const smithy = mine.find(b => b.id === srcId && !b.research) || mine.find(b => !b.research);
+
+    if (!smithy) return this.note(team, "Kovárna právě pracuje.");
+
+    const eco = this.econ[team];
+
+    if (eco.gold < def.gold || eco.wood < def.wood) {
+      return this.note(team, `Potřebuješ ${def.gold} zlata a ${def.wood} dřeva.`);
+    }
+
+    eco.gold -= def.gold;
+    eco.wood -= def.wood;
+    smithy.research = { kind, left: def.time, total: def.time };
+    this.note(team, `Výzkum: ${R.UPGRADES[kind].name} ${level + 1} (${def.time} s).`);
+  }
+
+  finishResearch(team, kind) {
+    const level = ++this.upgrades[team][kind];
+
+    if (kind === "weapon") {
+      for (const u of this.units) if (u.team === team && u.type === "soldier") u.damage += R.WEAPON_PER_LEVEL;
+    }
+
+    this.note(team, `${R.UPGRADES[kind].name} ${level} dokončeno.`);
+    this.events.push({ e: "upg", t: teamIndex(team), k: kind === "armor" ? 0 : 1, l: level });
   }
 
   placementProblem(team, x, y) {
@@ -222,7 +268,7 @@ class Match {
 
   build(team, msg) {
     const type = msg.type;
-    if (type !== "tower" && type !== "barracks" && type !== "hut") return;
+    if (type !== "tower" && type !== "barracks" && type !== "hut" && type !== "smithy") return;
     if (!isNum(msg.x) || !isNum(msg.y)) return;
 
     const workers = this.ownUnits(team, msg.ids).filter(u => u.type === "worker");
@@ -508,6 +554,11 @@ class Match {
   damage(attacker, target, amount, opts = {}) {
     if (!alive(target)) return;
 
+    if (target.kind === "unit" && target.type === "soldier") {
+      const armor = this.upgrades[target.team].armor;
+      if (armor) amount = Math.max(1, Math.round(amount * (1 - R.ARMOR_PER_LEVEL * armor)));
+    }
+
     target.hp -= amount;
     const killed = target.hp <= 0;
     if (killed) target.hp = 0;
@@ -656,6 +707,14 @@ class Match {
 
       building.cooldown -= dt;
 
+      if (building.research && building.progress >= 1) {
+        building.research.left -= dt;
+
+        if (building.research.left <= 0) {
+          this.finishResearch(building.team, building.research.kind);
+          building.research = null;
+        }
+      }
       if (building.type === "tower" && building.progress >= 1 && building.cooldown <= 0) {
         const target = this.nearestEnemy(building, 155);
 
@@ -779,6 +838,7 @@ class Match {
       g: eco.gold,
       w: eco.wood,
       sc: this.supplyCap(team),
+      up: [(this.upgrades[team] || {}).armor || 0, (this.upgrades[team] || {}).weapon || 0],
       u: this.units.map(u => [
         u.id,
         UNIT_TYPES.indexOf(u.type),
@@ -797,7 +857,7 @@ class Match {
         u.working ? 1 : u.building ? 2 : 0,
         u.damage
       ]),
-      // Budova: [id, typ, tým, x, y, hp, maxHp, postup stavby 0..1]
+      // Budova: [id, typ, tým, x, y, hp, maxHp, postup stavby 0..1, výzkum (0 žádný, 1 zbroj, 2 zbraně), postup výzkumu 0..1]
       b: this.buildings.map(b => [
         b.id,
         BUILDING_TYPES.indexOf(b.type),
@@ -806,7 +866,9 @@ class Match {
         b.y,
         Math.ceil(b.hp),
         b.maxHp,
-        Math.round(b.progress * 100) / 100
+        Math.round(b.progress * 100) / 100,
+        b.research ? RESEARCH_KINDS.indexOf(b.research.kind) + 1 : 0,
+        b.research ? Math.round((1 - b.research.left / b.research.total) * 100) / 100 : 0
       ]),
       // Surovina: [id, typ (0 zlato, 1 dřevo), x, y, množství]
       r: this.resources.map(r => [

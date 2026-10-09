@@ -13,7 +13,7 @@ c.width = 1024; c.height = 600;
 const g = c.getContext("2d"); g.imageSmoothingEnabled = false;
 g.fillStyle = "#4a8548"; g.fillRect(0,0,c.width,c.height);
 let x = 4;
-for (const [type, team] of [["hall","blue"],["barracks","blue"],["tower","blue"],["citadel","red"]]) {
+for (const [type, team] of [["hall","blue"],["barracks","blue"],["tower","blue"],["smithy","blue"],["citadel","red"]]) {
   const b = PK.buildings.get(type);
   g.drawImage(b.c, x, 10, b.w * 3, b.h * 3);
   const bf = PK.buildings.banner(team);

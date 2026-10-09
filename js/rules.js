@@ -17,8 +17,17 @@
     hero:     { gold: 150, wood: 50 },
     tower:    { gold: 90,  wood: 55 },
     barracks: { gold: 125, wood: 70 },
-    hut:      { gold: 70,  wood: 40 }
+    hut:      { gold: 70,  wood: 40 },
+    smithy:   { gold: 120, wood: 80 }
   };
+
+  // Výzkum v kovárně: tři stupně, cena a doba výzkumu (s) pro každý. Platí pro všechny vojáky týmu.
+  const UPGRADES = {
+    armor:  { name: "Zbroj",  levels: [{ gold: 90,  wood: 40,  time: 20 }, { gold: 140, wood: 70,  time: 30 }, { gold: 200, wood: 100, time: 40 }] },
+    weapon: { name: "Zbraně", levels: [{ gold: 100, wood: 30,  time: 20 }, { gold: 150, wood: 60,  time: 30 }, { gold: 210, wood: 90,  time: 40 }] }
+  };
+  const ARMOR_PER_LEVEL = 0.12; // část poškození, kterou voják za stupeň zbroje neutrpí
+  const WEAPON_PER_LEVEL = 3;   // bonus k poškození vojáka za stupeň zbraní
 
   // [hp, rychlost, poškození, dosah, prodleva mezi útoky]
   const UNITS = {
@@ -29,14 +38,14 @@
   };
 
   // Všechny základny mají stejné zdraví, aby byl souboj férový.
-  const BUILDING_HP = { hall: 1500, citadel: 1500, barracks: 290, tower: 175, hut: 200 };
+  const BUILDING_HP = { hall: 1500, citadel: 1500, barracks: 290, tower: 175, hut: 200, smithy: 260 };
 
   // Doba stavby v sekundách (jeden dělník).
-  const BUILD_TIME = { tower: 10, barracks: 12, hut: 8 };
+  const BUILD_TIME = { tower: 10, barracks: 12, hut: 8, smithy: 14 };
 
   // Index slotu na mapě = index týmu.
   const TEAMS = ["blue", "red", "gold", "violet", "green", "silver"];
-  const HQ = { blue: "hall", red: "citadel", gold: "hall", violet: "hall", green: "hall", silver: "hall" };
+  const HQ = { blue: "hall", red: "hall", gold: "hall", violet: "hall", green: "hall", silver: "hall" };
   const TEAM_NAMES = { blue: "Modrá", red: "Rudá", gold: "Zlatá", violet: "Fialová", green: "Zelená", silver: "Stříbrná" };
   const MAX_PLAYERS = TEAMS.length;
   const BASE_GOLD = 260;
@@ -52,7 +61,7 @@
   const supplyCap = huts => Math.min(SUPPLY_MAX, SUPPLY_BASE + SUPPLY_PER_HUT * huts);
 
   return {
-    COSTS, UNITS, BUILDING_HP, BUILD_TIME, TEAMS, HQ, TEAM_NAMES, MAX_PLAYERS, BASE_GOLD, BASE_WOOD, GOLD_AMOUNT,
+    COSTS, UPGRADES, ARMOR_PER_LEVEL, WEAPON_PER_LEVEL, UNITS, BUILDING_HP, BUILD_TIME, TEAMS, HQ, TEAM_NAMES, MAX_PLAYERS, BASE_GOLD, BASE_WOOD, GOLD_AMOUNT,
     SUPPLY_BASE, SUPPLY_PER_HUT, SUPPLY_MAX, supplyCap, MAX_BUILDINGS, COUNTDOWN
   };
 });

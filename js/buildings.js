@@ -422,6 +422,71 @@
     };
   }
 
+  /* ---------- Kovárna: zbroj a zbraně ---------- */
+  function smithy(team = "blue") {
+    const W = 40;
+    const H = 36;
+    const P = new Pix(W, H);
+    const T = TEAM[team];
+    const stone = brick([C.s[1], C.s[2], C.s[3], C.s[4]], 5, 3, 31);
+    const roof = shingle([C.s[0], C.s[1], C.s[2], C.s[3], C.s[4]], 4, 3, 3, 9);
+
+    // stone walls
+    P.shade(5, 18, 30, 34, (x, y) => stone(x, y));
+    edges(P, 5, 18, 29, 34, C.s[5], C.s[0]);
+
+    // open forge hearth with a glowing mouth
+    P.rect(10, 23, 10, 11, C.s[0]);
+    P.rect(11, 24, 8, 10, C.r[1]);
+    P.rect(12, 26, 6, 8, C.r[3]);
+    P.rect(13, 28, 4, 6, C.a[3]);
+    P.rect(14, 30, 2, 4, C.a[4]);
+
+    // timber beam above the hearth
+    P.rect(9, 21, 12, 2, C.w[2]);
+    P.rect(9, 21, 12, 1, C.w[3]);
+
+    // big stone chimney
+    P.rect(24, 4, 6, 14, C.s[2]);
+    P.rect(24, 4, 6, 1, C.s[5]);
+    P.rect(24, 4, 2, 14, C.s[4]);
+    P.rect(28, 5, 2, 13, C.s[1]);
+
+    // dark slate roof
+    P.poly([[2, 19], [33, 19], [19, 7], [8, 7]], (x, y) => {
+      const c = roof(x, y);
+      return x > 20 ? dark(c, 0.25) : c;
+    });
+    P.rect(2, 19, 31, 1, C.s[0]);
+
+    // anvil on a log stump in front
+    P.rect(32, 29, 5, 5, C.w[2]);
+    P.rect(32, 29, 5, 1, C.w[3]);
+    P.rect(31, 26, 7, 3, C.s[4]);
+    P.rect(31, 26, 7, 1, C.s[5]);
+    P.rect(38, 27, 2, 1, C.s[4]);
+    P.rect(33, 29, 3, 1, C.s[2]);
+
+    // hanging sword and team pennant
+    P.rect(6, 22, 1, 7, C.s[5]);
+    P.rect(5, 28, 3, 1, C.gold[1]);
+    P.rect(19, 2, 1, 6, C.w[3]);
+    P.rect(20, 2, 5, 3, T.m);
+    P.rect(20, 2, 5, 1, T.l);
+
+    P.outline(C.ink, 0.74);
+
+    return {
+      c: P.toCanvas(), w: W, h: H, ax: 20, ay: 34,
+      banners: [],
+      smoke: [[27, 4]],
+      glows: [
+        { x: 15, y: 29, r: 10, a: 0.55, color: C.a[2], pulse: true },
+        { x: 15, y: 31, r: 5, a: 0.35, color: C.a[3] }
+      ]
+    };
+  }
+
   /* ---------- Rudá pevnost: the Cinder citadel ---------- */
   function citadel() {
     const W = 80;
@@ -643,7 +708,8 @@
         barracks,
         tower,
         citadel,
-        hut
+        hut,
+        smithy
       }[type](team);
     }
 

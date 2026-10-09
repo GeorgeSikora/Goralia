@@ -150,6 +150,42 @@ function testSimulation() {
 
   testEconomy();
   testBuilding();
+  testSmithy();
+}
+
+function testSmithy() {
+  const run = (m, seconds) => { for (let t = 0; t < seconds; t += TICK) { m.step(TICK); m.endTick(); } };
+  const m = new Match(MAPS.get("valley"), [{ name: "A" }, { name: "B" }], { countdown: 0 });
+  m.econ.blue.gold = 2000;
+  m.econ.blue.wood = 2000;
+
+  m.command("blue", { c: "research", kind: "armor" });
+  assert.strictEqual(m.upgrades.blue.armor, 0, "bez kovárny se nevyzkoumá");
+  assert.strictEqual(m.econ.blue.gold, 2000);
+
+  const smithy = m.createBuilding("smithy", "blue", 300, 300, false);
+  const soldier = m.units.find(u => u.team === "blue" && u.type === "soldier");
+  const dmg0 = soldier.damage;
+  m.command("blue", { c: "research", kind: "weapon" });
+  assert.strictEqual(m.econ.blue.gold, 2000 - R.UPGRADES.weapon.levels[0].gold, "výzkum se platí hned");
+  assert(smithy.research, "kovárna začala výzkum");
+  m.command("blue", { c: "research", kind: "armor" });
+  assert(!m.buildings.some(b => b !== smithy && b.research) && m.upgrades.blue.armor === 0, "kovárna dělá jen jeden výzkum");
+
+  run(m, R.UPGRADES.weapon.levels[0].time - 1);
+  assert.strictEqual(m.upgrades.blue.weapon, 0, "výzkum chvíli trvá");
+  run(m, 2);
+  assert.strictEqual(m.upgrades.blue.weapon, 1);
+  assert.strictEqual(soldier.damage, dmg0 + R.WEAPON_PER_LEVEL, "stávající vojáci dostanou bonus");
+  assert.strictEqual(m.createUnit("soldier", "blue", 100, 100).damage, dmg0 + R.WEAPON_PER_LEVEL, "noví také");
+
+  m.command("blue", { c: "research", kind: "armor" });
+  run(m, R.UPGRADES.armor.levels[0].time + 1);
+  assert.strictEqual(m.upgrades.blue.armor, 1);
+  const foe = m.units.find(u => u.team === "red" && u.type === "soldier");
+  const hp = soldier.hp;
+  m.damage(foe, soldier, 20);
+  assert.strictEqual(hp - soldier.hp, Math.round(20 * (1 - R.ARMOR_PER_LEVEL)), "zbroj snižuje poškození");
 }
 
 function testBuilding() {
