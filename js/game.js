@@ -16,6 +16,7 @@
   const MAPS = PK.maps;
   const sim = PK.sim;
   const net = PK.net;
+  const account = PK.account;
   const view = PK.view;
 
   const canvas = document.querySelector("#game");
@@ -1395,23 +1396,10 @@
   }
 
   /* ======================= lobby: výběr mapy a hráčů ======================= */
-  const NAME_KEY = "pk-name";
   const oStatus = $("o-status");
   const oStats = $("o-stats");
   const oRooms = $("o-rooms");
   const oCreate = $("o-create");
-  const oName = $("o-name");
-  const oContinue = $("o-continue");
-  const stepName = $("o-step-name");
-  const stepRooms = $("o-step-rooms");
-
-  const setOnlineStep = rooms => {
-    stepName.hidden = rooms;
-    stepRooms.hidden = !rooms;
-    oName.disabled = rooms && online.phase === "connecting";
-  };
-
-  const playerName = () => oName.value.trim() || "Hrac";
 
   // Stav lobby (hra proti AI i online místnost); sloty odpovídají slotům mapy.
   const lobby = { online: false, mapId: MAPS.DEFAULT, slots: [], you: 0, host: 0 };
@@ -1449,8 +1437,7 @@
       row.textContent = `${m ? m.name : r.map} · hostitel ${r.host} · ${r.players}/${r.max}`;
       row.addEventListener("click", () => {
         audio.unlock();
-        rememberName();
-        net.send({ t: "join", room: r.id, name: playerName() });
+        net.send({ t: "join", room: r.id });
       });
       oRooms.append(row);
     }
@@ -1460,7 +1447,6 @@
     const phase = online.phase;
     const busy = phase === "connecting";
 
-    oName.disabled = busy;
     oCreate.disabled = busy;
     oCreate.textContent = phase === "idle" ? "Vytvořit místnost" : "Připojit k serveru";
 
@@ -1474,10 +1460,6 @@
 
     oStats.textContent = phase === "idle" ? `Hráčů online: ${online.total} · Místností: ${online.rooms.length} · Hráčů ve hře: ${online.playing}` : "";
     renderRooms();
-  }
-
-  function rememberName() {
-    try { localStorage.setItem(NAME_KEY, playerName()); } catch (e) { /* ignore */ }
   }
 
   function connectLobby() {
@@ -1508,11 +1490,13 @@
 
   function enterOnline() {
     audio.unlock();
-    refreshCustomMaps();
 
-    let savedName = "";
-    try { savedName = localStorage.getItem(NAME_KEY) || ""; } catch (e) { /* ignore */ }
-    if (!oName.value) oName.value = savedName;
+    if (!account.user) {
+      account.openLogin(enterOnline);
+      return;
+    }
+
+    refreshCustomMaps();
 
     if (online.phase === "room") {
       showPage("lobby");
@@ -1521,18 +1505,6 @@
     }
 
     showPage("online");
-
-    // přezdívka se zadává před výpisem místnost; při návratu z herí už jsme připojení
-    const connected = online.phase === "idle" || online.phase === "connecting";
-    setOnlineStep(connected);
-    if (!connected) oName.focus();
-    syncLobby();
-  }
-
-  function continueOnline() {
-    audio.unlock();
-    rememberName();
-    setOnlineStep(true);
     if (online.phase === "offline") connectLobby();
     syncLobby();
   }
@@ -1541,9 +1513,8 @@
     audio.unlock();
 
     if (online.phase === "idle") {
-      rememberName();
       online.error = "";
-      net.send({ t: "create", map: lobby.mapId, name: playerName() });
+      net.send({ t: "create", map: lobby.mapId });
     } else if (online.phase === "offline") {
       connectLobby();
     }
@@ -2189,6 +2160,13 @@
     switch (m.t) {
       case "hello":
       case "rooms":
+        // spojení bez účtu (vypršela relace): zpět na přihlášení
+        if (m.t === "hello" && !m.me) {
+          leaveLobby();
+          account.expired();
+          break;
+        }
+
         online.rooms = Array.isArray(m.list) ? m.list : [];
         online.playing = m.playing | 0;
         online.total = m.online | 0;
@@ -2245,7 +2223,7 @@
       online.phase = "offline";
       online.roomId = 0;
       lobby.online = false;
-      online.error = "Spojení se serverem bylo přerušeno.";
+      online.error = online.error || "Spojení se serverem bylo přerušeno.";
       if (!started) showPage("online");
       syncLobby();
     }
@@ -2298,12 +2276,6 @@
     closeMenu();
   });
   oCreate.addEventListener("click", createRoom);
-  oContinue.addEventListener("click", continueOnline);
-  oName.addEventListener("keydown", event => {
-    if (event.key !== "Enter") return;
-    if (stepRooms.hidden) continueOnline();
-    else createRoom();
-  });
   lobbyEl.start.addEventListener("click", () => {
     if (lobby.online) net.send({ t: "start" });
     else startOffline();
@@ -2376,6 +2348,17 @@
   syncSettings();
   syncMenu();
   showPage("main");
+
+  account.init({
+    show: showPage,
+    onChange: user => {
+      if (user) return;
+      if (mode === "online" && started) leaveOnline();
+      else leaveLobby();
+    },
+    onLogin: () => enterOnline()
+  });
+  account.start();
 
   // Odkaz z editoru (?map=id) otevře výběr hry proti AI s danou vlastní mapou.
   refreshCustomMaps().then(() => {

@@ -32,27 +32,93 @@
         <button id="m-restart" class="btn big" type="button" hidden>Nová hra</button>
         <button id="m-surrender" class="btn big" type="button" hidden>Vzdát se</button>
         <button id="m-leave" class="btn big" type="button" hidden>Hlavní menu</button>
+        <button id="m-players" class="btn big" type="button">Hráči</button>
+        <button id="m-account" class="btn big" type="button">Přihlásit se</button>
+        <a id="m-admin" class="btn big" href="/admin" target="_blank" rel="noopener" hidden>Server panel</a>
         <button id="m-settings" class="btn big" type="button">Nastavení</button>
         <button id="m-help" class="btn big" type="button">Ovládání</button>
       </section>
 
       <section id="panel-online" class="page" data-page="online" hidden>
         <h2>Multiplayer</h2>
-        <label class="row">
-          <span>Přezdívka</span>
-          <input id="o-name" class="field" type="text" maxlength="14" autocomplete="off" spellcheck="false" placeholder="Hrac">
-        </label>
-        <div id="o-step-name" class="step">
-          <p class="status">Zadej přezdívku, pod kterou tě uvidí ostatní hráči.</p>
-          <button id="o-continue" class="btn big" type="button">Pokračovat</button>
-        </div>
-        <div id="o-step-rooms" class="step" hidden>
+        <p id="o-who" class="status small"></p>
+        <div id="o-step-rooms" class="step">
           <p id="o-status" class="status lobby-status" aria-live="polite"></p>
           <div id="o-rooms" class="rooms" role="list"></div>
           <p id="o-stats" class="status small"></p>
           <button id="o-create" class="btn big" type="button">Vytvořit místnost</button>
         </div>
         <button class="btn big" type="button" data-back id="o-back">Zpět</button>
+      </section>
+
+      <section id="panel-account" class="page" data-page="account" hidden>
+        <h2 id="a-title">Přihlášení</h2>
+        <p id="a-note" class="status" aria-live="polite"></p>
+        <div id="a-social" class="social" hidden>
+          <a id="a-google" class="btn big" href="/auth/google">Pokračovat přes Google</a>
+          <a id="a-facebook" class="btn big" href="/auth/facebook">Pokračovat přes Facebook</a>
+          <p class="status small">nebo heslem</p>
+        </div>
+        <form id="a-form" class="form" novalidate>
+          <label class="row" id="a-name-row" hidden>
+            <span>Přezdívka</span>
+            <input id="a-name" class="field" type="text" maxlength="14" autocomplete="nickname" autocapitalize="off" spellcheck="false">
+          </label>
+          <label class="row">
+            <span id="a-id-label">Přezdívka nebo e-mail</span>
+            <input id="a-id" class="field" type="text" maxlength="254" autocomplete="username" autocapitalize="off" spellcheck="false">
+          </label>
+          <label class="row">
+            <span>Heslo</span>
+            <input id="a-password" class="field" type="password" maxlength="128" autocomplete="current-password">
+          </label>
+          <p id="a-status" class="status" aria-live="polite"></p>
+          <button id="a-submit" class="btn big" type="submit">Přihlásit se</button>
+          <button id="a-toggle" class="btn" type="button">Nemáš účet? Zaregistruj se</button>
+        </form>
+        <button class="btn big" type="button" data-back>Zpět</button>
+      </section>
+
+      <section id="panel-profile" class="page" data-page="profile" hidden>
+        <h2 id="pf-title">Profil</h2>
+        <p id="pf-meta" class="status small"></p>
+        <p id="pf-status" class="status" aria-live="polite"></p>
+        <div id="pf-stats" class="stats"></div>
+        <h3 class="touch-title">Poslední zápasy</h3>
+        <div id="pf-recent" class="matches"></div>
+        <div id="pf-own" class="own" hidden>
+          <form id="pf-rename" class="form">
+            <label class="row">
+              <span>Přezdívka</span>
+              <input id="pf-name" class="field" type="text" maxlength="14" autocomplete="off" spellcheck="false">
+            </label>
+            <button class="btn" type="submit">Změnit přezdívku</button>
+          </form>
+          <form id="pf-password" class="form">
+            <label class="row">
+              <span>Současné heslo</span>
+              <input id="pf-current" class="field" type="password" maxlength="128" autocomplete="current-password">
+            </label>
+            <label class="row">
+              <span>Nové heslo</span>
+              <input id="pf-next" class="field" type="password" maxlength="128" autocomplete="new-password">
+            </label>
+            <button class="btn" type="submit">Změnit heslo</button>
+          </form>
+          <button id="pf-logout" class="btn big" type="button">Odhlásit se</button>
+        </div>
+        <button id="pf-back" class="btn big" type="button">Zpět</button>
+      </section>
+
+      <section id="panel-players" class="page" data-page="players" hidden>
+        <h2>Hráči</h2>
+        <label class="row">
+          <span>Hledat</span>
+          <input id="pl-q" class="field" type="search" maxlength="14" autocomplete="off" spellcheck="false" placeholder="přezdívka">
+        </label>
+        <p id="pl-status" class="status small" aria-live="polite"></p>
+        <div id="pl-list" class="players" role="list"></div>
+        <button class="btn big" type="button" data-back>Zpět</button>
       </section>
 
       <section id="panel-lobby" class="page" data-page="lobby" hidden>
@@ -179,6 +245,7 @@
 <script src="js/net.js"></script>
 <script src="js/menubg.js"></script>
 <script src="js/custommaps.js"></script>
+<script src="js/account.js"></script>
 <script src="js/game.js"></script>
 </body>
 </html>

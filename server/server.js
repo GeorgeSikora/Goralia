@@ -12,9 +12,16 @@ const { Match, TICK } = require("../js/sim.js");
 const R = require("../js/rules.js");
 const MAPS = require("../js/maps.js");
 const mapstore = require("./mapstore.js");
+const { createStore } = require("./store.js");
+const { createAccounts } = require("./accounts.js");
+const { createStats } = require("./stats.js");
+const { createApi, SID } = require("./api.js");
+const { SECURITY_HEADERS, parseCookies, sameOrigin, clientIp } = require("./httputil.js");
 
 const PORT = Number(process.env.PORT) || 3000;
 const ROOT = path.resolve(__dirname, "..");
+const DATA_DIR = path.resolve(process.env.GORALIA_DATA_DIR || path.join(ROOT, "data"));
+const PUBLIC_URL = (process.env.PUBLIC_URL || "").trim();
 const PUBLIC_DIRS = ["css", "js", "assets"];
 const MAX_CLIENTS = 400;
 const MAX_ROOMS = 100;
@@ -22,6 +29,12 @@ const MAX_MSG_PER_SEC = 80;
 const BUFFER_LIMIT = 2 * 1024 * 1024;
 const MAX_MAP_BYTES = 1024 * 1024;
 const PAGES = ["index.html", "editor.html"];
+const ADMIN_PAGE = "admin.html";
+const STARTED = Date.now();
+
+const store = createStore(DATA_DIR);
+const accounts = createAccounts(store, { adminName: process.env.GORALIA_ADMIN_NAME, adminEmail: process.env.GORALIA_ADMIN_EMAIL });
+const stats = createStats(store);
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -96,17 +109,24 @@ function handleMapApi(req, res, pathname) {
 }
 
 /* ---------- static files ---------- */
+const live = {};
+const api = createApi({ accounts, stats, store, live, publicUrl: PUBLIC_URL });
+
 const server = http.createServer((req, res) => {
   let pathname;
+  let query;
 
   try {
-    pathname = decodeURIComponent(new URL(req.url, "http://x").pathname);
+    const url = new URL(req.url, "http://x");
+    pathname = decodeURIComponent(url.pathname);
+    query = url.searchParams;
   } catch (e) {
     res.writeHead(400);
     return res.end();
   }
 
   if (pathname === "/api/maps" || pathname.startsWith("/api/maps/")) return handleMapApi(req, res, pathname);
+  if (api.handle(req, res, pathname, query)) return;
 
   if (req.method !== "GET" && req.method !== "HEAD") {
     res.writeHead(405);
@@ -115,9 +135,22 @@ const server = http.createServer((req, res) => {
 
   if (pathname === "/") pathname = "/index.html";
 
+  // Panel serveru vidí jen přihlášený admin, ostatním stránka neexistuje.
+  if (pathname === "/admin" || pathname === "/admin.html") {
+    const user = api.userOf(req);
+
+    if (!user || user.role !== "admin") {
+      res.writeHead(404);
+      return res.end("Not found");
+    }
+
+    pathname = `/${ADMIN_PAGE}`;
+  }
+
   const file = path.resolve(ROOT, "." + pathname);
   const rel = path.relative(ROOT, file).split(path.sep);
-  const allowed = rel.length === 1 ? PAGES.includes(rel[0]) : PUBLIC_DIRS.includes(rel[0]);
+  const isAdminPage = rel.length === 1 && rel[0] === ADMIN_PAGE && pathname === `/${ADMIN_PAGE}`;
+  const allowed = rel.length === 1 ? PAGES.includes(rel[0]) || isAdminPage : PUBLIC_DIRS.includes(rel[0]);
 
   if (!allowed || rel.includes("..")) {
     res.writeHead(404);
@@ -132,7 +165,8 @@ const server = http.createServer((req, res) => {
 
     res.writeHead(200, {
       "Content-Type": MIME[path.extname(file)] || "application/octet-stream",
-      "Cache-Control": "no-cache"
+      "Cache-Control": isAdminPage ? "no-store" : "no-cache",
+      ...SECURITY_HEADERS
     });
     res.end(req.method === "HEAD" ? undefined : data);
   });
@@ -143,20 +177,10 @@ const wss = new WebSocketServer({ server, maxPayload: 4096 });
 const clients = new Set();
 const rooms = new Map();
 const matches = new Set();
+const byUser = new Map(); // id účtu -> připojený klient
 let lastRooms = "";
 let nextClientId = 1;
 let nextRoomId = 1;
-
-function cleanName(value) {
-  const name = String(value || "")
-    .normalize("NFD")
-    .replace(/[^A-Za-z0-9 _.-]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 14);
-
-  return name || "Hrac";
-}
 
 function send(client, payload) {
   const ws = client.ws;
@@ -259,6 +283,12 @@ function startMatch(room) {
   room.match = new Match(room.map, players);
   matches.add(room);
 
+  // Kdo hrál, se pamatuje i po odchodu z místnosti (pro statistiky).
+  room.participants = [];
+  players.forEach((p, i) => {
+    if (p) room.participants.push({ slot: i, name: p.name, ai: !!p.ai, userId: p.ai ? null : room.slots[i].client.user.id });
+  });
+
   const roster = players.map((p, slot) => (p ? { slot, name: p.name, ai: !!p.ai } : null)).filter(Boolean);
 
   room.slots.forEach((slot, i) => {
@@ -274,6 +304,21 @@ function closeRoom(room) {
   matches.delete(room);
   rooms.delete(room.id);
   broadcastRooms();
+}
+
+// Zapíše výsledek zápasu do statistik hráčů (jednou, a ne když zápas zrušil admin).
+function recordMatch(room) {
+  const match = room.match;
+  if (!match || match.recorded || !room.participants) return;
+  match.recorded = true;
+
+  stats.record({
+    map: room.map.id,
+    duration: match.elapsed,
+    reason: match.reason,
+    winner: match.winner ? R.TEAMS.indexOf(match.winner) : -1,
+    players: room.participants.map(p => ({ ...p, stats: match.stats[R.TEAMS[p.slot]] }))
+  });
 }
 
 // Po konci zápasu se hráči vrátí do místnosti.
@@ -299,7 +344,10 @@ function leaveRoom(client) {
   const rest = humansOf(room);
 
   if (!rest.length) {
-    if (room.match) room.match.finish(null, "abandoned");
+    if (room.match) {
+      room.match.finish(null, "abandoned");
+      recordMatch(room);
+    }
     closeRoom(room);
     return;
   }
@@ -315,31 +363,134 @@ function leaveRoom(client) {
   broadcastRooms();
 }
 
-wss.on("connection", ws => {
+// Odpojí klienta (s vysvětlením, pokud je vyhozen) a uklidí po něm místnost i evidenci online hráčů.
+function disconnect(client, text) {
+  if (client.closed) return;
+  client.closed = true;
+
+  if (text) send(client, { t: "error", text });
+
+  clients.delete(client);
+
+  if (client.user && byUser.get(client.user.id) === client) {
+    byUser.delete(client.user.id);
+    accounts.touch(client.user);
+  }
+
+  leaveRoom(client);
+  broadcastRooms();
+
+  if (text) {
+    client.ws.close(4001, "kicked");
+    setTimeout(() => client.ws.terminate(), 2000).unref();
+  }
+}
+
+/* ---------- nástroje pro admin panel ---------- */
+Object.assign(live, {
+  isOnline: userId => byUser.has(userId),
+
+  counts: () => ({
+    online: clients.size,
+    authed: byUser.size,
+    rooms: rooms.size,
+    matchesRunning: matches.size,
+    playing: [...matches].reduce((n, room) => n + humansOf(room).length, 0),
+    startedAt: STARTED
+  }),
+
+  rooms: () => [...rooms.values()].map(room => ({
+    id: room.id,
+    map: room.map.id,
+    state: room.match ? "playing" : "lobby",
+    host: room.host.name,
+    players: humansOf(room).map(c => c.name),
+    slots: room.slots.map(s => s.kind)
+  })),
+
+  clients: () => [...clients].map(c => ({ id: c.id, userId: c.user ? c.user.id : null, name: c.user ? c.user.name : "", ip: c.ip, room: c.room ? c.room.id : null })),
+
+  kickUser(userId, text) {
+    const client = byUser.get(userId);
+    if (client) disconnect(client, text);
+  },
+
+  // Po změně jména nebo role se promítne nový stav do spojení.
+  refreshUser(user) {
+    const client = byUser.get(user.id);
+    if (!client) return;
+
+    client.name = user.name;
+    if (client.room && !client.room.match) sendRoom(client.room);
+    broadcastRooms();
+  },
+
+  kickClient(id, admin) {
+    const client = [...clients].find(c => c.id === id);
+    if (!client) return false;
+
+    accounts.audit(admin, "kick", client.user ? `${client.user.name} (#${client.user.id})` : `klient ${client.id}`);
+    disconnect(client, "Byl jsi odpojen administrátorem.");
+    return true;
+  },
+
+  // Zrušená místnost se nezapisuje do statistik.
+  closeRoom(id, admin) {
+    const room = rooms.get(id);
+    if (!room) return false;
+
+    accounts.audit(admin, "close-room", `místnost ${room.id} (${room.map.id})`);
+    if (room.match) room.match.recorded = true;
+    for (const client of humansOf(room)) disconnect(client, "Místnost byla uzavřena administrátorem.");
+    return true;
+  }
+});
+
+wss.on("connection", (ws, req) => {
   if (clients.size >= MAX_CLIENTS) {
     ws.close(1013, "Server je plný");
     return;
   }
 
+  // Účet se pozná podle cookie; spojení z cizi stránky účet nedostane.
+  const user = sameOrigin(req, PUBLIC_URL) ? accounts.userFromToken(parseCookies(req.headers.cookie)[SID]) : null;
+
   const client = {
     id: nextClientId++,
     ws,
-    name: "Hrac",
+    user,
+    ip: clientIp(req),
+    name: user ? user.name : "Host",
     room: null,
     team: null,
     alive: true,
+    closed: false,
     windowStart: Date.now(),
     windowCount: 0
   };
 
+  // Jeden účet má jen jedno spojení: nové vytlačí staré (jiná záložka, zapomenutý výpadek).
+  if (user) {
+    const previous = byUser.get(user.id);
+    if (previous) disconnect(previous, "Načtené v jiné záložce nebo na jiném zařízení.");
+    byUser.set(user.id, client);
+    accounts.touch(user);
+  }
+
   clients.add(client);
-  send(client, { t: "hello", list: roomList(), playing: [...matches].reduce((n, r) => n + humansOf(r).length, 0), online: clients.size });
+  send(client, {
+    t: "hello",
+    list: roomList(),
+    playing: [...matches].reduce((n, r) => n + humansOf(r).length, 0),
+    online: clients.size,
+    me: user ? { id: user.id, name: user.name, role: user.role } : null
+  });
   broadcastRooms();
 
   ws.on("pong", () => { client.alive = true; });
 
   ws.on("message", (data, isBinary) => {
-    if (isBinary) return;
+    if (isBinary || client.closed) return;
 
     const now = Date.now();
 
@@ -372,22 +523,22 @@ wss.on("connection", ws => {
 
     if (msg.t === "create") {
       if (room) return;
+      if (!client.user) return fail(client, "Pro multiplayer se přihlas.");
       const map = MAPS.get(String(msg.map));
       if (!map) return fail(client, "Neznámá mapa.");
       if (rooms.size >= MAX_ROOMS) return fail(client, "Server je plný, zkus to později.");
 
-      client.name = cleanName(msg.name);
       sendRoom(createRoom(client, map));
       broadcastRooms();
     } else if (msg.t === "join") {
       if (room) return;
+      if (!client.user) return fail(client, "Pro multiplayer se přihlas.");
       const target = rooms.get(Number(msg.room));
       if (!target || target.match) return fail(client, "Místnost už neexistuje nebo hra běží.");
 
       const free = target.slots.findIndex(s => s.kind === "open");
       if (free < 0) return fail(client, "Místnost je plná.");
 
-      client.name = cleanName(msg.name);
       target.slots[free] = { kind: "human", client };
       client.room = target;
       sendRoom(target);
@@ -422,9 +573,7 @@ wss.on("connection", ws => {
   });
 
   ws.on("close", () => {
-    clients.delete(client);
-    leaveRoom(client);
-    broadcastRooms();
+    if (!client.closed) disconnect(client);
   });
 
   ws.on("error", () => ws.terminate());
@@ -439,6 +588,7 @@ function flush(room) {
   });
 
   const finished = match.phase === "ended";
+  if (finished) recordMatch(room);
   match.endTick();
   if (finished) endMatch(room);
 }
@@ -477,6 +627,19 @@ setInterval(() => {
 
 mapstore.load();
 
-server.listen(PORT, () => {
-  console.log(`Goralia běží na http://localhost:${PORT}`);
+for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => process.exit(0));
+process.on("exit", () => store.flush());
+
+// Účet admina se založí při prvním startu; heslo je z GORALIA_ADMIN_PASSWORD, jinak náhodné a vypíše se jen jednou.
+accounts.seedAdmin(process.env.GORALIA_ADMIN_PASSWORD).then(seed => {
+  server.listen(PORT, () => {
+    console.log(`Goralia běží na http://localhost:${PORT}`);
+
+    if (!seed) return;
+    console.log(`Založen účet admina: ${seed.user.name} (${seed.user.email}).`);
+    if (seed.generated) console.log(`Heslo admina (zobrazí se jen jednou, po přihlášení si ho změň): ${seed.password}`);
+  });
+}, err => {
+  console.error(err.message);
+  process.exit(1);
 });

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Goralia · Server panel</title>
+<link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+<header class="top">
+  <h1>Goralia · Server panel</h1>
+  <span id="who" class="who"></span>
+  <a class="link" href="/">Do hry</a>
+</header>
+
+<nav id="tabs" class="tabs" aria-label="Sekce">
+  <button type="button" data-tab="overview" class="active">Přehled</button>
+  <button type="button" data-tab="users">Hráči</button>
+  <button type="button" data-tab="live">Online</button>
+  <button type="button" data-tab="matches">Zápasy</button>
+  <button type="button" data-tab="audit">Záznam akcí</button>
+</nav>
+
+<main>
+  <p id="notice" class="notice" hidden></p>
+
+  <section id="tab-overview" class="tab">
+    <div id="cards" class="cards"></div>
+  </section>
+
+  <section id="tab-users" class="tab" hidden>
+    <form id="user-search" class="bar">
+      <input id="user-q" type="search" placeholder="přezdívka, e-mail nebo ID" maxlength="60" autocomplete="off">
+      <button type="submit">Hledat</button>
+      <span id="user-total" class="muted"></span>
+    </form>
+    <div id="users" class="table-wrap"></div>
+  </section>
+
+  <section id="tab-live" class="tab" hidden>
+    <h2>Místnosti</h2>
+    <div id="rooms" class="table-wrap"></div>
+    <h2>Připojení</h2>
+    <div id="clients" class="table-wrap"></div>
+  </section>
+
+  <section id="tab-matches" class="tab" hidden>
+    <div id="matches" class="table-wrap"></div>
+  </section>
+
+  <section id="tab-audit" class="tab" hidden>
+    <div id="audit" class="table-wrap"></div>
+  </section>
+</main>
+
+<script src="js/admin.js"></script>
+</body>
+</html>

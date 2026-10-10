@@ -47,6 +47,7 @@ class Match {
     this.econ = {};
     this.upgrades = {};
     this.notes = {};
+    this.stats = {};
     this.brains = {};
     this.phase = "countdown";
     this.countdown = opts.countdown == null ? R.COUNTDOWN : opts.countdown;
@@ -64,6 +65,7 @@ class Match {
       this.econ[team] = { gold: R.BASE_GOLD, wood: R.BASE_WOOD };
       this.upgrades[team] = { armor: 0, weapon: 0 };
       this.notes[team] = [];
+      this.stats[team] = { kills: 0, unitsLost: 0, buildingsDestroyed: 0, buildingsLost: 0, gold: 0, wood: 0, trained: 0, built: 0, heroLevel: 0 };
       if (this.players[i].ai) this.brains[team] = AI.createBrain(team);
 
       this.createBuilding(slot.hq.type, team, slot.hq.x, slot.hq.y, false);
@@ -204,7 +206,12 @@ class Match {
 
     const spawn = this.slotOf(team).spawn;
     this.createUnit(type, team, source.x + spawn[0], source.y + spawn[1]);
-    if (type === "hero") this.note(team, "Hrdina připraven: A ohnivá koule, S léčení.");
+    this.stats[team].trained++;
+
+    if (type === "hero") {
+      this.stats[team].heroLevel = Math.max(this.stats[team].heroLevel, 1);
+      this.note(team, "Hrdina připraven: A ohnivá koule, S léčení.");
+    }
   }
 
   // Výzkum zbroje a zbraní v dostavěné kovárně; každý druh jen jednou najednou, kovárna jeden výzkum.
@@ -547,6 +554,7 @@ class Match {
       hero.hp = Math.min(hero.maxHp, hero.hp + 55);
       hero.damage += 3;
       this.events.push({ e: "lvl", id: hero.id, l: hero.level });
+      this.stats[hero.team].heroLevel = Math.max(this.stats[hero.team].heroLevel, hero.level);
       this.note(hero.team, `Hrdina dosáhl úrovně ${hero.level}!`);
     }
   }
@@ -568,7 +576,22 @@ class Match {
     if (opts.delay) event.d = opts.delay;
     this.events.push(event);
 
-    if (killed) this.awardExperience(attacker, target);
+    if (killed) {
+      const mine = this.stats[attacker.team];
+      const theirs = this.stats[target.team];
+
+      if (mine && theirs) {
+        if (target.kind === "unit") {
+          mine.kills++;
+          theirs.unitsLost++;
+        } else {
+          mine.buildingsDestroyed++;
+          theirs.buildingsLost++;
+        }
+      }
+
+      this.awardExperience(attacker, target);
+    }
   }
 
   strike(unit, target) {
@@ -579,6 +602,7 @@ class Match {
 
   dropOff(unit) {
     this.econ[unit.team][unit.carry] += 10;
+    this.stats[unit.team][unit.carry] += 10;
     this.events.push({ e: "coin", id: unit.id, r: unit.carry });
     unit.carry = null;
   }
@@ -636,6 +660,7 @@ class Match {
     b.hp = Math.min(b.maxHp, b.hp + b.maxHp * 0.9 * dp);
 
     if (b.progress >= 1) {
+      this.stats[b.team].built++;
       this.note(b.team, "Stavba dokončena.");
       unit.order = null;
     }

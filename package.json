@@ -6,7 +6,8 @@
   "main": "server/server.js",
   "scripts": {
     "start": "node server/server.js",
-    "test": "node server/test.js"
+    "test": "node server/test.js && node server/test-accounts.js",
+    "admin:reset": "node server/admin-reset.js"
   },
   "dependencies": {
     "ws": "^8.18.0"

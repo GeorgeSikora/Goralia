@@ -19,6 +19,7 @@ const os = require("os");
 
 const PORT = 3100 + Math.floor(Math.random() * 500);
 const URL = `ws://localhost:${PORT}`;
+const ADMIN_PASSWORD = "test-admin-heslo";
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -333,7 +334,7 @@ function testEconomy() {
 
 /* ---------- server ---------- */
 class Bot {
-  constructor(name) {
+  constructor(name, cookie) {
     this.name = name;
     this.snap = null;
     this.msgs = [];
@@ -343,11 +344,15 @@ class Bot {
     this.match = null;
     this.room = null;
     this.list = null;
-    this.ws = new WebSocket(URL);
+    this.hello = null;
+    this.closed = false;
+    this.ws = new WebSocket(URL, { headers: cookie ? { Cookie: cookie } : {} });
     this.opened = new Promise(r => this.ws.on("open", r));
+    this.ws.on("close", () => { this.closed = true; });
     this.ws.on("message", data => {
       const m = JSON.parse(data);
       this.msgs.push(m);
+      if (m.t === "hello") this.hello = m;
       if (m.t === "hello" || m.t === "rooms") this.list = m.list;
       if (m.t === "room") this.room = m;
       if (m.t === "error") this.errors.push(m.text);
@@ -382,20 +387,28 @@ class Bot {
 
 async function testServer() {
   const mapsDir = fs.mkdtempSync(path.join(os.tmpdir(), "goralia-maps-"));
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "goralia-data-"));
   const proc = spawn(process.execPath, [path.join(__dirname, "server.js")], {
-    env: { ...process.env, PORT: String(PORT), GORALIA_MAPS_DIR: mapsDir },
+    env: { ...process.env, PORT: String(PORT), GORALIA_MAPS_DIR: mapsDir, GORALIA_DATA_DIR: dataDir, GORALIA_ADMIN_PASSWORD: ADMIN_PASSWORD },
     stdio: ["ignore", "pipe", "inherit"]
   });
 
   const bots = [];
+  const cookies = {};
   const bot = name => {
-    const b = new Bot(name);
+    const b = new Bot(name, cookies[name]);
     bots.push(b);
     return b;
   };
 
   try {
-    await new Promise(r => proc.stdout.once("data", r));
+    await new Promise(resolve => {
+      let out = "";
+      proc.stdout.on("data", chunk => {
+        out += chunk;
+        if (out.includes("běží na")) resolve();
+      });
+    });
 
     // statické soubory: jen veřejné adresáře
     const get = p => new Promise((resolve, reject) => {
@@ -421,11 +434,18 @@ async function testServer() {
       const req = http.request({ host: "localhost", port: PORT, path: p, method, headers: { "Content-Type": "application/json", ...headers } }, res => {
         let text = "";
         res.on("data", chunk => { text += chunk; });
-        res.on("end", () => resolve({ status: res.statusCode, json: text ? JSON.parse(text) : null }));
+        res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, json: text ? JSON.parse(text) : null }));
       });
       req.on("error", reject);
       req.end(data);
     });
+
+    // hráči pro online testy: registrace přes API, cookie s relací jde do WebSocketu
+    for (const name of ["Alice", "Bob", "Cyril", "Dee", "Dan"]) {
+      const res = await api("POST", "/api/auth/register", { name, email: `${name.toLowerCase()}@example.com`, password: "heslo-1234" });
+      assert.strictEqual(res.status, 200, `registrace ${name}`);
+      cookies[name] = res.headers["set-cookie"][0].split(";")[0];
+    }
 
     const doc = sampleDoc("test-arena");
     assert.deepStrictEqual((await api("GET", "/api/maps")).json, { maps: [] });
@@ -446,9 +466,9 @@ async function testServer() {
     assert.strictEqual(flooded.status, 400, "nehratelná mapa se neuloží");
     assert(flooded.json.errors.length > 0);
 
-    const room = bot("D");
+    const room = bot("Dee");
     await room.opened;
-    room.send({ t: "create", map: "test-arena", name: "d" });
+    room.send({ t: "create", map: "test-arena" });
     await room.until(() => room.room, 2000, "místnost na vlastní mapě");
     assert.strictEqual(room.room.map, "test-arena");
     room.send({ t: "leave" });
@@ -458,23 +478,42 @@ async function testServer() {
     assert(!fs.existsSync(path.join(mapsDir, "test-arena.json")), "soubor je pryč");
     assert.deepStrictEqual((await api("GET", "/api/maps")).json, { maps: [] });
 
-    const a = bot("A");
-    const b = bot("B");
-    const c = bot("C");
+    const a = bot("Alice");
+    const b = bot("Bob");
+    const c = bot("Cyril");
     await Promise.all([a.opened, b.opened, c.opened]);
+
+    const idOf = async name => (await api("GET", "/api/me", undefined, { Cookie: cookies[name] })).json.user.id;
+    const profile = async name => (await api("GET", `/api/players/${await idOf(name)}`)).json.player;
+
+    // identita: hráč je přihlášený z cookie, nepřihlášený nemůže tvořit místnosti
+    await a.until(() => a.hello, 2000, "hello");
+    assert.strictEqual(a.hello.me.name, "Alice");
+    const anon = bot("Anon");
+    await anon.opened;
+    await anon.until(() => anon.hello, 2000, "hello hosta");
+    assert.strictEqual(anon.hello.me, null);
+    anon.send({ t: "create", map: "valley" });
+    await anon.until(() => anon.errors.length, 2000, "host nevytvoří místnost");
+    assert(!anon.room);
+
+    // jeden účet má jedno spojení: nové vytlačí staré
+    const again = bot("Dee");
+    await again.opened;
+    await room.until(() => room.closed, 2000, "staré spojení stejného účtu skončí");
 
     /* ----- místnost 1v1 ----- */
     a.cmd({ c: "train", type: "worker" });
-    a.send({ t: "create", map: "neexistuje", name: "x" });
+    a.send({ t: "create", map: "neexistuje" });
     await a.until(() => a.errors.length, 2000, "neznámá mapa");
     assert(!a.room);
 
-    a.send({ t: "create", map: "valley", name: "Alice <script>" });
+    a.send({ t: "create", map: "valley", name: "Mallory <script>" });
     await a.until(() => a.room, 2000, "místnost");
     assert.strictEqual(a.room.you, 0);
     assert.strictEqual(a.room.host, 0);
     assert.strictEqual(a.room.slots.length, 2);
-    assert.strictEqual(a.room.slots[0].name, "Alice script");
+    assert.strictEqual(a.room.slots[0].name, "Alice", "jméno je z účtu, ne ze zprávy");
     assert.strictEqual(a.room.slots[1].kind, "open");
     await c.until(() => c.list && c.list.some(r => r.id === a.room.id && r.map === "valley" && r.players === 1), 2000, "seznam místností");
 
@@ -502,7 +541,7 @@ async function testServer() {
     assert.strictEqual(a.match.slot, 0);
     assert.strictEqual(b.match.slot, 1);
     assert.strictEqual(a.match.map, "valley");
-    assert.deepStrictEqual(a.match.players.map(p => p.name), ["Alice script", "Bob"]);
+    assert.deepStrictEqual(a.match.players.map(p => p.name), ["Alice", "Bob"]);
 
     c.send({ t: "join", room: a.room.id, name: "Cyril" });
     await sleep(150);
@@ -561,6 +600,7 @@ async function testServer() {
     await a.until(() => a.snap.b.some(x => x[1] === 3 && x[2] === mine(a)), 2000, "stavba věže");
 
     // vzdání se ukončí zápas 1v1 a hráči se vrátí do místnosti
+    await a.until(() => a.snap.el >= 16, 40000, "zápas aspoň 15 s");
     a.resetMatch();
     a.room = null;
     b.cmd({ c: "surrender" });
@@ -568,6 +608,19 @@ async function testServer() {
     assert.strictEqual(a.ended.w, 0);
     assert.strictEqual(a.ended.why, "surrender");
     await Promise.all([a, b].map(p => p.until(() => p.room && p.room.state === "lobby", 2000, "návrat do místnosti")));
+
+    // statistiky: výsledek se zapsal k účtům obou hráčů
+    const alice = await profile("Alice");
+    assert.strictEqual(alice.stats.games, 1);
+    assert.strictEqual(alice.stats.wins, 1);
+    assert.strictEqual(alice.stats.pvpWins, 1);
+    assert(alice.stats.gold >= 10, "natěženo zlato");
+    assert(alice.stats.trained >= 2, "vycvičeno hrdina a dělník");
+    assert.strictEqual(alice.recent[0].result, "win");
+    assert.deepStrictEqual(alice.recent[0].players.map(p => p.name), ["Alice", "Bob"]);
+    assert.strictEqual((await profile("Bob")).stats.losses, 1);
+    assert.strictEqual((await profile("Bob")).stats.wins, 0);
+    assert(!JSON.stringify(alice).includes("@"), "profil neprozrazuje e-mail");
 
     /* ----- tři hráči: dva lidé + AI na velké mapě ----- */
     b.resetMatch();
@@ -598,6 +651,7 @@ async function testServer() {
     await Promise.all([a, b].map(p => p.until(() => p.ended, 2000, "konec 3 hráčů")));
     assert.strictEqual(a.ended.w, 2);
     await Promise.all([a, b].map(p => p.until(() => p.room && p.room.state === "lobby", 2000, "znovu v místnosti")));
+    assert.strictEqual((await profile("Alice")).stats.games, 1, "krátký zápas se nezapisuje");
 
     /* ----- čtyři hráči: tři lidé a zavřený slot, odchody a předání hostitele ----- */
     a.send({ t: "leave" });
@@ -608,7 +662,7 @@ async function testServer() {
     await sleep(100);
     await a.until(() => a.list && !a.list.some(r => r.map === "highland"), 2000, "prázdná místnost zmizela");
 
-    const d = bot("D");
+    const d = bot("Dan");
     await d.opened;
     for (const p of [a, b, c, d]) { p.resetMatch(); p.errors = []; }
 
@@ -624,6 +678,7 @@ async function testServer() {
 
     c.send({ t: "slot", i: 3, kind: "closed" });
     await c.until(() => c.room.slots[3].kind === "closed", 2000, "zavřený slot");
+    await d.until(() => d.list && d.list.some(r => r.id === c.room.id && r.players === 4 && r.max === 4), 2000, "zavřený slot se počítá jako obsazený");
     d.send({ t: "join", room: c.room.id, name: "Dan" });
     await d.until(() => d.errors.length, 2000, "zavřený slot se neobsadí");
 
@@ -656,6 +711,7 @@ async function testServer() {
     for (const p of bots) p.ws.terminate();
     proc.kill();
     fs.rmSync(mapsDir, { recursive: true, force: true });
+    fs.rmSync(dataDir, { recursive: true, force: true });
   }
 }
 

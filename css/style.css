@@ -348,7 +348,7 @@ kbd {
 .menu::before,
 .menu::after {
   content: "";
-  position: absolute;
+  position: fixed;
   inset: 0;
   pointer-events: none;
   background-repeat: repeat;
@@ -443,7 +443,7 @@ kbd {
 /* ---------- animovaná scéna v pozadí menu ---------- */
 .menubg {
   display: none;
-  position: absolute;
+  position: fixed;
   inset: 0;
   width: 100%;
   height: 100%;
@@ -491,3 +491,72 @@ kbd {
 
 .footer a { color: #c09c5a; text-decoration: none; }
 .footer a:hover { color: #f0d088; text-decoration: underline; }
+
+/* ---------- účet, profily a žebříček ---------- */
+a.btn { display: block; text-align: center; text-decoration: none; }
+
+.form, .social, .own { display: grid; gap: 12px; }
+.status.error { color: #ff8f7a; }
+
+.own { padding-top: 12px; border-top: 1px solid #2f2a50; }
+
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
+
+.stat {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 8px;
+  background: #15121f;
+  box-shadow: inset 0 0 0 1px #2f2a50;
+}
+
+.stat-label { color: var(--muted); }
+.stat-value { color: #ffe9a8; text-align: right; }
+
+.matches, .players { display: grid; gap: 6px; max-height: 220px; overflow: auto; padding: 2px; }
+.players { max-height: 320px; }
+
+.match {
+  display: grid;
+  grid-template-columns: 64px 1fr auto;
+  gap: 0 10px;
+  padding: 6px 8px;
+  background: #15121f;
+  box-shadow: inset 3px 0 0 #6a6296;
+}
+
+.match.win { box-shadow: inset 3px 0 0 #6fcf7f; }
+.match.loss { box-shadow: inset 3px 0 0 #e0705f; }
+.match.draw { box-shadow: inset 3px 0 0 var(--amber); }
+.match-result { color: #ffe9a8; }
+.match-map { color: var(--text); }
+.match-date { color: var(--muted); text-align: right; }
+.match-foes { grid-column: 2 / 4; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.player-row {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 0;
+  background: #2f2a50;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 0 0 2px var(--ink), 0 0 0 4px var(--brass-d);
+}
+
+.player-row:hover { background: #3d3768; }
+.player-row:focus-visible { outline: 2px solid var(--amber); outline-offset: 5px; }
+.player-rank { color: var(--muted); }
+.player-name { color: #ffe9a8; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.player-name.online::after { content: " ●"; color: #6fcf7f; }
+.player-score { color: var(--muted); font-size: 11px; }
+
+@media (max-width: 480px) {
+  .stats { grid-template-columns: 1fr; }
+  .field { flex-basis: 150px; }
+}
