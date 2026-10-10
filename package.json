@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node server/server.js",
     "test": "node server/test.js && node server/test-accounts.js",
-    "admin:reset": "node server/admin-reset.js"
+    "admin:reset": "node server/admin-reset.js",
+    "voices": "node tools/make-voices.js"
   },
   "dependencies": {
     "ws": "^8.18.0"

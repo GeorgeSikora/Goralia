@@ -10,3 +10,6 @@ Pro Google
     vytvoř v Google Cloud Console „OAuth client ID“ typu Web a jako redirect URI zadej https://goralia.cz/auth/google/callback.
 Pro Facebook 
     v aplikaci s „Facebook Login“ zadej https://goralia.cz/auth/facebook/callback a přepni aplikaci do režimu Live.
+
+
+npm run voices

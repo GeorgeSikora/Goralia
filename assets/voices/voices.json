@@ -1,0 +1,258 @@
+{
+  "worker": {
+    "select": [
+      {
+        "file": "worker-select-1.mp3",
+        "text": "Copak potřebuješ?"
+      },
+      {
+        "file": "worker-select-2.mp3",
+        "text": "Dělník je připravený."
+      },
+      {
+        "file": "worker-select-3.mp3",
+        "text": "Už jsem tady. Co se staví?"
+      },
+      {
+        "file": "worker-select-4.mp3",
+        "text": "Řekni, kam mám jít."
+      },
+      {
+        "file": "worker-select-5.mp3",
+        "text": "Nářadí mám. Práce může začít."
+      },
+      {
+        "file": "worker-select-6.mp3",
+        "text": "Poslouchám, veliteli."
+      }
+    ],
+    "order": [
+      {
+        "file": "worker-order-1.mp3",
+        "text": "Jasně. Hned se do toho pustím."
+      },
+      {
+        "file": "worker-order-2.mp3",
+        "text": "Dobrá, už jdu."
+      },
+      {
+        "file": "worker-order-3.mp3",
+        "text": "Stavba volá. Jsem na cestě."
+      },
+      {
+        "file": "worker-order-4.mp3",
+        "text": "Rozumím. Bude to hotové."
+      },
+      {
+        "file": "worker-order-5.mp3",
+        "text": "Tak ukaž, kde začít."
+      }
+    ],
+    "annoyed": [
+      {
+        "file": "worker-annoyed-1.mp3",
+        "text": "Pořád mě voláš? Vždyť už pracuju!"
+      },
+      {
+        "file": "worker-annoyed-2.mp3",
+        "text": "Jedno zadání stačí, veliteli."
+      },
+      {
+        "file": "worker-annoyed-3.mp3",
+        "text": "Jestli mám stihnout práci, nech mě chvíli v klidu."
+      }
+    ]
+  },
+  "soldier": {
+    "select": [
+      {
+        "file": "soldier-select-1.mp3",
+        "text": "Voják hlásí připravenost."
+      },
+      {
+        "file": "soldier-select-2.mp3",
+        "text": "Čekám na rozkaz."
+      },
+      {
+        "file": "soldier-select-3.mp3",
+        "text": "Meč je nabroušený. Kam vyrazíme?"
+      },
+      {
+        "file": "soldier-select-4.mp3",
+        "text": "Za Goralii!"
+      },
+      {
+        "file": "soldier-select-5.mp3",
+        "text": "Jsem ve střehu."
+      },
+      {
+        "file": "soldier-select-6.mp3",
+        "text": "Nepřítel si neškrtne."
+      }
+    ],
+    "order": [
+      {
+        "file": "soldier-order-1.mp3",
+        "text": "Rozkaz! Vyrážím."
+      },
+      {
+        "file": "soldier-order-2.mp3",
+        "text": "Držte se za mnou!"
+      },
+      {
+        "file": "soldier-order-3.mp3",
+        "text": "Jdu jim naproti."
+      },
+      {
+        "file": "soldier-order-4.mp3",
+        "text": "Postarám se o ně."
+      },
+      {
+        "file": "soldier-order-5.mp3",
+        "text": "Na místo. A rychle!"
+      }
+    ],
+    "annoyed": [
+      {
+        "file": "soldier-annoyed-1.mp3",
+        "text": "Veliteli, mám bojovat, nebo jen stát v pozoru?"
+      },
+      {
+        "file": "soldier-annoyed-2.mp3",
+        "text": "Rozkaz jsem slyšel. Už jdu."
+      },
+      {
+        "file": "soldier-annoyed-3.mp3",
+        "text": "Šetřete rozkazy na nepřítele."
+      }
+    ]
+  },
+  "archer": {
+    "select": [
+      {
+        "file": "archer-select-1.mp3",
+        "text": "Luk připravený."
+      },
+      {
+        "file": "archer-select-2.mp3",
+        "text": "Stačí ukázat cíl."
+      },
+      {
+        "file": "archer-select-3.mp3",
+        "text": "Mám je na dostřel?"
+      },
+      {
+        "file": "archer-select-4.mp3",
+        "text": "Vidím každý pohyb."
+      },
+      {
+        "file": "archer-select-5.mp3",
+        "text": "Šíp si cestu najde."
+      },
+      {
+        "file": "archer-select-6.mp3",
+        "text": "Čekám na povel."
+      }
+    ],
+    "order": [
+      {
+        "file": "archer-order-1.mp3",
+        "text": "Rozumím. Zaměřuji."
+      },
+      {
+        "file": "archer-order-2.mp3",
+        "text": "Cíl potvrzený."
+      },
+      {
+        "file": "archer-order-3.mp3",
+        "text": "Šíp už letí."
+      },
+      {
+        "file": "archer-order-4.mp3",
+        "text": "Kryju vám záda."
+      },
+      {
+        "file": "archer-order-5.mp3",
+        "text": "Zůstanu stranou a podpořím vás."
+      }
+    ],
+    "annoyed": [
+      {
+        "file": "archer-annoyed-1.mp3",
+        "text": "Neklikej mi do míření."
+      },
+      {
+        "file": "archer-annoyed-2.mp3",
+        "text": "Ještě jedno zavolání a trefím tebe."
+      },
+      {
+        "file": "archer-annoyed-3.mp3",
+        "text": "Vidím tě. Teď nech vidět i já."
+      }
+    ]
+  },
+  "hero": {
+    "select": [
+      {
+        "file": "hero-select-1.mp3",
+        "text": "Goralia mě potřebuje. Jsem připraven."
+      },
+      {
+        "file": "hero-select-2.mp3",
+        "text": "Řekni své přání. Vyslyším tě."
+      },
+      {
+        "file": "hero-select-3.mp3",
+        "text": "Moje síla je ti k službám."
+      },
+      {
+        "file": "hero-select-4.mp3",
+        "text": "Nepřátelé poznají, koho vyzvali."
+      },
+      {
+        "file": "hero-select-5.mp3",
+        "text": "Povedu naše vojsko k vítězství."
+      },
+      {
+        "file": "hero-select-6.mp3",
+        "text": "Stojím při tobě."
+      }
+    ],
+    "order": [
+      {
+        "file": "hero-order-1.mp3",
+        "text": "Tak tedy vzhůru do boje!"
+      },
+      {
+        "file": "hero-order-2.mp3",
+        "text": "Na tvůj rozkaz."
+      },
+      {
+        "file": "hero-order-3.mp3",
+        "text": "Přivedu nás k vítězství."
+      },
+      {
+        "file": "hero-order-4.mp3",
+        "text": "Ať se nepřítel připraví."
+      },
+      {
+        "file": "hero-order-5.mp3",
+        "text": "Za Goralii!"
+      }
+    ],
+    "annoyed": [
+      {
+        "file": "hero-annoyed-1.mp3",
+        "text": "I hrdina potřebuje chvíli klidu."
+      },
+      {
+        "file": "hero-annoyed-2.mp3",
+        "text": "Rozkaz jsem přijal. Nemusíš mě volat znovu."
+      },
+      {
+        "file": "hero-annoyed-3.mp3",
+        "text": "Soustreďme se na nepřítele, ne na má slova."
+      }
+    ]
+  }
+}

@@ -330,6 +330,7 @@
     else selected = [u];
 
     audio.play("select");
+    speak(selected, "select");
   }
 
   function action(type) {
@@ -434,6 +435,12 @@
     return null;
   }
 
+  // Hláška jednotky: u výběru skupiny mluví hrdina, jinak první jednotka.
+  function speak(list, kind) {
+    const lead = list.find(e => e.kind === "unit" && e.type === "hero") || list.find(e => e.kind === "unit");
+    if (lead) PK.voice.say(lead.type, kind);
+  }
+
   // grow > 1 zvětší oblast výběru (prst je méně přesný než myš)
   function selectAt(x, y, grow = 1) {
     const friendlyUnit = findEntity(
@@ -459,6 +466,7 @@
     selectedResourceId = res ? res.id : 0;
 
     if (selected.length || res) audio.play("select");
+    speak(selected, "select");
   }
 
   // Výběr jednotek v obdélníku daném dvěma světovými body.
@@ -478,6 +486,7 @@
     );
     selectedResourceId = 0;
     if (selected.length) audio.play("select");
+    speak(selected, "select");
   }
 
   const selectedResource = () => (selected.length ? null : resourceMap.get(selectedResourceId) || null);
@@ -541,6 +550,7 @@
       else if (kind === "gather") fx.ping(resource.x, resource.y + (resource.type === "gold" ? 26 : 28), "gather");
       else fx.ping(x, y, "move");
       audio.play("order", { x });
+      speak(selected, "order");
     }
 
     commandMode = false;
@@ -1210,6 +1220,7 @@
     selected = list;
     selectedResourceId = 0;
     audio.play("select");
+    speak(selected, "select");
   }
 
   // Stavba a kouzlo na dotyku: první klepnutí ukáže cíl (prst ho nezakrývá), druhé na stejné místo ho potvrdí.
@@ -2307,6 +2318,8 @@
     $("s-volume-out").textContent = `${volumeEl.value} %`;
     soundEl.checked = !audio.muted;
     $("s-ambient").checked = audio.ambient;
+    $("s-voice").checked = PK.voice.enabled;
+    $("s-voice-label").textContent = PK.voice.available ? "České hlasy postav" : "České hlasy postav (nenačteny)";
     $("s-shake").checked = settings.shake;
     $("s-pixel").checked = settings.pixel;
     $("s-autofs").checked = settings.autoFullscreen;
@@ -2328,6 +2341,11 @@
     audio.unlock();
     audio.setAmbient(event.target.checked);
   });
+
+  $("s-voice").addEventListener("change", event => {
+    PK.voice.setEnabled(event.target.checked);
+  });
+  PK.voice.onLoad = syncSettings;
 
   $("s-shake").addEventListener("change", event => {
     settings.shake = event.target.checked;

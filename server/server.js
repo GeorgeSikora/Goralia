@@ -41,6 +41,8 @@ const MIME = {
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".png": "image/png",
+  ".mp3": "audio/mpeg",
+  ".json": "application/json; charset=utf-8",
   ".ico": "image/x-icon"
 };
 
