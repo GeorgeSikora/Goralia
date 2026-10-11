@@ -82,12 +82,12 @@
 
     return {
       hq: { type, x, y },
-      buildings: [{ type: "barracks", x: x + fx * 71, y: y + fy * 116 }],
+      buildings: [],
+      plot: { x: x + fx * 71, y: y + fy * 116 }, // volné místo pro první kasárna (hráč je staví sám)
       units: [
         { type: "worker", x: x + fx * 53, y: y - fy * 44 },
         { type: "worker", x: x + fx * 44, y: y + fy * 28 },
-        { type: "soldier", x: x + fx * 139, y: y - fy * 4 },
-        { type: "soldier", x: x + fx * 160, y: y + fy * 17 }
+        { type: "worker", x: x + fx * 78, y: y - fy * 6 }
       ],
       zone,
       facing: fx,
@@ -131,10 +131,10 @@
     for (const s of slots) {
       const ax = s.hq.x / 2;
       const ay = s.hq.y / 2;
-      const bx = s.buildings[0].x / 2;
-      const by = s.buildings[0].y / 2;
+      const bx = s.plot.x / 2;
+      const by = s.plot.y / 2;
       const fx = s.facing;
-      const fy = s.buildings[0].y > s.hq.y ? 1 : -1;
+      const fy = s.plot.y > s.hq.y ? 1 : -1;
 
       plazas.push({ x: ax, y: ay + 17 * fy, rx: 34, ry: 17, kind: "hall" });
       landmarks.push(["campfire", ax - fx * 28, ay + fy * 49, true, 9], ["crates", ax - fx * 42, ay + fy * 31, true, 9]);

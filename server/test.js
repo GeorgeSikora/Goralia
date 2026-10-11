@@ -45,7 +45,7 @@ function testMaps() {
       const z = slot.zone;
       assert(z.x0 < z.x1 && z.y0 < z.y1 && z.x0 >= 0 && z.x1 <= LW && z.y1 <= LH, `${label}: zóna slotu ${i}`);
 
-      for (const b of [slot.hq, ...slot.buildings]) {
+      for (const b of [slot.hq, ...slot.buildings, slot.plot]) {
         assert(inside(b.x, b.y), `${label}: budova slotu ${i} v mapě`);
         assert(b.x >= z.x0 && b.x <= z.x1 && b.y >= z.y0 && b.y <= z.y1, `${label}: budova slotu ${i} ve vlastní zóně`);
       }
@@ -170,7 +170,7 @@ function testSmithy() {
   assert.strictEqual(m.econ.blue.gold, 2000);
 
   const smithy = m.createBuilding("smithy", "blue", 300, 300, false);
-  const soldier = m.units.find(u => u.team === "blue" && u.type === "soldier");
+  const soldier = m.createUnit("soldier", "blue", 320, 330);
   const dmg0 = soldier.damage;
   m.command("blue", { c: "research", kind: "weapon" });
   assert.strictEqual(m.econ.blue.gold, 2000 - R.UPGRADES.weapon.levels[0].gold, "výzkum se platí hned");
@@ -188,7 +188,7 @@ function testSmithy() {
   m.command("blue", { c: "research", kind: "armor" });
   run(m, R.UPGRADES.armor.levels[0].time + 1);
   assert.strictEqual(m.upgrades.blue.armor, 1);
-  const foe = m.units.find(u => u.team === "red" && u.type === "soldier");
+  const foe = m.createUnit("soldier", "red", 340, 330);
   const hp = soldier.hp;
   m.damage(foe, soldier, 20);
   assert.strictEqual(hp - soldier.hp, Math.round(20 * (1 - R.ARMOR_PER_LEVEL)), "zbroj snižuje poškození");
@@ -646,7 +646,7 @@ async function testServer() {
     // během odpočtu se nic nestane
     a.cmd({ c: "train", type: "worker" });
     await Promise.all([a, b].map(p => p.until(() => p.snap.p === "playing", 6000, "start hry")));
-    assert.strictEqual(a.snap.u.length, 8);
+    assert.strictEqual(a.snap.u.length, 6);
 
     const mine = p => p.match.slot;
 
@@ -662,7 +662,7 @@ async function testServer() {
     await spec.until(() => spec.match && spec.snap && spec.snap.p === "playing", 3000, "snímky pro diváka");
     assert.strictEqual(spec.match.slot, -1);
     assert.strictEqual(spec.match.spectate, true);
-    assert.strictEqual(spec.snap.u.length, 8, "divák vidí všechny jednotky");
+    assert.strictEqual(spec.snap.u.length, 6, "divák vidí všechny jednotky");
     assert.strictEqual(spec.snap.ec.length, 2, "divák vidí suroviny obou týmů");
     assert(spec.snap.ec.every(r => r.length === 6 && r[1] >= 0 && r[2] >= 0 && r[3] > 0), "tvar řádku surovin");
     assert(!("ec" in a.snap), "hráči soupeřovy suroviny nedostanou");
@@ -677,9 +677,9 @@ async function testServer() {
 
     // klient nevidí soupeřovy suroviny a nemůže si je nastavit
     assert.strictEqual(a.snap.g, 260);
-    a.send({ t: "cmd", c: "train", type: "hero", gold: 99999 });
+    a.send({ t: "cmd", c: "train", type: "worker", gold: 99999 });
     await sleep(150);
-    assert.strictEqual(a.snap.g, 260 - 150, "hrdina stojí 150 zlata");
+    assert.strictEqual(a.snap.g, 260 - 50, "dělník stojí 50 zlata");
 
     // podvody: cizí jednotky, útok na vlastní, nesmyslná čísla, stavba mimo zónu
     const enemyIds = b.units(mine(b)).map(u => u[0]);
@@ -711,7 +711,7 @@ async function testServer() {
 
     // povolená stavba na vlastní straně
     a.cmd({ c: "train", type: "worker" });
-    await a.until(() => a.units(mine(a)).filter(u => u[1] === 0).length === 3, 2000, "výcvik");
+    await a.until(() => a.units(mine(a)).filter(u => u[1] === 0).length === 5, 2000, "výcvik");
     const zoneX = mine(a) === 0 ? 200 : 1320;
     await a.until(() => a.snap.g >= 90 && a.snap.w >= 55, 40000, "dost surovin na věž");
     a.cmd({ c: "build", type: "tower", x: zoneX, y: 420, ids: myWorkers });
@@ -755,9 +755,9 @@ async function testServer() {
     await Promise.all([a, b].map(p => p.until(() => p.match && p.snap && p.snap.p === "playing", 6000, "start 3 hráčů")));
     assert.strictEqual(a.match.players.length, 3);
     assert.strictEqual(a.match.players[2].ai, true);
-    assert.strictEqual(a.snap.u.length, 12);
+    assert.strictEqual(a.snap.u.length, 9);
     assert(a.snap.b.every(x => x[2] <= 2));
-    assert.strictEqual(a.snap.u.filter(u => u[2] === 2).length, 4, "AI má své jednotky");
+    assert.strictEqual(a.snap.u.filter(u => u[2] === 2).length, 3, "AI má své jednotky");
 
     // první vzdá hráč A: hra pokračuje, B ještě bojuje
     a.cmd({ c: "surrender" });
@@ -812,8 +812,8 @@ async function testServer() {
     c.send({ t: "start" });
     await Promise.all([a, b, c].map(p => p.until(() => p.match && p.snap && p.snap.p === "playing", 6000, "start 4 hráčů")));
     assert.strictEqual(a.match.players.length, 3);
-    assert.strictEqual(a.snap.u.length, 12);
-    assert.strictEqual(a.snap.b.length, 6);
+    assert.strictEqual(a.snap.u.length, 9);
+    assert.strictEqual(a.snap.b.length, 3);
 
     // odpojení hostitele uprostřed hry nikoho jiného neukončí
     c.ws.close();

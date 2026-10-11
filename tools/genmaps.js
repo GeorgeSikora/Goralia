@@ -143,7 +143,7 @@ class Draft {
 
     const ok = (x, y) =>
       x >= 40 && x <= LW - 40 && y >= 90 && y <= LH - 50 &&
-      slots.every(s => Math.hypot(x - s.hq.x, y - s.hq.y) > 160 && Math.hypot(x - s.buildings[0].x, y - s.buildings[0].y) > 120) &&
+      slots.every(s => Math.hypot(x - s.hq.x, y - s.hq.y) > 160 && Math.hypot(x - s.plot.x, y - s.plot.y) > 120) &&
       gold.every(g => Math.hypot(x - g[0], y - g[1]) > 80) &&
       out.every(t => Math.hypot(x - t[0], y - t[1]) > 34) &&
       this.free(x, y, 12);
@@ -156,7 +156,7 @@ class Draft {
     // lesíky za základnami
     for (const s of slots) {
       const fx = s.facing;
-      const fy = s.buildings[0].y > s.hq.y ? 1 : -1;
+      const fy = s.plot.y > s.hq.y ? 1 : -1;
       centers.push([s.hq.x - fx * 150, s.hq.y - fy * 160], [s.hq.x + fx * 20, s.hq.y - fy * 230]);
     }
 

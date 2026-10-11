@@ -30,7 +30,7 @@
         return;
       }
 
-      for (const b of [slot.hq, ...slot.buildings]) {
+      for (const b of [slot.hq, ...slot.buildings, slot.plot]) {
         if (!inside(b.x, b.y)) add(`Budovy základny ${team(i)} přesahují okraj mapy (posuň ji od kraje).`);
         else if (b.x < z.x0 || b.x > z.x1 || b.y < z.y0 || b.y > z.y1) add(`Budovy základny ${team(i)} se nevejdou do jejího území (posuň ji od sousední základny nebo od kraje).`);
       }
@@ -93,7 +93,7 @@
 
       map.slots.forEach((s, i) => {
         if (nav.isBlockedArea(s.hq.x, s.hq.y, 20)) add(`Základna ${team(i)} stojí ve vodě.`);
-        if (s.buildings.some(b => nav.isBlocked(b.x, b.y))) add(`Kasárna základny ${team(i)} stojí ve vodě.`);
+        if ([...s.buildings, s.plot].some(b => nav.isBlocked(b.x, b.y))) add(`Místo pro kasárna u základny ${team(i)} je neprůchodné.`);
         if (s.units.some(u => nav.isBlocked(u.x, u.y))) add(`Jednotky základny ${team(i)} začínají ve vodě.`);
 
         map.slots.forEach((o, j) => {

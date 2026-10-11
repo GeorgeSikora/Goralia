@@ -375,7 +375,7 @@
 
   /* ---------- nástroje: stromy, doly, základny ---------- */
   function farFromBases(x, y, hq, rax) {
-    return layout().every(s => Math.hypot(x - s.hq.x, y - s.hq.y) > hq && Math.hypot(x - s.buildings[0].x, y - s.buildings[0].y) > rax);
+    return layout().every(s => Math.hypot(x - s.hq.x, y - s.hq.y) > hq && Math.hypot(x - s.plot.x, y - s.plot.y) > rax);
   }
 
   function treeOk(x, y, pending) {
@@ -839,7 +839,7 @@
         g.globalAlpha = 1;
       }
 
-      const bar = s.buildings[0];
+      const bar = s.plot;
       g.fillStyle = color;
       g.globalAlpha = 0.55;
       g.fillRect(bar.x / 2 - 6, bar.y / 2 - 4, 12, 8);
