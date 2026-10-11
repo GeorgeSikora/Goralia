@@ -712,6 +712,12 @@ async function testServer() {
     assert(a.snap.g >= goldBefore, "divák nic nevycvičil");
     assert(!spec.room, "divák si nevytvoří místnost");
 
+    // tajný příkaz /sources: obyčejný hráč nedostane nic a příkaz se nikomu nepřepošle
+    a.send({ t: "chat", text: "/sources" });
+    await sleep(250);
+    assert.strictEqual(a.snap.g, 260, "/sources obyčejnému hráči nic nepřidá");
+    assert(!b.msgs.some(m => m.t === "chat" && m.text === "/sources"), "příkaz se nepřeposílá");
+
     // klient nevidí soupeřovy suroviny a nemůže si je nastavit
     assert.strictEqual(a.snap.g, 260);
     a.send({ t: "cmd", c: "train", type: "hero", gold: 99999 });

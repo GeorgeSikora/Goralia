@@ -326,10 +326,30 @@ function chatNote(client, text) {
   send(client, { t: "chat", sys: true, text });
 }
 
+// Tajný příkaz správce: /sources přidá hráči 10000 zlata a dřeva. Platí jen pro účet s rolí admin v rozehraném zápase;
+// ostatním se neděje nic (příkaz se ani nepřepošle). Takový zápas se pak nezapisuje do statistik.
+const CHEAT_AMOUNT = 10000;
+
+function chatSources(client, room) {
+  const match = room.match;
+  if (!client.user || client.user.role !== "admin" || !match || match.phase !== "playing" || !client.team) return;
+
+  const eco = match.econ[client.team];
+  if (!eco) return;
+
+  eco.gold += CHEAT_AMOUNT;
+  eco.wood += CHEAT_AMOUNT;
+  match.recorded = true;
+  accounts.audit(client.user, "cheat-sources", `místnost ${room.id} (${room.map.id})`);
+  chatNote(client, `Přidáno ${CHEAT_AMOUNT} zlata a ${CHEAT_AMOUNT} dřeva. Tento zápas se nezapíše do statistik.`);
+}
+
 function chatSay(client, room, raw) {
   const text = cleanChat(raw);
   const slot = slotIndex(room, client);
   if (!text || slot < 0) return;
+
+  if (text.toLowerCase() === "/sources") return chatSources(client, room);
 
   const now = Date.now();
   client.chatTimes = (client.chatTimes || []).filter(at => now - at < CHAT_WINDOW);
