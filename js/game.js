@@ -67,6 +67,8 @@
   // "ai": hra proti počítačům, simulace běží tady. "online": o všem rozhoduje server.
   let mode = "ai";
   let map = MAPS.get(MAPS.DEFAULT);
+  let spectator = false; // divák: vidí celý zápas, nic neovládá
+  let endWinner = -1;
   let mySlot = 0;
   let me = R.TEAMS[0];
   let players = [];
@@ -111,6 +113,8 @@
   const online = {
     phase: "offline", // offline | connecting | idle | room | countdown | playing | ended
     rooms: [],
+    live: [],
+    authed: false, // spojení se serverem patří přihlášenému účtu
     playing: 0,
     total: 0,
     roomId: 0,
@@ -143,6 +147,8 @@
   const teamCss = team => PK.css(PK.TEAM[team].ui);
 
   function reset() {
+    spectator = false;
+    endWinner = -1;
     units = [];
     buildings = [];
     resources = [];
@@ -184,8 +190,13 @@
     fx.reset();
 
     zoom = Math.max(zoom, zoomMin());
-    const hq = map.slots[slot || 0].hq;
-    centerCamera(hq.x, hq.y);
+
+    if (slot < 0) {
+      centerCamera(map.size[0], map.size[1]); // divák: střed mapy
+    } else {
+      const hq = map.slots[slot || 0].hq;
+      centerCamera(hq.x, hq.y);
+    }
   }
 
   // Hra proti AI běží jen v prohlížeči; serveru se anonymně nahlásí start a konec (pro statistiky návštěvnosti).
@@ -208,7 +219,8 @@
     reset();
     mode = cfg.mode;
     mySlot = cfg.slot;
-    me = R.TEAMS[mySlot];
+    spectator = !!cfg.spectate;
+    me = spectator ? null : R.TEAMS[mySlot];
     loadMap(cfg.map, mySlot);
     players = cfg.players.map(p => ({
       slot: p.slot, name: p.name, team: R.TEAMS[p.slot], ai: !!p.ai, out: false, me: p.slot === mySlot
@@ -216,6 +228,7 @@
     matchOver = false;
     matchPhase = "countdown";
     started = true;
+    if (spectator) state = "spectate";
 
     if (mode === "ai") {
       const roster = map.slots.map((_, i) => {
@@ -276,6 +289,7 @@
 
     matchOver = true;
     matchPhase = "ended";
+    endWinner = winner;
     endWhy = why;
     endT = 0;
     if (mode === "online") online.phase = "ended";
@@ -1336,7 +1350,8 @@
     }
 
     if (key === "r" && matchOver) {
-      if (mode === "online") returnToRoom();
+      if (spectator) leaveSpectate();
+      else if (mode === "online") returnToRoom();
       else leaveOnline();
     }
   });
@@ -1379,6 +1394,12 @@
   }
 
   function endReason() {
+    if (spectator) {
+      const w = players.find(p => p.slot === endWinner);
+      if (w) return `Vítěz: ${w.name}.`;
+      return endWhy === "connection" ? "Spojení se serverem bylo přerušeno." : "Zápas skončil bez vítěze.";
+    }
+
     if (state === "win") {
       if (endWhy === "surrender") return "Soupeři se vzdali.";
       if (endWhy === "disconnect") return "Soupeři se odpojili.";
@@ -1398,7 +1419,8 @@
     const playing = live && state === "playing";
 
     $("m-online").hidden = onl && live;
-    $("m-online").textContent = onl && over ? "Zpět do místnosti" : "Multiplayer";
+    $("m-online").textContent = onl && over ? (spectator ? "Seznam zápasů" : "Zpět do místnosti") : "Multiplayer";
+    $("m-leave").textContent = spectator ? "Opustit zápas" : "Hlavní menu";
     $("m-play").textContent = live ? "Pokračovat" : "Hra proti AI";
     $("m-restart").hidden = !started || onl || over;
     $("m-surrender").hidden = !playing;
@@ -1408,7 +1430,9 @@
 
     if (!started) statusEl.textContent = "";
     else if (playing) statusEl.textContent = onl ? "Zápas běží i s otevřeným menu." : "Hra je pozastavena.";
+    else if (live && spectator) statusEl.textContent = "Sleduješ zápas jako divák.";
     else if (live) statusEl.textContent = "Vypadl jsi, ostatní hrají dál.";
+    else if (spectator) statusEl.textContent = `Zápas skončil. ${endReason()}`;
     else statusEl.textContent = `${state === "win" ? "Vítězství!" : state === "lose" ? "Porážka." : "Remíza."} ${endReason()}`;
 
     $("m-play").hidden = started && !live;
@@ -1445,6 +1469,8 @@
   const oStats = $("o-stats");
   const oRooms = $("o-rooms");
   const oCreate = $("o-create");
+  const oLive = $("o-live");
+  const oLiveBox = $("o-live-box");
 
   // Stav lobby (hra proti AI i online místnost); sloty odpovídají slotům mapy.
   const lobby = { online: false, mapId: MAPS.DEFAULT, slots: [], you: 0, host: 0 };
@@ -1490,10 +1516,45 @@
       row.textContent = `${m ? m.name : r.map} · hostitel ${r.host} · ${r.players}/${r.max}`;
       row.addEventListener("click", () => {
         audio.unlock();
+        if (!account.user) { account.openLogin(enterOnline); return; }
         net.send({ t: "join", room: r.id });
       });
       oRooms.append(row);
     }
+  }
+
+  // Rozehrané zápasy: sledovat je může kdokoli, i host bez účtu.
+  function renderLive() {
+    oLive.replaceChildren();
+    const list = online.phase === "idle" ? online.live : [];
+    oLiveBox.hidden = !list.length;
+
+    for (const r of list) {
+      const m = MAPS.get(r.map);
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "room live";
+      const mins = Math.max(0, Math.floor((Date.now() - r.since) / 60000));
+      row.textContent = `👁 ${m ? m.name : r.map} · ${r.players.join(" vs ").slice(0, 48)} · ${mins} min`;
+      row.addEventListener("click", () => {
+        audio.unlock();
+        net.send({ t: "watch", room: r.id });
+      });
+      oLive.append(row);
+    }
+  }
+
+  // Po skončení sledování zpátky na seznam místností a zápasů.
+  function leaveSpectate() {
+    net.send({ t: "leave" });
+    reset();
+    started = false;
+    mode = "ai";
+    online.roomId = 0;
+    lobby.online = false;
+    online.phase = net.connected ? "idle" : "offline";
+    openMenu();
+    enterOnline();
   }
 
   function syncLobby() {
@@ -1501,16 +1562,20 @@
     const busy = phase === "connecting";
 
     oCreate.disabled = busy;
-    oCreate.textContent = phase === "idle" ? "Vytvořit místnost" : "Připojit k serveru";
+    oCreate.textContent = phase === "idle" ? (account.user ? "Vytvořit místnost" : "Přihlásit se a hrát") : "Připojit k serveru";
 
     if (phase === "connecting") {
       oStatus.textContent = "Připojuji se k serveru…";
     } else if (phase === "idle") {
-      oStatus.textContent = online.error || (online.rooms.length ? "Vyber místnost, nebo vytvoř vlastní." : "Zatím tu není žádná místnost. Vytvoř vlastní.");
+      const hasAny = online.rooms.length || online.live.length;
+      oStatus.textContent = online.error || (!account.user
+        ? (online.live.length ? "Jako host můžeš sledovat rozehrané zápasy. Hrát můžeš po přihlášení." : "Zatím běží jen lobby. Zápasy půjde sledovat, jakmile nějaký začne.")
+        : hasAny ? "Vyber místnost, sleduj zápas, nebo vytvoř vlastní." : "Zatím tu není žádná místnost. Vytvoř vlastní.");
     } else {
       oStatus.textContent = online.error || "Nejsi připojený k serveru.";
     }
 
+    renderLive();
     oStats.textContent = phase === "idle" ? `Hráčů online: ${online.total} · Místností: ${online.rooms.length} · Hráčů ve hře: ${online.playing}` : "";
     renderRooms();
   }
@@ -1544,17 +1609,18 @@
   function enterOnline() {
     audio.unlock();
 
-    if (!account.user) {
-      account.openLogin(enterOnline);
-      return;
-    }
-
     refreshCustomMaps();
 
     if (online.phase === "room") {
       showPage("lobby");
       renderLobby();
       return;
+    }
+
+    // po přihlášení je potřeba nové spojení, aby server poznal účet
+    if (account.user && !online.authed && online.phase === "idle") {
+      net.close();
+      online.phase = "offline";
     }
 
     showPage("online");
@@ -1564,6 +1630,11 @@
 
   function createRoom() {
     audio.unlock();
+
+    if (!account.user) {
+      account.openLogin(enterOnline);
+      return;
+    }
 
     if (online.phase === "idle") {
       online.error = "";
@@ -1891,7 +1962,7 @@
     online.pendingTrain = 0;
     online.pendingBuild = 0;
     online.count = 0;
-    beginMatch({ mode: "online", map: next, slot: m.slot, players: m.players });
+    beginMatch({ mode: "online", map: next, slot: m.slot, players: m.players, spectate: !!m.spectate });
   }
 
   function netUnit(id, type, team, x, y) {
@@ -2221,14 +2292,16 @@
       case "hello":
       case "rooms":
         // spojení bez účtu (vypršela relace): zpět na přihlášení
-        if (m.t === "hello" && !m.me) {
+        if (m.t === "hello" && !m.me && account.user) {
           leaveLobby();
           account.expired();
           break;
         }
 
         if (m.off) mpOff = new Set(m.off.map(String));
+        if (m.t === "hello") online.authed = !!m.me;
         online.rooms = Array.isArray(m.list) ? m.list : [];
+        online.live = Array.isArray(m.live) ? m.live : [];
         online.playing = m.playing | 0;
         online.total = m.online | 0;
 
@@ -2243,6 +2316,11 @@
 
       case "room":
         handleRoom(m);
+        break;
+
+      case "specEnd":
+        // zápas zanikl; pokud skončil řádně, přišel už poslední snímek
+        if (spectator && !matchOver) finishMatch(-1, "closed");
         break;
 
       case "left":
@@ -2387,10 +2465,11 @@
   /* wiring */
   $("m-play").addEventListener("click", play);
   $("m-online").addEventListener("click", () => {
-    if (mode === "online" && started && matchOver) returnToRoom();
+    if (spectator && started && matchOver) leaveSpectate();
+    else if (mode === "online" && started && matchOver) returnToRoom();
     else enterOnline();
   });
-  $("m-leave").addEventListener("click", leaveOnline);
+  $("m-leave").addEventListener("click", () => (spectator ? leaveSpectate() : leaveOnline()));
   $("m-surrender").addEventListener("click", () => {
     if (!liveMatch() || state !== "playing" || !window.confirm("Opravdu se chceš vzdát?")) return;
     sendCmd({ c: "surrender" });
@@ -3362,7 +3441,8 @@
       cam: { x: cam.x, y: cam.y, w: view.w / zoom, h: view.mapH / zoom },
       spectating: !matchOver && state !== "playing",
       endReason: matchOver ? endReason() : "",
-      endHint: mode === "online" ? "R: zpět do místnosti · Esc: menu" : "R: hlavní menu · Esc: menu"
+      spectator,
+      endHint: spectator ? "R: seznam zápasů · Esc: menu" : mode === "online" ? "R: zpět do místnosti · Esc: menu" : "R: hlavní menu · Esc: menu"
     };
 
     if (matchPhase === "countdown" && mode === "online") drawCountdown();
@@ -3380,8 +3460,13 @@
     g.fillStyle = "rgba(10,8,20,0.45)";
     g.fillRect(0, 0, view.w, view.mapH);
 
-    PK.text(g, `ZÁPAS PROTI ${foes}`, cx, top, 0xffe08a, { align: "center", scale: 1 });
-    PK.text(g, `HRAJEŠ ZA: ${R.TEAM_NAMES[me].toUpperCase()}`, cx, top + 14, PK.TEAM[me].ui, { align: "center" });
+    if (spectator) {
+      PK.text(g, `ZÁPAS: ${players.map(p => p.name).join(" · ").slice(0, 60)}`, cx, top, 0xffe08a, { align: "center", scale: 1 });
+      PK.text(g, "SLEDUJEŠ JAKO DIVÁK", cx, top + 14, 0xc6e8ff, { align: "center" });
+    } else {
+      PK.text(g, `ZÁPAS PROTI ${foes}`, cx, top, 0xffe08a, { align: "center", scale: 1 });
+      PK.text(g, `HRAJEŠ ZA: ${R.TEAM_NAMES[me].toUpperCase()}`, cx, top + 14, PK.TEAM[me].ui, { align: "center" });
+    }
     PK.text(g, String(Math.max(1, online.count)), cx, top + 38, 0xfff6cc, { align: "center", scale: 5, outline: C.ink, shadow: null });
   }
 

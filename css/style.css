@@ -608,3 +608,7 @@ a.btn { display: block; text-align: center; text-decoration: none; }
   .stats { grid-template-columns: 1fr; }
   .field { flex-basis: 150px; }
 }
+
+/* sledování zápasů */
+#o-live-box .sub { margin: 10px 0 4px; font-size: 13px; color: var(--muted, #b8b0d4); font-weight: 400; text-transform: uppercase; letter-spacing: 0.06em; }
+.room.live { text-align: left; }

@@ -327,6 +327,7 @@
     if (vm.placement) hint = "UMÍSTI STAVBU · KLIKNI NA MAPU";
     else if (vm.spellMode) hint = "OHNIVÁ KOULE · KLIKNI NA CÍL";
     else if (vm.commandMode) hint = "ROZKAZ · KLIKNI NA CÍL";
+    else if (vm.spectator) hint = "DIVÁK · SLEDUJEŠ ZÁPAS";
     else if (vm.spectating) hint = "VYPADL JSI · SLEDUJEŠ HRU";
 
     if (hint) {
@@ -517,8 +518,12 @@
     }
 
     if (!e) {
-      T(g, "VELENÍ", x0, L.y + 5, 0xf0d088);
-      const lines = [
+      T(g, vm.spectator ? "DIVÁK" : "VELENÍ", x0, L.y + 5, 0xf0d088);
+      const lines = vm.spectator ? [
+        "Vidíš celý zápas, ale nic neovládáš.",
+        "Kameru posouvej šipkami, myší u okraje nebo v minimapě.",
+        "Esc otevře menu."
+      ] : [
         "Vyber jednotku nebo budovu.",
         "Dělník těží a staví.",
         "Hrdina sbírá zkušenosti."
@@ -793,7 +798,7 @@
   /* ---------- end screen ---------- */
   function drawEnd(g, vm, T0, endT) {
     const k = Math.min(1, endT / 0.6);
-    const win = vm.state === "win";
+    const win = vm.state === "win" || !!vm.spectator;
     const cx = Math.round(V.w / 2);
 
     g.globalAlpha = 0.55 * k;
@@ -809,7 +814,7 @@
     g.drawImage(frame(w, h), x, y);
     g.drawImage(PK.icons.ringEmblem(18, win ? C.a[2] : C.r[3], win ? C.a[4] : C.r[5]), cx - 9, y - 8 + Math.round(Math.sin(T0 * 2)));
 
-    const title = win ? "VÍTĚZSTVÍ!" : vm.state === "draw" ? "REMÍZA" : "PORÁŽKA!";
+    const title = vm.spectator ? "ZÁPAS SKONČIL" : win ? "VÍTĚZSTVÍ!" : vm.state === "draw" ? "REMÍZA" : "PORÁŽKA!";
     T(g, title, cx, y + 16, win ? 0xffe08a : 0xff8f7a, { align: "center", scale: 2, outline: C.ink, shadow: null });
 
     const mins = Math.floor(vm.elapsed / 60);
@@ -860,12 +865,12 @@
     drawMinimap(g, vm, T0);
     drawPortrait(g, vm, T0);
     drawInfo(g, vm, T0);
-    drawCard(g, vm, T0);
+    if (!vm.spectator) drawCard(g, vm, T0);
 
     // central ornament over the border
     g.drawImage(PK.icons.ringEmblem(13, C.a[2], C.a[4]), Math.round(V.w / 2) - 6, V.mapH - 5 + Math.round(Math.sin(T0 * 1.4) * 0.6));
 
-    drawResources(g, vm, dt);
+    if (!vm.spectator) drawResources(g, vm, dt);
     drawPlayers(g, vm);
     drawBanners(g, vm, T0);
     drawTooltip(g, vm);

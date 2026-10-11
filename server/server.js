@@ -27,6 +27,7 @@ const PUBLIC_URL = (process.env.PUBLIC_URL || "").trim();
 const PUBLIC_DIRS = ["css", "js", "assets"];
 const MAX_CLIENTS = 400;
 const MAX_ROOMS = 100;
+const MAX_SPECTATORS = 100; // diváků u jednoho zápasu
 const MAX_MSG_PER_SEC = 80;
 const BUFFER_LIMIT = 2 * 1024 * 1024;
 const MAX_MAP_BYTES = 1024 * 1024;
@@ -278,15 +279,49 @@ function roomList() {
   return list;
 }
 
-function broadcastRooms() {
+// Rozehrané zápasy, které může sledovat kdokoli (i návštěvník bez účtu).
+function liveList() {
+  const list = [];
+
+  for (const room of matches) {
+    if (!room.match || room.match.phase === "ended") continue;
+    list.push({ id: room.id, map: room.map.id, players: room.roster.map(p => p.name), since: room.started, watchers: room.spectators.size });
+  }
+
+  return list;
+}
+
+function roomsText() {
   const playing = [...matches].reduce((n, room) => n + humansOf(room).length, 0);
-  const text = JSON.stringify({ t: "rooms", list: roomList(), playing, online: clients.size, off: mapConfig.off() });
+  return JSON.stringify({ t: "rooms", list: roomList(), live: liveList(), playing, online: clients.size, off: mapConfig.off() });
+}
+
+function broadcastRooms() {
+  const text = roomsText();
   if (text === lastRooms) return;
   lastRooms = text;
 
   for (const client of clients) {
-    if (!client.room) send(client, text);
+    if (!client.room && !client.watching) send(client, text);
   }
+}
+
+/* ---------- diváci ---------- */
+function unwatch(client) {
+  const room = client.watching;
+  if (!room) return;
+  client.watching = null;
+  room.spectators.delete(client);
+}
+
+// Zápas skončil nebo zanikl: diváci se pustí (poslední snímek už dostali).
+function endWatch(room) {
+  for (const client of room.spectators) {
+    client.watching = null;
+    send(client, { t: "specEnd" });
+  }
+
+  room.spectators.clear();
 }
 
 function sendRoom(room) {
@@ -311,6 +346,7 @@ function createRoom(host, map) {
     map,
     host,
     match: null,
+    spectators: new Set(),
     slots: map.slots.map(() => ({ kind: "open", client: null }))
   };
 
@@ -359,6 +395,7 @@ function startMatch(room) {
   });
 
   const roster = players.map((p, slot) => (p ? { slot, name: p.name, ai: !!p.ai } : null)).filter(Boolean);
+  room.roster = roster;
 
   room.slots.forEach((slot, i) => {
     if (slot.kind !== "human") return;
@@ -370,6 +407,7 @@ function startMatch(room) {
 }
 
 function closeRoom(room) {
+  endWatch(room);
   matches.delete(room);
   rooms.delete(room.id);
   broadcastRooms();
@@ -476,6 +514,7 @@ function recordMatch(room) {
 
 // Po konci zápasu se hráči vrátí do místnosti.
 function endMatch(room) {
+  endWatch(room);
   matches.delete(room);
   room.match = null;
 
@@ -530,6 +569,7 @@ function disconnect(client, text) {
     accounts.touch(client.user);
   }
 
+  unwatch(client);
   leaveRoom(client);
   broadcastRooms();
 
@@ -626,6 +666,7 @@ wss.on("connection", (ws, req) => {
     team: null,
     alive: true,
     closed: false,
+    watching: null,
     windowStart: Date.now(),
     windowCount: 0
   };
@@ -644,6 +685,7 @@ wss.on("connection", (ws, req) => {
     t: "hello",
     list: roomList(),
     playing: [...matches].reduce((n, r) => n + humansOf(r).length, 0),
+    live: liveList(),
     online: clients.size,
     off: mapConfig.off(),
     me: user ? { id: user.id, name: user.name, role: user.role } : null
@@ -688,9 +730,25 @@ wss.on("connection", (ws, req) => {
       return;
     }
 
+    if (msg.t === "watch") {
+      if (room) return;
+      const target = rooms.get(Number(msg.room));
+      if (!target || !target.match || target.match.phase === "ended") return fail(client, "Tenhle zápas už neběží.");
+      if (client.watching === target) return;
+      if (target.spectators.size >= MAX_SPECTATORS) return fail(client, "Zápas sleduje příliš mnoho diváků.");
+
+      unwatch(client);
+      client.watching = target;
+      target.spectators.add(client);
+      send(client, { t: "match", map: target.map.id, slot: -1, spectate: true, players: target.roster });
+      broadcastRooms();
+      return;
+    }
+
     if (msg.t === "create") {
       if (room) return;
       if (!client.user) return fail(client, "Pro multiplayer se přihlas.");
+      unwatch(client);
       const map = MAPS.get(String(msg.map));
       if (!map) return fail(client, "Neznámá mapa.");
       if (!mapConfig.multiplayer(map.id)) return fail(client, "Tato mapa není pro multiplayer povolená.");
@@ -701,6 +759,7 @@ wss.on("connection", (ws, req) => {
     } else if (msg.t === "join") {
       if (room) return;
       if (!client.user) return fail(client, "Pro multiplayer se přihlas.");
+      unwatch(client);
       const target = rooms.get(Number(msg.room));
       if (!target || target.match) return fail(client, "Místnost už neexistuje nebo hra běží.");
 
@@ -712,8 +771,10 @@ wss.on("connection", (ws, req) => {
       sendRoom(target);
       broadcastRooms();
     } else if (msg.t === "leave") {
+      unwatch(client);
       leaveRoom(client);
       send(client, { t: "left" });
+      send(client, roomsText());
     } else if (room && !room.match && room.host === client) {
       if (msg.t === "map") {
         const map = MAPS.get(String(msg.map));
@@ -755,6 +816,14 @@ function flush(room) {
   room.slots.forEach((slot, i) => {
     if (slot.kind === "human" && slot.client) send(slot.client, match.snapshot(R.TEAMS[i]));
   });
+
+  // Diváci dostávají stejný snímek bez soukromých zpráv; jeden společný pro všechny.
+  if (room.spectators.size) {
+    const spec = match.snapshot(R.TEAMS[room.roster[0].slot]);
+    spec.n = [];
+    const text = JSON.stringify(spec);
+    for (const client of room.spectators) send(client, text);
+  }
 
   trackEvents(room);
   const finished = match.phase === "ended";

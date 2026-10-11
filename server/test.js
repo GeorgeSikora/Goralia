@@ -630,6 +630,28 @@ async function testServer() {
 
     const mine = p => p.match.slot;
 
+    // divák bez účtu: vidí seznam rozehraných zápasů, sleduje je, ale nic neovládá
+    const spec = bot("Divák");
+    await spec.until(() => spec.hello, 2000, "hello diváka");
+    assert.strictEqual(spec.hello.me, null, "divák nemá účet");
+    assert.strictEqual(spec.hello.live.length, 1, "v seznamu je rozehraný zápas");
+    assert.deepStrictEqual(spec.hello.live[0].players, ["Alice", "Bob"]);
+    spec.send({ t: "watch", room: 9999 });
+    await spec.until(() => spec.errors.length, 2000, "neexistující zápas");
+    spec.send({ t: "watch", room: spec.hello.live[0].id });
+    await spec.until(() => spec.match && spec.snap && spec.snap.p === "playing", 3000, "snímky pro diváka");
+    assert.strictEqual(spec.match.slot, -1);
+    assert.strictEqual(spec.match.spectate, true);
+    assert.strictEqual(spec.snap.u.length, 8, "divák vidí všechny jednotky");
+    const goldBefore = a.snap.g;
+    spec.cmd({ c: "train", type: "hero" });
+    spec.cmd({ c: "surrender" });
+    spec.send({ t: "create", map: "valley" });
+    await sleep(300);
+    assert(!a.ended && !b.ended, "divák nemůže zápas ovlivnit");
+    assert(a.snap.g >= goldBefore, "divák nic nevycvičil");
+    assert(!spec.room, "divák si nevytvoří místnost");
+
     // klient nevidí soupeřovy suroviny a nemůže si je nastavit
     assert.strictEqual(a.snap.g, 260);
     a.send({ t: "cmd", c: "train", type: "hero", gold: 99999 });
@@ -678,6 +700,8 @@ async function testServer() {
     a.room = null;
     b.cmd({ c: "surrender" });
     await Promise.all([a, b].map(p => p.until(() => p.ended, 2000, "konec")));
+    await spec.until(() => spec.ended && spec.msgs.some(m => m.t === "specEnd"), 2000, "konec zápasu pro diváka");
+    assert.strictEqual(spec.ended.w, 0);
     assert.strictEqual(a.ended.w, 0);
     assert.strictEqual(a.ended.why, "surrender");
     await Promise.all([a, b].map(p => p.until(() => p.room && p.room.state === "lobby", 2000, "návrat do místnosti")));
