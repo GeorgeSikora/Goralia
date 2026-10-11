@@ -11,8 +11,9 @@ const { cookie, parseCookies, clientIp, sameOrigin, sendJson, readJson } = requi
 const SID = "goralia_sid";
 const PLAYER_LIMIT = 1000;
 
-function createApi({ accounts, stats, store, live, publicUrl }) {
+function createApi({ accounts, stats, store, live, traffic, publicUrl }) {
   const passwordFails = new Limiter(10, 10 * 60 * 1000);
+  const beaconIp = new Limiter(120, 10 * 60 * 1000);
 
   const tokenOf = req => parseCookies(req.headers.cookie)[SID];
   const userOf = req => accounts.userFromToken(tokenOf(req));
@@ -20,6 +21,7 @@ function createApi({ accounts, stats, store, live, publicUrl }) {
   const clearCookie = req => cookie(req, SID, "", { maxAge: 0 });
 
   function startSession(req, user) {
+    if (traffic) traffic.bump("logins");
     const old = tokenOf(req);
     if (old) accounts.destroySession(old);
     return sessionCookie(req, accounts.createSession(user));
@@ -102,6 +104,21 @@ function createApi({ accounts, stats, store, live, publicUrl }) {
       });
     },
 
+    // Podrobnosti jednoho zápasu: výsledky, statistiky hráčů a průběh v čase.
+    match(ctx) {
+      const m = stats.getMatch(ctx.params[0]);
+      if (!m) return fail(ctx, 404, "Zápas neexistuje.");
+      sendJson(ctx.res, 200, { match: m });
+    },
+
+    // Hlášení z prohlížeče o hře proti AI (start/konec), funguje i bez přihlášení.
+    beacon(ctx) {
+      if (beaconIp.blocked(ctx.ip)) return sendJson(ctx.res, 202, { ok: false });
+      beaconIp.add(ctx.ip);
+      const ok = traffic ? traffic.aiEvent(ctx.body) : false;
+      sendJson(ctx.res, ok ? 200 : 400, { ok });
+    },
+
     /* ---------- administrace ---------- */
     overview(ctx) {
       const mem = process.memoryUsage();
@@ -169,12 +186,19 @@ function createApi({ accounts, stats, store, live, publicUrl }) {
     },
 
     matches(ctx) {
-      const limit = clamp(ctx.query.get("limit"), 1, 100, 30);
-      const list = store.data.matches.slice(-limit).reverse().map(m => ({
-        id: m.id, ended: m.ended, map: m.map, duration: m.duration, reason: m.reason, humans: m.humans, ais: m.ais,
-        players: m.players.map(p => ({ name: p.name, userId: p.userId, ai: p.ai, result: p.result }))
+      const limit = clamp(ctx.query.get("limit"), 1, 200, 30);
+      const offset = clamp(ctx.query.get("offset"), 0, 1e6, 0);
+      const all = store.data.matches;
+      const end = Math.max(0, all.length - offset);
+      const list = all.slice(Math.max(0, end - limit), end).reverse().map(m => ({
+        id: m.id, ended: m.ended, map: m.map, duration: m.duration, reason: m.reason, humans: m.humans, ais: m.ais, detailed: !!m.timeline,
+        players: m.players.map(p => ({ name: p.name, userId: p.userId, ai: p.ai, result: p.result, slot: p.slot }))
       }));
-      sendJson(ctx.res, 200, { matches: list });
+      sendJson(ctx.res, 200, { total: all.length, matches: list });
+    },
+
+    traffic(ctx) {
+      sendJson(ctx.res, 200, traffic.report(clamp(ctx.query.get("days"), 1, 400, 30)));
     },
 
     audit(ctx) {
@@ -191,6 +215,8 @@ function createApi({ accounts, stats, store, live, publicUrl }) {
     ["POST", /^\/api\/me\/password$/, "user", handlers.password],
     ["GET", /^\/api\/players$/, "none", handlers.players],
     ["GET", /^\/api\/players\/(\d{1,9})$/, "none", handlers.player],
+    ["GET", /^\/api\/matches\/(\d{1,9})$/, "none", handlers.match],
+    ["POST", /^\/api\/beacon$/, "none", handlers.beacon],
     ["GET", /^\/api\/admin\/overview$/, "admin", handlers.overview],
     ["GET", /^\/api\/admin\/users$/, "admin", handlers.users],
     ["POST", /^\/api\/admin\/users\/(\d{1,9})\/ban$/, "admin", handlers.ban],
@@ -202,6 +228,7 @@ function createApi({ accounts, stats, store, live, publicUrl }) {
     ["GET", /^\/api\/admin\/clients$/, "admin", handlers.clients],
     ["POST", /^\/api\/admin\/clients\/(\d{1,9})\/kick$/, "admin", handlers.kick],
     ["GET", /^\/api\/admin\/matches$/, "admin", handlers.matches],
+    ["GET", /^\/api\/admin\/traffic$/, "admin", handlers.traffic],
     ["GET", /^\/api\/admin\/audit$/, "admin", handlers.audit]
   ];
 

@@ -555,6 +555,11 @@ a.btn { display: block; text-align: center; text-decoration: none; }
 .stat-label { color: var(--muted); }
 .stat-value { color: #ffe9a8; text-align: right; }
 
+/* detail zápasu: tabulky a grafy potřebují klidné pozadí a co nejvíc místa */
+.menu.scene .panel.solid { background: var(--panel); }
+.panel.solid .logo, .panel.solid .tagline { display: none; }
+.match-detail { max-height: min(62vh, 640px); overflow: auto; margin-bottom: 12px; padding-right: 4px; }
+.match-detail .mv-table th:first-child, .match-detail .mv-table td:first-child { background: var(--panel); }
 .matches, .players { display: grid; gap: 6px; max-height: 220px; overflow: auto; padding: 2px; }
 .players { max-height: min(60vh, 520px); }
 
@@ -567,6 +572,8 @@ a.btn { display: block; text-align: center; text-decoration: none; }
   box-shadow: inset 3px 0 0 #6a6296;
 }
 
+.match[role="button"] { cursor: pointer; }
+.match[role="button"]:hover, .match[role="button"]:focus-visible { background: #2f2a50; outline: none; }
 .match.win { box-shadow: inset 3px 0 0 #6fcf7f; }
 .match.loss { box-shadow: inset 3px 0 0 #e0705f; }
 .match.draw { box-shadow: inset 3px 0 0 var(--amber); }

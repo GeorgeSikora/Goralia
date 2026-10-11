@@ -187,6 +187,21 @@
     centerCamera(hq.x, hq.y);
   }
 
+  // Hra proti AI běží jen v prohlížeči; serveru se anonymně nahlásí start a konec (pro statistiky návštěvnosti).
+  function reportAi(e, extra) {
+    if (location.protocol !== "http:" && location.protocol !== "https:") return;
+
+    try {
+      fetch("/api/beacon", {
+        method: "POST",
+        keepalive: true,
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ e, map: map ? map.id : "", ...extra })
+      }).catch(() => {});
+    } catch (err) { /* statistiky nejsou důležité */ }
+  }
+
   // cfg: { mode, map, slot, players: [{ slot, name, ai }] }
   function beginMatch(cfg) {
     reset();
@@ -209,6 +224,7 @@
       simMatch = new sim.Match(map, roster, { countdown: 0 });
       applySnapshot(simMatch.snapshot(me));
       simMatch.endTick();
+      reportAi("start");
     } else {
       online.phase = "countdown";
     }
@@ -269,6 +285,10 @@
       spellMode = null;
       commandMode = false;
       audio.play(state === "win" ? "win" : "lose");
+    }
+
+    if (mode === "ai") {
+      reportAi("end", { result: state === "win" ? "win" : state === "draw" ? "draw" : "loss", duration: simMatch ? Math.round(simMatch.elapsed) : 0 });
     }
 
     syncMenu();
@@ -1342,7 +1362,8 @@
 
   function showPage(name) {
     if (name !== "online" && name !== "lobby") leaveLobby();
-    menuEl.querySelector(".panel").classList.toggle("wide", name === "lobby");
+    menuEl.querySelector(".panel").classList.toggle("wide", name === "lobby" || name === "match");
+    menuEl.querySelector(".panel").classList.toggle("solid", name === "match");
     for (const page of pages) page.hidden = page.dataset.page !== name;
     const first = menuEl.querySelector(`.page[data-page="${name}"] button:not([hidden]):not(:disabled)`);
     if (first) first.focus({ preventScroll: true });

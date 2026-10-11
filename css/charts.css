@@ -1,0 +1,69 @@
+/* Grafy (js/charts.js) a detail zápasu (js/matchview.js) – sdílené panelem serveru i hrou. */
+.gc, .mv {
+  --gc-surface: #1f1b31;
+  --gc-text: #e8e2f4;
+  --gc-muted: #9b94b8;
+  --gc-grid: #2f2a50;
+  --gc-base: #4a4474;
+}
+
+.gc { position: relative; width: 100%; min-width: 0; }
+.gc svg { display: block; overflow: visible; }
+.gc-grid { stroke: var(--gc-grid); stroke-width: 1; }
+.gc-base { stroke: var(--gc-base); stroke-width: 1; }
+.gc-axis { fill: var(--gc-muted); font: 10px ui-monospace, "Cascadia Mono", Consolas, monospace; }
+.gc-end { fill: var(--gc-text); font: 11px ui-monospace, "Cascadia Mono", Consolas, monospace; }
+.gc-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.gc-cross { stroke: var(--gc-muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.gc-dot { stroke: var(--gc-surface); stroke-width: 2; }
+.gc-bar { transition: filter 0.1s; }
+.gc-bar.on { filter: brightness(1.25); }
+.gc-hit { fill: transparent; cursor: crosshair; outline: none; }
+.gc-hit:focus-visible { stroke: #ffbf45; stroke-width: 1; }
+.gc-empty { margin: 0; padding: 24px 0; color: var(--gc-muted); text-align: center; }
+
+.gc-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; color: var(--gc-muted); font-size: 11px; }
+.gc-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.gc-key { display: inline-block; width: 12px; height: 3px; border-radius: 2px; }
+.gc-key.bar { height: 10px; width: 10px; }
+
+.gc-tip {
+  position: absolute;
+  z-index: 5;
+  min-width: 120px;
+  padding: 6px 9px;
+  background: #120f22;
+  color: var(--gc-text);
+  font-size: 11px;
+  box-shadow: 0 0 0 1px var(--gc-base), 0 6px 18px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.gc-tip[hidden] { display: none; }
+.gc-tip-title { margin-bottom: 4px; color: var(--gc-muted); }
+.gc-tip-row { display: flex; align-items: center; gap: 7px; line-height: 1.6; }
+.gc-tip-key { display: inline-block; width: 10px; height: 2px; border-radius: 1px; }
+.gc-tip-value { min-width: 34px; color: #fff; }
+.gc-tip-name { color: var(--gc-muted); }
+
+/* ---------- detail zápasu ---------- */
+.mv { color: var(--gc-text); text-align: left; user-select: text; -webkit-user-select: text; }
+.mv-head { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0 0 12px; color: var(--gc-muted); }
+.mv-head b { color: #ffe9a8; font-weight: 700; }
+.mv-section { margin: 18px 0 8px; color: #ffe9a8; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+.mv-wrap { overflow-x: auto; }
+.mv-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.mv-table th, .mv-table td { padding: 5px 8px; border-bottom: 1px solid var(--gc-grid); text-align: right; white-space: nowrap; }
+.mv-table th { color: var(--gc-muted); font-weight: 400; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+.mv-table th:first-child, .mv-table td:first-child { text-align: left; position: sticky; left: 0; background: var(--gc-surface); }
+.mv-swatch { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 2px; vertical-align: -1px; }
+.mv-name { color: var(--gc-text); }
+.mv-link { color: #c09c5a; text-decoration: underline; cursor: pointer; }
+.mv-result { display: inline-block; min-width: 54px; text-align: left; }
+.mv-result.win { color: #6fcf7f; }
+.mv-result.loss { color: #e0705f; }
+.mv-result.draw { color: #ffbf45; }
+.mv-small { color: var(--gc-muted); font-size: 11px; }
+.mv-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px 20px; }
+.mv-chart h4 { margin: 0 0 6px; color: var(--gc-muted); font-size: 11px; font-weight: 400; text-transform: uppercase; letter-spacing: 0.06em; }
+.mv-note { color: var(--gc-muted); font-size: 11px; }

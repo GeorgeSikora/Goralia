@@ -65,7 +65,7 @@
     <p>Správcem osobních údajů je provozovatel hry <strong>Jiří Sikora</strong> (dále „provozovatel“). Ve věcech osobních údajů ho kontaktuj na e-mailu <a href="mailto:info@jirisikora.cz">info@jirisikora.cz</a>.</p>
 
     <h2>2. Hraní bez účtu</h2>
-    <p>Hru proti počítači můžeš hrát bez registrace. V takovém případě se o tobě na serveru neukládá žádný profil. Server ale technicky vidí tvou IP adresu, dokud jsi připojený (viz bod 3.4), a prohlížeč si u tebe pamatuje nastavení hry (viz bod 5).</p>
+    <p>Hru proti počítači můžeš hrát bez registrace. V takovém případě se o tobě na serveru neukládá žádný profil. Server ale technicky vidí tvou IP adresu, dokud jsi připojený (viz bod 3.5), a prohlížeč si u tebe pamatuje nastavení hry (viz bod 5).</p>
 
     <h2>3. Jaké údaje zpracováváme</h2>
 
@@ -87,9 +87,20 @@
     <p>Jméno se použije jen jako návrh přezdívky, kterou si pak můžeš změnit. Neukládáme žádné přístupové tokeny, nemáme přístup k tvým kontaktům, příspěvkům ani jiným datům a nic za tebe nepublikujeme. Zpracování na straně Googlu a Facebooku se řídí jejich vlastními zásadami.</p>
 
     <h3>3.3 Herní statistiky a historie zápasů</h3>
-    <p>Po každém zápase delším než 15 sekund se k účtu zapíše výsledek a souhrnné statistiky: počet her, výher, proher a remíz, odehraný čas, zabité a ztracené jednotky, zničené a ztracené budovy, vytěžené suroviny, vycvičené jednotky, postavené budovy, úroveň hrdiny a výsledky podle map. Server si zároveň vede historii posledních zhruba 3 000 zápasů: mapu, délku, způsob konce a přezdívky a výsledky zúčastněných hráčů.</p>
+    <p>Po každém zápase delším než 15 sekund se k účtu zapíše výsledek a souhrnné statistiky: počet her, výher, proher a remíz, odehraný čas, zabité a ztracené jednotky, zničené a ztracené budovy, vytěžené suroviny, vycvičené jednotky, postavené budovy, úroveň hrdiny a výsledky podle map. Server si zároveň vede historii posledních zhruba 3 000 zápasů: mapu, délku, způsob konce, přezdívky a výsledky zúčastněných hráčů a podrobné statistiky každého z nich (např. počty vycvičených jednotek a postavených budov, utracené suroviny, počet vydaných rozkazů a čas vypadnutí). U posledních zhruba 300 zápasů se ukládá i průběh v čase (např. velikost armády a natěžené suroviny každých několik sekund). Podrobnosti zápasů si může zobrazit kdokoli z veřejného profilu hráče.</p>
 
-    <h3>3.4 Technické údaje</h3>
+    <h3>3.4 Návštěvnost a anonymní statistiky</h3>
+    <p>Provozovatel sleduje, kolik lidí hru navštěvuje a hraje, aby věděl, jak je hra využívaná. Děje se to <strong>bez cookies a bez sledovacích nástrojů třetích stran</strong>:</p>
+    <ul>
+      <li>Počítají se souhrnná čísla za den: zobrazení stránky hry, počet unikátních návštěvníků, podíl mobilních zařízení, počet připojení do hry (přihlášených a nepřihlášených zvlášť), nové registrace a přihlášení, odehrané online zápasy a spuštěné a dokončené hry proti počítači (jejich počet, výsledek a délka).</li>
+      <li>Unikátního návštěvníka server rozpozná jen krátkodobým nevratným otiskem z IP adresy a údajů prohlížeče, který se mísí s náhodnou solí platnou jediný den. Otisk i sůl se po skončení dne zahodí, takže návštěvníka nelze sledovat mezi dny ani zpětně dohledat jeho IP adresu.</li>
+      <li>Každých 5 minut se uloží okamžitý počet připojených hráčů, přihlášených hráčů a hráčů ve hře (bez jmen).</li>
+      <li>Hra proti počítači běží ve tvém prohlížeči. Při jejím začátku a konci prohlížeč serveru anonymně pošle jen údaj o události, výsledek a délku hry. Neodesílá se žádná přezdívka ani identifikátor účtu.</li>
+      <li>Návštěvy známých robotů (např. vyhledávačů) se počítají zvlášť.</li>
+    </ul>
+    <p>Tyto souhrny neobsahují údaje o konkrétních osobách a uchováváme je nejdéle 400 dní.</p>
+
+    <h3>3.5 Technické údaje</h3>
     <ul>
       <li><strong>IP adresa:</strong> používá se k ochraně proti útokům a zneužití (omezení počtu pokusů o přihlášení a registraci) a administrátor ji vidí u právě připojených hráčů. Hra ji do databáze neukládá; v paměti serveru zůstává nejdéle hodinu.</li>
       <li><strong>Serverové záznamy (logy):</strong> webový server a hostingová infrastruktura mohou krátkodobě zaznamenávat technické údaje o požadavcích (IP adresa, čas, požadovaná adresa, typ prohlížeče) pro řešení chyb a bezpečnost.</li>
@@ -125,8 +136,9 @@
     <ul>
       <li><strong>Účet a statistiky:</strong> do smazání účtu.</li>
       <li><strong>Relace přihlášení:</strong> nejvýše 30 dní, při odhlášení nebo změně hesla dříve.</li>
-      <li><strong>Historie zápasů:</strong> průběžně se přepisuje, uchovává se jen posledních přibližně 3 000 zápasů. Do té doby v ní může zůstat tvá přezdívka i po smazání účtu, protože je součástí záznamu o zápase ostatních hráčů.</li>
+      <li><strong>Historie zápasů:</strong> průběžně se přepisuje, uchovává se jen posledních přibližně 3 000 zápasů (průběh v čase jen u posledních zhruba 300). Do té doby v ní může zůstat tvá přezdívka i po smazání účtu, protože je součástí záznamu o zápase ostatních hráčů.</li>
       <li><strong>IP adresy v paměti serveru:</strong> nejvýše 1 hodinu.</li>
+      <li><strong>Anonymní denní souhrny návštěvnosti:</strong> nejdéle 400 dní; pětiminutové vzorky počtu připojených nejdéle 14 dní.</li>
       <li><strong>Serverové logy a audit správy:</strong> po omezenou dobu nezbytnou pro bezpečnost a řešení problémů.</li>
       <li><strong>Zálohy:</strong> pokud existují, smazané údaje z nich zmizí při jejich přirozené obměně.</li>
     </ul>

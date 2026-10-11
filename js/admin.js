@@ -202,24 +202,266 @@
     ));
   }
 
-  /* ---------- zápasy a záznam ---------- */
-  async function loadMatches() {
-    const data = await api("GET", "/api/admin/matches?limit=50");
+  /* ---------- návštěvnost ---------- */
+  const PALETTE = ["#3987e5", "#d95926", "#199e70"]; // ověřeno pro tmavý povrch panelu (čitelnost i pro barvoslepé)
+  const WEEKDAYS = ["ne", "po", "út", "st", "čt", "pá", "so"];
+  let trafficDays = 30;
 
-    $("matches").replaceChildren(table(
-      ["Kdy", "Mapa", "Délka", "Konec", "Hráči"],
-      data.matches.map(m => {
-        const players = el("span");
-        m.players.forEach((p, i) => {
-          if (i) players.append(", ");
-          players.append(el("span", p.result, `${p.name}${p.ai ? " (AI)" : ""}`));
-        });
+  const dayLabel = iso => {
+    const [, m, d] = iso.split("-").map(Number);
+    return `${d}. ${m}.`;
+  };
+  const dayLong = iso => {
+    const date = new Date(`${iso}T12:00:00`);
+    return `${WEEKDAYS[date.getDay()]} ${dayLabel(iso)} ${iso.slice(0, 4)}`;
+  };
+  const sum = (rows, key) => rows.reduce((n, r) => n + (r[key] || 0), 0);
+  const hours = sec => (sec >= 3600 ? `${(sec / 3600).toLocaleString("cs-CZ", { maximumFractionDigits: 1 })} h` : `${Math.round(sec / 60)} min`);
 
-        return [when(m.ended), m.map, `${Math.floor(m.duration / 60)}:${String(m.duration % 60).padStart(2, "0")}`, m.reason, players];
-      }),
-      "Zatím žádné zaznamenané zápasy."
-    ));
+  function chartCard(title, sub, chart) {
+    const card = el("div", "chart-card");
+    card.append(el("h3", "", title));
+    if (sub) card.append(el("p", "sub", sub));
+    card.append(chart);
+    return card;
   }
+
+  function evenTicks(min, max, width) {
+    const n = Math.max(2, Math.min(8, Math.floor(width / 70)));
+    const step = Math.max(1, Math.ceil((max - min) / (n - 1)));
+    const out = [];
+    for (let t = min; t <= max; t += step) out.push(t);
+    return out;
+  }
+
+  // Po dnech: x = index dne
+  function dayChart(days, title, sub, defs) {
+    return chartCard(title, sub, GChart.line({
+      x: days.map((_, i) => i),
+      label: title,
+      series: defs.map(([name, key], k) => ({ name, color: PALETTE[k], values: days.map(d => (typeof key === "function" ? key(d) : d[key])) })),
+      xTicks: evenTicks,
+      xFmt: i => dayLabel(days[i].date),
+      tipTitle: i => dayLong(days[i].date)
+    }));
+  }
+
+  function midnightTicks(min, max, width) {
+    const out = [];
+    const d = new Date(min);
+    d.setHours(24, 0, 0, 0);
+    const span = Math.ceil((max - min) / 86400000);
+    const every = Math.max(1, Math.ceil(span / Math.max(2, Math.floor(width / 80))));
+    for (let i = 0; d.getTime() <= max; i++, d.setDate(d.getDate() + 1)) if (i % every === 0) out.push(d.getTime());
+    return out;
+  }
+
+  function renderTraffic(data) {
+    const days = data.days;
+    const box = $("traffic");
+    const views = sum(days, "views");
+    const tiles = [
+      ["Návštěvníci", sum(days, "visitors"), "součet unikátních za jednotlivé dny"],
+      ["Zobrazení hry", views, `${sum(days, "bots")} robotů nezapočteno`],
+      ["Z mobilu / tabletu", views ? `${Math.round((sum(days, "mobile") / views) * 100)} %` : "–", "podíl zobrazení"],
+      ["Nepřihlášení ve hře", sum(days, "guests"), "unikátní za den, sečteno"],
+      ["Přihlášení ve hře", sum(days, "players"), "unikátní za den, sečteno"],
+      ["Hry proti AI", sum(days, "aiStarted"), `${sum(days, "aiFinished")} dohráno, ${sum(days, "aiWins")} výher · ${hours(sum(days, "aiSeconds"))}`],
+      ["Online zápasy", sum(days, "matches"), `${sum(days, "pvp")} proti lidem · ${hours(sum(days, "matchSeconds"))}`],
+      ["Nové registrace", sum(days, "registrations"), `${sum(days, "logins")} přihlášení`],
+      ["Nejvíc online naráz", Math.max(0, ...days.map(d => d.peak)), "špička za období"]
+    ];
+
+    const cards = el("div", "cards");
+    for (const [label, value, hint] of tiles) {
+      const card = el("div", "card");
+      card.append(el("div", "label", label), el("div", "value", typeof value === "number" ? value.toLocaleString("cs-CZ") : value), el("div", "hint", hint));
+      cards.append(card);
+    }
+
+    const grid = el("div", "chart-grid");
+    grid.append(
+      dayChart(days, "Návštěvnost webu", "unikátní návštěvníci a zobrazení stránky hry za den", [["Návštěvníci", "visitors"], ["Zobrazení", "views"]]),
+      dayChart(days, "Kdo hraje", "unikátní připojení ke hře za den", [["Nepřihlášení", "guests"], ["Přihlášení", "players"]]),
+      dayChart(days, "Odehrané hry", "spuštěné hry proti AI (i bez účtu) a dokončené online zápasy", [["Proti AI", "aiStarted"], ["Online", "matches"]]),
+      dayChart(days, "Účty", "nové registrace a přihlášení za den", [["Registrace", "registrations"], ["Přihlášení", "logins"]])
+    );
+
+    // Vzorky po 5 minutách; u delšího období se průměrují po hodinách, aby graf nebyl zubatý.
+    // Když server neběžel (díra ve vzorcích), čára se přeruší.
+    const samples = data.samples;
+    const spanDays = samples.length ? (samples[samples.length - 1][0] - samples[0][0]) / 86400000 : 0;
+    const bucket = spanDays > 2 ? 3600000 : 300000;
+    const merged = new Map();
+    for (const smp of samples) {
+      const key = Math.floor(smp[0] / bucket) * bucket;
+      const row = merged.get(key) || { n: 0, v: [0, 0, 0] };
+      row.n++;
+      row.v[0] += smp[1];
+      row.v[1] += smp[2];
+      row.v[2] += smp[3];
+      merged.set(key, row);
+    }
+
+    const xs = [];
+    const lines = [[], [], []];
+    let prev = null;
+    for (const [key, row] of [...merged.entries()].sort((a, b) => a[0] - b[0])) {
+      if (prev != null && key - prev > bucket * 2.5) {
+        xs.push(prev + bucket);
+        for (const l of lines) l.push(null);
+      }
+      xs.push(key);
+      row.v.forEach((v, k) => lines[k].push(Math.round((v / row.n) * 10) / 10));
+      prev = key;
+    }
+
+    const fmtTime = ms => new Date(ms).toLocaleString("cs-CZ", { weekday: "short", day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit" });
+    grid.append(chartCard("Online v čase", `${bucket > 300000 ? "průměr za hodinu" : "vzorek každých 5 minut"}, posledních ${Math.min(14, trafficDays)} dní`, GChart.line({
+      x: xs,
+      label: "Online v čase",
+      series: [["Připojení", lines[0]], ["Přihlášení", lines[1]], ["Ve hře", lines[2]]].map(([name, values], k) => ({ name, color: PALETTE[k], values })),
+      xTicks: midnightTicks,
+      xFmt: ms => { const d = new Date(ms); return `${WEEKDAYS[d.getDay()]} ${d.getDate()}. ${d.getMonth() + 1}.`; },
+      tipTitle: fmtTime,
+      empty: "Zatím žádné vzorky (první přibude do 5 minut po startu serveru)."
+    })));
+
+    const byHour = Array.from({ length: 24 }, () => ({ total: 0, n: 0 }));
+    for (const s of samples) {
+      const h = new Date(s[0]).getHours();
+      byHour[h].total += s[1];
+      byHour[h].n++;
+    }
+    grid.append(chartCard("Kdy se hraje", "průměrný počet připojených podle hodiny dne", GChart.bars({
+      labels: byHour.map((_, h) => String(h)),
+      values: samples.length ? byHour.map(b => (b.n ? Math.round((b.total / b.n) * 10) / 10 : 0)) : [],
+      integer: false,
+      color: PALETTE[0],
+      name: "průměrně online",
+      every: 3,
+      tipTitle: i => `${i}:00–${i}:59`,
+      empty: "Zatím žádné vzorky."
+    })));
+
+    const details = el("details", "days");
+    details.append(el("summary", "", "Tabulka po dnech"));
+    const wrapTable = el("div", "table-wrap");
+    wrapTable.append(table(
+      ["Den", "Návštěvníci", "Zobrazení", "Mobil", "Hosté", "Přihlášení", "Špička", "Proti AI", "Online zápasy", "Registrace"],
+      days.slice().reverse().map(d => [dayLong(d.date), d.visitors, d.views, d.mobile, d.guests, d.players, d.peak, `${d.aiStarted} / ${d.aiFinished}`, d.matches, d.registrations])
+    ));
+    details.append(wrapTable);
+
+    box.replaceChildren(cards, grid, details);
+    $("traffic-note").textContent = `Časové pásmo ${data.tz}. Bez cookies, IP se neukládá.`;
+  }
+
+  async function loadTraffic() {
+    const box = $("traffic");
+    box.classList.add("loading");
+
+    try {
+      renderTraffic(await api("GET", `/api/admin/traffic?days=${trafficDays}`));
+    } finally {
+      box.classList.remove("loading");
+    }
+  }
+
+  $("range").addEventListener("click", event => {
+    const b = event.target.closest("button[data-days]");
+    if (!b) return;
+    trafficDays = Number(b.dataset.days);
+    for (const other of $("range").querySelectorAll("button")) other.classList.toggle("active", other === b);
+    loadTraffic().catch(fail);
+  });
+
+  /* ---------- detail zápasu (modální okno) ---------- */
+  const mapName = id => {
+    const map = window.PK && PK.maps && PK.maps.get(id);
+    return map ? map.name : id;
+  };
+  let lastFocus = null;
+
+  function closeModal() {
+    $("modal").hidden = true;
+    $("modal-body").replaceChildren();
+    if (lastFocus) lastFocus.focus();
+  }
+
+  async function openMatch(id) {
+    lastFocus = document.activeElement;
+    $("modal-title").textContent = `Zápas #${id}`;
+    $("modal-body").replaceChildren(el("p", "muted", "Načítám…"));
+    $("modal").hidden = false;
+    $("modal-close").focus();
+
+    try {
+      const data = await api("GET", `/api/matches/${id}`);
+      $("modal-body").replaceChildren(GMatch.render(data.match, {
+        mapName,
+        onPlayer: userId => {
+          closeModal();
+          $("user-q").value = String(userId);
+          select("users");
+        }
+      }));
+    } catch (e) {
+      $("modal-body").replaceChildren(el("p", "muted", `Chyba: ${e.message}`));
+    }
+  }
+
+  $("modal-close").addEventListener("click", closeModal);
+  $("modal").addEventListener("click", event => { if (event.target === $("modal")) closeModal(); });
+  document.addEventListener("keydown", event => { if (event.key === "Escape" && !$("modal").hidden) closeModal(); });
+
+  /* ---------- zápasy a záznam ---------- */
+  const PAGE = 50;
+  let matchOffset = 0;
+
+  async function loadMatches() {
+    const data = await api("GET", `/api/admin/matches?limit=${PAGE}&offset=${matchOffset}`);
+    const t = el("table");
+    const head = el("tr");
+    for (const h of ["#", "Kdy", "Mapa", "Délka", "Konec", "Hráči", "Průběh"]) head.append(el("th", "", h));
+    const thead = el("thead");
+    thead.append(head);
+    const body = el("tbody");
+
+    for (const m of data.matches) {
+      const tr = el("tr", "clickable");
+      tr.tabIndex = 0;
+      tr.title = "Zobrazit detail zápasu";
+      const players = el("span");
+      m.players.forEach((p, i) => {
+        if (i) players.append(", ");
+        players.append(el("span", p.result, `${p.name}${p.ai ? " (AI)" : ""}`));
+      });
+
+      const cells = [m.id, when(m.ended), mapName(m.map), GMatch.clock(m.duration), m.reason, players, m.detailed ? "graf" : "–"];
+      for (const c of cells) {
+        const td = el("td", c === players ? "wrap" : "");
+        if (c instanceof Node) td.append(c);
+        else td.textContent = String(c);
+        tr.append(td);
+      }
+
+      tr.addEventListener("click", () => openMatch(m.id));
+      tr.addEventListener("keydown", e => { if (e.key === "Enter") openMatch(m.id); });
+      body.append(tr);
+    }
+
+    t.append(thead, body);
+    $("matches").replaceChildren(data.matches.length ? t : el("p", "muted", "Zatím žádné zaznamenané zápasy."));
+
+    const from = data.total ? matchOffset + 1 : 0;
+    $("matches-page").textContent = `${from}–${matchOffset + data.matches.length} z ${data.total}`;
+    $("matches-newer").disabled = matchOffset === 0;
+    $("matches-older").disabled = matchOffset + PAGE >= data.total;
+  }
+
+  $("matches-newer").addEventListener("click", () => { matchOffset = Math.max(0, matchOffset - PAGE); loadMatches().catch(fail); });
+  $("matches-older").addEventListener("click", () => { matchOffset += PAGE; loadMatches().catch(fail); });
 
   async function loadAudit() {
     const data = await api("GET", "/api/admin/audit");
@@ -227,7 +469,7 @@
   }
 
   /* ---------- záložky ---------- */
-  const loaders = { overview: loadOverview, users: loadUsers, live: loadLive, matches: loadMatches, audit: loadAudit };
+  const loaders = { overview: loadOverview, traffic: loadTraffic, users: loadUsers, live: loadLive, matches: loadMatches, audit: loadAudit };
 
   function refresh() {
     return loaders[tab]().catch(fail);

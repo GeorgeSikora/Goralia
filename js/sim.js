@@ -65,7 +65,10 @@ class Match {
       this.econ[team] = { gold: R.BASE_GOLD, wood: R.BASE_WOOD };
       this.upgrades[team] = { armor: 0, weapon: 0 };
       this.notes[team] = [];
-      this.stats[team] = { kills: 0, unitsLost: 0, buildingsDestroyed: 0, buildingsLost: 0, gold: 0, wood: 0, trained: 0, built: 0, heroLevel: 0 };
+      this.stats[team] = {
+        kills: 0, unitsLost: 0, buildingsDestroyed: 0, buildingsLost: 0, gold: 0, wood: 0, trained: 0, built: 0, heroLevel: 0,
+        spentGold: 0, spentWood: 0, trainedBy: {}, builtBy: {}
+      };
       if (this.players[i].ai) this.brains[team] = AI.createBrain(team);
 
       this.createBuilding(slot.hq.type, team, slot.hq.x, slot.hq.y, false);
@@ -178,7 +181,15 @@ class Match {
 
     eco.gold -= price.gold;
     eco.wood -= price.wood;
+    this.spend(team, price.gold, price.wood);
     return true;
+  }
+
+  spend(team, gold, wood) {
+    const s = this.stats[team];
+    if (!s) return;
+    s.spentGold += gold;
+    s.spentWood += wood;
   }
 
   train(team, type, srcId) {
@@ -207,6 +218,7 @@ class Match {
     const spawn = this.slotOf(team).spawn;
     this.createUnit(type, team, source.x + spawn[0], source.y + spawn[1]);
     this.stats[team].trained++;
+    this.stats[team].trainedBy[type] = (this.stats[team].trainedBy[type] || 0) + 1;
 
     if (type === "hero") {
       this.stats[team].heroLevel = Math.max(this.stats[team].heroLevel, 1);
@@ -240,6 +252,7 @@ class Match {
 
     eco.gold -= def.gold;
     eco.wood -= def.wood;
+    this.spend(team, def.gold, def.wood);
     smithy.research = { kind, left: def.time, total: def.time };
     this.note(team, `Výzkum: ${R.UPGRADES[kind].name} ${level + 1} (${def.time} s).`);
   }
@@ -661,6 +674,7 @@ class Match {
 
     if (b.progress >= 1) {
       this.stats[b.team].built++;
+      this.stats[b.team].builtBy[b.type] = (this.stats[b.team].builtBy[b.type] || 0) + 1;
       this.note(b.team, "Stavba dokončena.");
       unit.order = null;
     }

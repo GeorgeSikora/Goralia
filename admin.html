@@ -6,6 +6,7 @@
 <meta name="robots" content="noindex">
 <title>Goralia · Server panel</title>
 <link rel="stylesheet" href="css/admin.css">
+<link rel="stylesheet" href="css/charts.css">
 </head>
 <body>
 <header class="top">
@@ -16,6 +17,7 @@
 
 <nav id="tabs" class="tabs" aria-label="Sekce">
   <button type="button" data-tab="overview" class="active">Přehled</button>
+  <button type="button" data-tab="traffic">Návštěvnost</button>
   <button type="button" data-tab="users">Hráči</button>
   <button type="button" data-tab="live">Online</button>
   <button type="button" data-tab="matches">Zápasy</button>
@@ -27,6 +29,17 @@
 
   <section id="tab-overview" class="tab">
     <div id="cards" class="cards"></div>
+  </section>
+
+  <section id="tab-traffic" class="tab" hidden>
+    <div id="range" class="bar range" role="group" aria-label="Období">
+      <button type="button" data-days="7">7 dní</button>
+      <button type="button" data-days="30" class="active">30 dní</button>
+      <button type="button" data-days="90">90 dní</button>
+      <button type="button" data-days="365">Rok</button>
+      <span id="traffic-note" class="muted"></span>
+    </div>
+    <div id="traffic"></div>
   </section>
 
   <section id="tab-users" class="tab" hidden>
@@ -46,7 +59,13 @@
   </section>
 
   <section id="tab-matches" class="tab" hidden>
+    <p class="muted">Kliknutím na řádek zobrazíš výslednou statistiku a průběh zápasu.</p>
     <div id="matches" class="table-wrap"></div>
+    <div class="bar pager">
+      <button id="matches-newer" type="button">← Novější</button>
+      <span id="matches-page" class="muted"></span>
+      <button id="matches-older" type="button">Starší →</button>
+    </div>
   </section>
 
   <section id="tab-audit" class="tab" hidden>
@@ -54,6 +73,20 @@
   </section>
 </main>
 
+<div id="modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" hidden>
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2 id="modal-title"></h2>
+      <button id="modal-close" type="button">Zavřít</button>
+    </div>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script src="js/rules.js"></script>
+<script src="js/maps.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/matchview.js"></script>
 <script src="js/admin.js"></script>
 </body>
 </html>

@@ -16,6 +16,8 @@
   let busy = false;
   let profileBack = "main";
   let profileToken = 0;
+  let profileId = null;
+  let matchToken = 0;
   let searchTimer = 0;
 
   const a = {
@@ -210,6 +212,16 @@
       const map = PK.maps && PK.maps.get(m.map);
       const foes = m.players.filter(x => x.name !== player.name).map(x => (x.ai ? "AI" : x.name));
       const row = el("div", `match ${m.result}`);
+      row.tabIndex = 0;
+      row.setAttribute("role", "button");
+      row.title = "Zobrazit podrobnosti zápasu";
+      row.addEventListener("click", () => openMatch(m.id));
+      row.addEventListener("keydown", e => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openMatch(m.id);
+        }
+      });
       row.append(
         el("b", "match-result", RESULTS[m.result] || m.result),
         el("span", "match-map", `${map ? map.name : m.map} · ${fmtMatch(m.duration)}`),
@@ -233,6 +245,7 @@
   async function openProfile(id, back = "main", message = "") {
     const token = ++profileToken;
     profileBack = back;
+    profileId = id;
     p.title.textContent = "Profil";
     p.meta.textContent = "";
     p.stats.replaceChildren();
@@ -252,6 +265,38 @@
   }
 
   $("pf-back").addEventListener("click", () => host.show(profileBack));
+
+  /* ---------- detail zápasu ---------- */
+  const mapName = id => {
+    const map = PK.maps && PK.maps.get(id);
+    return map ? map.name : id;
+  };
+
+  async function openMatch(id) {
+    const token = ++matchToken;
+    $("mt-title").textContent = "Zápas";
+    $("mt-body").replaceChildren();
+    setStatus($("mt-status"), "Načítám…");
+    host.show("match");
+
+    try {
+      const data = await api("GET", `/api/matches/${encodeURIComponent(id)}`);
+      if (token !== matchToken) return;
+      setStatus($("mt-status"), "");
+      $("mt-title").textContent = `Zápas #${data.match.id}`;
+      $("mt-body").replaceChildren(window.GMatch.render(data.match, {
+        mapName,
+        onPlayer: userId => openProfile(userId, profileBack)
+      }));
+    } catch (e) {
+      if (token === matchToken) setStatus($("mt-status"), e.message, true);
+    }
+  }
+
+  $("mt-back").addEventListener("click", () => {
+    if (profileId != null) openProfile(profileId, profileBack);
+    else host.show("main");
+  });
   $("pf-logout").addEventListener("click", logout);
 
   p.rename.addEventListener("submit", async event => {

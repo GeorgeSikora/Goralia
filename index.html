@@ -36,6 +36,7 @@
 {"@context":"https://schema.org","@type":"VideoGame","name":"Goralia","url":"https://goralia.cz/","inLanguage":"cs","description":"Online real-time strategie zdarma v prohlížeči s multiplayerem pro až 16 hráčů.","image":"https://goralia.cz/assets/og-image.png","genre":["Real-time strategy"],"gamePlatform":"Web browser","playMode":["SinglePlayer","MultiPlayer"],"applicationCategory":"Game","operatingSystem":"Any","offers":{"@type":"Offer","price":"0","priceCurrency":"CZK"}}
 </script>
 <link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/charts.css">
 </head>
 <body>
 <div class="app">
@@ -154,6 +155,13 @@
           <button id="pf-logout" class="btn big" type="button">Odhlásit se</button>
         </div>
         <button id="pf-back" class="btn big" type="button">Zpět</button>
+      </section>
+
+      <section id="panel-match" class="page" data-page="match" hidden>
+        <h2 id="mt-title">Zápas</h2>
+        <p id="mt-status" class="status" aria-live="polite"></p>
+        <div id="mt-body" class="match-detail"></div>
+        <button id="mt-back" class="btn big" type="button">Zpět na profil</button>
       </section>
 
       <section id="panel-players" class="page" data-page="players" hidden>
@@ -295,6 +303,8 @@
 <script src="js/net.js"></script>
 <script src="js/menubg.js"></script>
 <script src="js/custommaps.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/matchview.js"></script>
 <script src="js/account.js"></script>
 <script src="js/voice.js"></script>
 <script src="js/game.js"></script>

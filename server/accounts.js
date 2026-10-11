@@ -156,6 +156,7 @@ function createAccounts(store, options = {}) {
     data.users[user.id] = user;
     index(user);
     store.save();
+    if (options.onCreate) options.onCreate(user);
     return user;
   }
 

@@ -15,6 +15,7 @@ const mapstore = require("./mapstore.js");
 const { createStore } = require("./store.js");
 const { createAccounts } = require("./accounts.js");
 const { createStats } = require("./stats.js");
+const { createTraffic } = require("./traffic.js");
 const { createApi, SID } = require("./api.js");
 const { SECURITY_HEADERS, parseCookies, sameOrigin, clientIp } = require("./httputil.js");
 
@@ -35,7 +36,12 @@ const ADMIN_PAGE = "admin.html";
 const STARTED = Date.now();
 
 const store = createStore(DATA_DIR);
-const accounts = createAccounts(store, { adminName: process.env.GORALIA_ADMIN_NAME, adminEmail: process.env.GORALIA_ADMIN_EMAIL });
+const traffic = createTraffic(store);
+const accounts = createAccounts(store, {
+  adminName: process.env.GORALIA_ADMIN_NAME,
+  adminEmail: process.env.GORALIA_ADMIN_EMAIL,
+  onCreate: user => { if (user.role !== "admin") traffic.bump("registrations"); }
+});
 const stats = createStats(store);
 
 const MIME = {
@@ -117,7 +123,7 @@ function handleMapApi(req, res, pathname) {
 
 /* ---------- static files ---------- */
 const live = {};
-const api = createApi({ accounts, stats, store, live, publicUrl: PUBLIC_URL });
+const api = createApi({ accounts, stats, store, live, traffic, publicUrl: PUBLIC_URL });
 
 const server = http.createServer((req, res) => {
   let pathname;
@@ -141,8 +147,8 @@ const server = http.createServer((req, res) => {
   }
 
   if (pathname === "/") pathname = "/index.html";
-  if (pathname.length > 1 && pathname.endsWith("/")) pathname = pathname.slice(0, -1);
-  if (PRETTY[pathname]) pathname = PRETTY[pathname];
+  const pretty = PRETTY[pathname.replace(/\/$/, "")];
+  if (pretty) pathname = pretty;
 
   // Panel serveru vidí jen přihlášený admin, ostatním stránka neexistuje.
   if (pathname === "/admin" || pathname === "/admin.html") {
@@ -171,6 +177,8 @@ const server = http.createServer((req, res) => {
       res.writeHead(404);
       return res.end("Not found");
     }
+
+    if (pathname === "/index.html" && req.method === "GET") traffic.pageView(clientIp(req), req.headers["user-agent"]);
 
     res.writeHead(200, {
       "Content-Type": MIME[path.extname(file)] || "application/octet-stream",
@@ -290,6 +298,10 @@ function startMatch(room) {
   });
 
   room.match = new Match(room.map, players);
+  room.started = Date.now();
+  room.cmds = {};
+  room.out = {};
+  room.timeline = { every: TIMELINE_STEP, next: 0, t: [], series: {} };
   matches.add(room);
 
   // Kdo hrál, se pamatuje i po odchodu z místnosti (pro statistiky).
@@ -315,19 +327,103 @@ function closeRoom(room) {
   broadcastRooms();
 }
 
+/* ---------- průběh zápasu pro statistiky ---------- */
+const TIMELINE_STEP = 10; // s herního času mezi vzorky
+const TIMELINE_MAX = 180; // víc vzorků se prořeďuje (každý druhý pryč, krok ×2)
+const ARMY = new Set(["soldier", "archer", "hero"]);
+
+// Jeden vzorek: pro každý tým armáda, dělníci, budovy, natěžené suroviny, zásoba a zabití.
+function sampleTimeline(room) {
+  const match = room.match;
+  const tl = room.timeline;
+  if (!tl || !match) return;
+
+  const per = {};
+  for (const p of room.participants) per[p.slot] = { army: 0, workers: 0, buildings: 0 };
+
+  for (const u of match.units) {
+    const row = per[R.TEAMS.indexOf(u.team)];
+    if (!row || u.hp <= 0) continue;
+    if (u.type === "worker") row.workers++;
+    else if (ARMY.has(u.type)) row.army++;
+  }
+
+  for (const b of match.buildings) {
+    const row = per[R.TEAMS.indexOf(b.team)];
+    if (row && b.hp > 0 && b.progress >= 1) row.buildings++;
+  }
+
+  tl.t.push(Math.round(match.elapsed));
+
+  for (const p of room.participants) {
+    const team = R.TEAMS[p.slot];
+    const s = match.stats[team] || {};
+    const eco = match.econ[team] || {};
+    const series = tl.series[p.slot] || (tl.series[p.slot] = { army: [], workers: [], buildings: [], gold: [], wood: [], bank: [], kills: [] });
+    const row = per[p.slot];
+
+    series.army.push(row.army);
+    series.workers.push(row.workers);
+    series.buildings.push(row.buildings);
+    series.gold.push(s.gold || 0);
+    series.wood.push(s.wood || 0);
+    series.bank.push(Math.round((eco.gold || 0) + (eco.wood || 0)));
+    series.kills.push(s.kills || 0);
+  }
+
+  if (tl.t.length > TIMELINE_MAX) {
+    const keep = (_, i) => i % 2 === 0 || i === tl.t.length - 1;
+    tl.t = tl.t.filter(keep);
+    for (const series of Object.values(tl.series)) for (const key of Object.keys(series)) series[key] = series[key].filter(keep);
+    tl.every *= 2;
+  }
+
+  tl.next = match.elapsed + tl.every;
+}
+
+// Události z posledního kroku (vypadnutí hráče) si poznamenáme, než je simulace smaže.
+function trackEvents(room) {
+  const match = room.match;
+
+  for (const e of match.events) {
+    if (e.e === "out" && room.out[e.t] == null) room.out[e.t] = { at: match.elapsed, why: e.why };
+  }
+
+  if (match.phase === "playing" && match.elapsed >= room.timeline.next) sampleTimeline(room);
+}
+
 // Zapíše výsledek zápasu do statistik hráčů (jednou, a ne když zápas zrušil admin).
 function recordMatch(room) {
   const match = room.match;
   if (!match || match.recorded || !room.participants) return;
   match.recorded = true;
 
-  stats.record({
+  // závěrečný vzorek, aby graf končil přesně koncem zápasu
+  const tl = room.timeline;
+  if (tl && tl.t[tl.t.length - 1] !== Math.round(match.elapsed)) sampleTimeline(room);
+
+  const recorded = stats.record({
     map: room.map.id,
+    started: room.started,
     duration: match.elapsed,
     reason: match.reason,
     winner: match.winner ? R.TEAMS.indexOf(match.winner) : -1,
-    players: room.participants.map(p => ({ ...p, stats: match.stats[R.TEAMS[p.slot]] }))
+    timeline: tl && tl.t.length > 1 ? { every: tl.every, t: tl.t, series: tl.series } : null,
+    players: room.participants.map(p => {
+      const team = R.TEAMS[p.slot];
+      const out = room.out[p.slot];
+      return {
+        ...p,
+        stats: match.stats[team],
+        upgrades: match.upgrades[team],
+        cmds: room.cmds[p.slot] || 0,
+        outAt: out ? out.at : null,
+        outWhy: out ? out.why : ""
+      };
+    })
   });
+
+  if (recorded) traffic.match(recorded);
 }
 
 // Po konci zápasu se hráči vrátí do místnosti.
@@ -487,6 +583,7 @@ wss.on("connection", (ws, req) => {
   }
 
   clients.add(client);
+  traffic.connection(client.ip, req.headers["user-agent"], user, clients.size);
   send(client, {
     t: "hello",
     list: roomList(),
@@ -526,7 +623,11 @@ wss.on("connection", (ws, req) => {
     const room = client.room;
 
     if (msg.t === "cmd") {
-      if (room && room.match) room.match.command(client.team, msg);
+      if (room && room.match) {
+        room.match.command(client.team, msg);
+        const slot = R.TEAMS.indexOf(client.team);
+        if (slot >= 0 && room.cmds) room.cmds[slot] = (room.cmds[slot] || 0) + 1;
+      }
       return;
     }
 
@@ -596,6 +697,7 @@ function flush(room) {
     if (slot.kind === "human" && slot.client) send(slot.client, match.snapshot(R.TEAMS[i]));
   });
 
+  trackEvents(room);
   const finished = match.phase === "ended";
   if (finished) recordMatch(room);
   match.endTick();
@@ -635,6 +737,7 @@ setInterval(() => {
 }, 20000);
 
 mapstore.load();
+traffic.startSampling(live.counts);
 
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => process.exit(0));
 process.on("exit", () => store.flush());
