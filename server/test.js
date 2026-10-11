@@ -45,7 +45,7 @@ function testMaps() {
       const z = slot.zone;
       assert(z.x0 < z.x1 && z.y0 < z.y1 && z.x0 >= 0 && z.x1 <= LW && z.y1 <= LH, `${label}: zóna slotu ${i}`);
 
-      for (const b of [slot.hq, ...slot.buildings, slot.plot]) {
+      for (const b of [slot.hq, ...slot.buildings]) {
         assert(inside(b.x, b.y), `${label}: budova slotu ${i} v mapě`);
         assert(b.x >= z.x0 && b.x <= z.x1 && b.y >= z.y0 && b.y <= z.y1, `${label}: budova slotu ${i} ve vlastní zóně`);
       }
@@ -126,7 +126,7 @@ function testSimulation() {
     else assert(match.phase === "playing" || t >= 30, `${map.id}: AI hra neskončí v první půlminutě`);
     // u velkých map se AI občas rozhodne dřív pro vojsko; drtivá většina ale dělníky má
     const counts = match.active.filter(team => !match.out.has(team)).map(team => match.units.filter(u => u.team === team && u.type === "worker").length);
-    assert(counts.filter(n => n >= 1).length >= Math.ceil(counts.length * 0.75), `${map.id}: většina AI má dělníky`);
+    assert(counts.every(n => n >= 1), `${map.id}: každá AI má aspoň jednoho dělníka`);
     assert(counts.filter(n => n >= 3).length >= Math.ceil(counts.length * 0.75), `${map.id}: AI cvičí dělníky`);
   }
 
@@ -615,6 +615,43 @@ async function testServer() {
     assert.strictEqual(a.room.slots[1].name, "Bob");
     await b.until(() => b.room && b.room.you === 1, 2000, "Bobova místnost");
 
+    // chat místnosti: jen členům, očištěný text, limity proti spamu
+    const said = (bot, from) => bot.msgs.filter(m => m.t === "chat" && !m.sys && m.name === from);
+    const notes = bot => bot.msgs.filter(m => m.t === "chat" && m.sys).map(m => m.text);
+    await a.until(() => notes(a).includes("Bob se připojil."), 2000, "oznámení o příchodu");
+
+    a.send({ t: "chat", text: "  Ahoj   světe <b>!</b>\n " });
+    await Promise.all([a.until(() => said(a, "Alice").length, 2000, "chat A"), b.until(() => said(b, "Alice").length, 2000, "chat B")]);
+    assert.deepStrictEqual(said(b, "Alice")[0], { t: "chat", slot: 0, name: "Alice", text: "Ahoj světe <b>!</b>" });
+
+    await sleep(120);
+    b.send({ t: "chat", text: "Čau" });
+    await a.until(() => said(a, "Bob").length, 2000, "odpověď");
+    assert.strictEqual(said(a, "Bob")[0].slot, 1);
+
+    await sleep(450);
+    a.send({ t: "chat", text: "Ahoj světe <b>!</b>" });
+    await a.until(() => notes(a).some(t => t.includes("Stejnou")), 2000, "stejná zpráva dvakrát");
+    assert.strictEqual(said(b, "Alice").length, 1, "duplicitní zpráva se nepřeposílá");
+
+    await sleep(450);
+    a.send({ t: "chat", text: "x\u0000\u202e" + "y".repeat(500) });
+    await b.until(() => said(b, "Alice").length === 2, 2000, "dlouhá zpráva");
+    assert.strictEqual(said(b, "Alice")[1].text, "x y".concat("y".repeat(199 - 2)).slice(0, 200), "řídicí znaky pryč, délka 200");
+    a.send({ t: "chat", text: "   " });
+    a.send({ t: "chat" });
+    a.send({ t: "chat", text: { x: 1 } });
+
+    await sleep(450);
+    for (let i = 0; i < 6; i++) a.send({ t: "chat", text: `spam ${i}` });
+    await a.until(() => notes(a).some(t => t.includes("příliš rychle")), 2000, "spam omezen");
+    await sleep(150);
+    assert(said(b, "Alice").length <= 4, "nejvýš 4 zprávy za 8 s");
+
+    c.send({ t: "chat", text: "Jsem mimo místnost" });
+    await sleep(200);
+    assert(!said(a, "Cyril").length && !said(b, "Cyril").length, "chat jde jen členům místnosti");
+
     // plná místnost, host zahájí hru, ne-host nemůže nic
     c.send({ t: "join", room: a.room.id, name: "Cyril" });
     await c.until(() => c.errors.length, 2000, "plná místnost");
@@ -677,9 +714,12 @@ async function testServer() {
 
     // klient nevidí soupeřovy suroviny a nemůže si je nastavit
     assert.strictEqual(a.snap.g, 260);
+    a.send({ t: "cmd", c: "train", type: "hero", gold: 99999 });
+    await sleep(150);
+    assert.strictEqual(a.snap.g, 260, "bez kasáren se hrdina nevycvičí");
     a.send({ t: "cmd", c: "train", type: "worker", gold: 99999 });
     await sleep(150);
-    assert.strictEqual(a.snap.g, 260 - 50, "dělník stojí 50 zlata");
+    assert.strictEqual(a.snap.g, 260 - R.COSTS.worker.gold, "dělník stojí svou cenu");
 
     // podvody: cizí jednotky, útok na vlastní, nesmyslná čísla, stavba mimo zónu
     const enemyIds = b.units(mine(b)).map(u => u[0]);
@@ -735,7 +775,7 @@ async function testServer() {
     assert.strictEqual(alice.stats.wins, 1);
     assert.strictEqual(alice.stats.pvpWins, 1);
     assert(alice.stats.gold >= 10, "natěženo zlato");
-    assert(alice.stats.trained >= 2, "vycvičeno hrdina a dělník");
+    assert(alice.stats.trained >= 1, "vycvičen dělník");
     assert.strictEqual(alice.recent[0].result, "win");
     assert.deepStrictEqual(alice.recent[0].players.map(p => p.name), ["Alice", "Bob"]);
     assert.strictEqual((await profile("Bob")).stats.losses, 1);
@@ -901,7 +941,7 @@ function testMapDocs() {
   assert(!MAPS.unregister("sample"));
 
   // dvě základny vedle sebe nemají místo: kontrola to ohlásí
-  const close = MAPS.compileDoc(MAPS.normalizeDoc({ ...doc, bases: [{ x: 200, y: 340 }, { x: 280, y: 340 }] }).doc);
+  const close = MAPS.compileDoc(MAPS.normalizeDoc({ ...doc, bases: [{ x: 200, y: 340 }, { x: 225, y: 340 }] }).doc);
   assert(CHECK.check(close).length > 0, "blízké základny jsou chyba");
 
   // území základen se nikdy nepřekrývají

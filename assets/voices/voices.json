@@ -7,11 +7,11 @@
       },
       {
         "file": "worker-select-2.mp3",
-        "text": "Dělník je připravený."
+        "text": "Jo? Povídej."
       },
       {
         "file": "worker-select-3.mp3",
-        "text": "Už jsem tady. Co se staví?"
+        "text": "Dělník na místě. Co se staví?"
       },
       {
         "file": "worker-select-4.mp3",
@@ -19,17 +19,21 @@
       },
       {
         "file": "worker-select-5.mp3",
-        "text": "Nářadí mám. Práce může začít."
+        "text": "Nářadí mám, ruce mám. Tak do toho!"
       },
       {
         "file": "worker-select-6.mp3",
         "text": "Poslouchám, veliteli."
+      },
+      {
+        "file": "worker-select-7.mp3",
+        "text": "Hmm? Já jsem právě něco zkoumal..."
       }
     ],
     "order": [
       {
         "file": "worker-order-1.mp3",
-        "text": "Jasně. Hned se do toho pustím."
+        "text": "Jasně! Hned se do toho pustím."
       },
       {
         "file": "worker-order-2.mp3",
@@ -37,7 +41,7 @@
       },
       {
         "file": "worker-order-3.mp3",
-        "text": "Stavba volá. Jsem na cestě."
+        "text": "Stavba volá! Jsem na cestě."
       },
       {
         "file": "worker-order-4.mp3",
@@ -46,12 +50,16 @@
       {
         "file": "worker-order-5.mp3",
         "text": "Tak ukaž, kde začít."
+      },
+      {
+        "file": "worker-order-6.mp3",
+        "text": "No jo, no jo, už se hýbu."
       }
     ],
     "annoyed": [
       {
         "file": "worker-annoyed-1.mp3",
-        "text": "Pořád mě voláš? Vždyť už pracuju!"
+        "text": "Pořád mě voláš? Vždyť já už pracuju!"
       },
       {
         "file": "worker-annoyed-2.mp3",
@@ -60,6 +68,10 @@
       {
         "file": "worker-annoyed-3.mp3",
         "text": "Jestli mám stihnout práci, nech mě chvíli v klidu."
+      },
+      {
+        "file": "worker-annoyed-4.mp3",
+        "text": "Ještě jedno kliknutí a odkládám kladivo!"
       }
     ]
   },
@@ -67,7 +79,7 @@
     "select": [
       {
         "file": "soldier-select-1.mp3",
-        "text": "Voják hlásí připravenost."
+        "text": "Voják hlásí připravenost!"
       },
       {
         "file": "soldier-select-2.mp3",
@@ -93,7 +105,7 @@
     "order": [
       {
         "file": "soldier-order-1.mp3",
-        "text": "Rozkaz! Vyrážím."
+        "text": "Rozkaz! Vyrážím!"
       },
       {
         "file": "soldier-order-2.mp3",
@@ -109,7 +121,11 @@
       },
       {
         "file": "soldier-order-5.mp3",
-        "text": "Na místo. A rychle!"
+        "text": "Na místo! A rychle!"
+      },
+      {
+        "file": "soldier-order-6.mp3",
+        "text": "Dnes se bude bojovat."
       }
     ],
     "annoyed": [
@@ -124,6 +140,10 @@
       {
         "file": "soldier-annoyed-3.mp3",
         "text": "Šetřete rozkazy na nepřítele."
+      },
+      {
+        "file": "soldier-annoyed-4.mp3",
+        "text": "Další rozkaz? Ještě jsem nedošel k prvnímu!"
       }
     ]
   },
@@ -165,7 +185,7 @@
       },
       {
         "file": "archer-order-3.mp3",
-        "text": "Šíp už letí."
+        "text": "Šíp už letí!"
       },
       {
         "file": "archer-order-4.mp3",
@@ -174,6 +194,10 @@
       {
         "file": "archer-order-5.mp3",
         "text": "Zůstanu stranou a podpořím vás."
+      },
+      {
+        "file": "archer-order-6.mp3",
+        "text": "Tenhle výstřel bude hezký."
       }
     ],
     "annoyed": [
@@ -187,7 +211,11 @@
       },
       {
         "file": "archer-annoyed-3.mp3",
-        "text": "Vidím tě. Teď nech vidět i já."
+        "text": "Vidím tě. Teď nech vidět i mě."
+      },
+      {
+        "file": "archer-annoyed-4.mp3",
+        "text": "Tolik rozkazů a ani jeden cíl? To se mi nelíbí."
       }
     ]
   },
@@ -233,11 +261,15 @@
       },
       {
         "file": "hero-order-4.mp3",
-        "text": "Ať se nepřítel připraví."
+        "text": "Ať se nepřítel připraví!"
       },
       {
         "file": "hero-order-5.mp3",
         "text": "Za Goralii!"
+      },
+      {
+        "file": "hero-order-6.mp3",
+        "text": "Tohle nebude lehké. A právě proto to udělám."
       }
     ],
     "annoyed": [
@@ -251,7 +283,11 @@
       },
       {
         "file": "hero-annoyed-3.mp3",
-        "text": "Soustreďme se na nepřítele, ne na má slova."
+        "text": "Soustřeďme se na nepřítele, ne na má slova."
+      },
+      {
+        "file": "hero-annoyed-4.mp3",
+        "text": "Trpělivost, veliteli. Meč se nebrousí v jednom tahu."
       }
     ]
   }

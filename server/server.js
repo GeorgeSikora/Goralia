@@ -306,6 +306,54 @@ function broadcastRooms() {
   }
 }
 
+/* ---------- chat místnosti ---------- */
+const CHAT_MAX = 200; // znaků na zprávu
+const CHAT_KEEP = 40; // zpráv v paměti místnosti pro toho, kdo se připojí později (po zániku místnosti zmizí)
+const CHAT_BURST = 4; // zpráv za CHAT_WINDOW
+const CHAT_WINDOW = 8000;
+const CHAT_GAP = 400; // min. odstup dvou zpráv (ms)
+
+// Bez řídicích a neviditelných znaků (včetně přepínačů směru textu), jednotné mezery, omezená délka.
+function cleanChat(text) {
+  return String(text == null ? "" : text)
+    .replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, CHAT_MAX);
+}
+
+function chatNote(client, text) {
+  send(client, { t: "chat", sys: true, text });
+}
+
+function chatSay(client, room, raw) {
+  const text = cleanChat(raw);
+  const slot = slotIndex(room, client);
+  if (!text || slot < 0) return;
+
+  const now = Date.now();
+  client.chatTimes = (client.chatTimes || []).filter(at => now - at < CHAT_WINDOW);
+
+  if (now - (client.chatLast || 0) < CHAT_GAP || client.chatTimes.length >= CHAT_BURST) {
+    return chatNote(client, "Píšeš příliš rychle, chvilku počkej.");
+  }
+
+  if (text === client.chatText && now - (client.chatLast || 0) < 10000) {
+    return chatNote(client, "Stejnou zprávu už jsi poslal.");
+  }
+
+  client.chatTimes.push(now);
+  client.chatLast = now;
+  client.chatText = text;
+
+  const entry = { slot, name: client.name, text };
+  room.chat.push(entry);
+  if (room.chat.length > CHAT_KEEP) room.chat.shift();
+
+  const payload = JSON.stringify({ t: "chat", ...entry });
+  for (const human of humansOf(room)) send(human, payload);
+}
+
 /* ---------- diváci ---------- */
 function unwatch(client) {
   const room = client.watching;
@@ -347,6 +395,7 @@ function createRoom(host, map) {
     host,
     match: null,
     spectators: new Set(),
+    chat: [],
     slots: map.slots.map(() => ({ kind: "open", client: null }))
   };
 
@@ -545,6 +594,7 @@ function leaveRoom(client) {
   }
 
   if (room.host === client) room.host = rest[0];
+  for (const human of rest) chatNote(human, `${client.name} opustil místnost.`);
 
   if (room.match) {
     room.match.resign(R.TEAMS[i], "disconnect");
@@ -730,6 +780,11 @@ wss.on("connection", (ws, req) => {
       return;
     }
 
+    if (msg.t === "chat") {
+      if (room) chatSay(client, room, msg.text);
+      return;
+    }
+
     if (msg.t === "watch") {
       if (room) return;
       const target = rooms.get(Number(msg.room));
@@ -769,6 +824,8 @@ wss.on("connection", (ws, req) => {
       target.slots[free] = { kind: "human", client };
       client.room = target;
       sendRoom(target);
+      if (target.chat.length) send(client, { t: "chatlog", list: target.chat });
+      for (const human of humansOf(target)) if (human !== client) chatNote(human, `${client.name} se připojil.`);
       broadcastRooms();
     } else if (msg.t === "leave") {
       unwatch(client);

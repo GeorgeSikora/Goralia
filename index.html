@@ -182,7 +182,13 @@
       <section id="panel-lobby" class="page" data-page="lobby" hidden>
         <h2 id="l-title">Hra proti AI</h2>
         <div class="lobby">
-          <div id="l-maps" class="maps" role="listbox" aria-label="Mapy"></div>
+          <div class="mapcol">
+            <label class="mapfilter">
+              <span>Počet hráčů</span>
+              <select id="l-filter" aria-label="Filtr map podle počtu hráčů"></select>
+            </label>
+            <div id="l-maps" class="maps" role="listbox" aria-label="Mapy"></div>
+          </div>
           <div class="detail">
             <canvas id="l-preview" class="preview" width="320" height="200" role="img" aria-label="Náhled mapy"></canvas>
             <h3 id="l-name"></h3>
@@ -191,6 +197,7 @@
           </div>
           <div id="l-slots" class="slots" aria-label="Hráči"></div>
         </div>
+        <div id="l-chat" class="l-chat"></div>
         <p id="l-status" class="status" aria-live="polite"></p>
         <div class="actions">
           <button id="l-start" class="btn big" type="button">Spustit hru</button>
@@ -269,7 +276,11 @@
           <li><kbd>M</kbd>rozkaz</li>
           <li><kbd>←↑→↓</kbd>kamera</li>
           <li><kbd>Tab</kbd>další typ ve výběru</li>
+          <li><kbd>Ctrl</kbd>+<kbd>1–9</kbd>uložit výběr do skupiny (též <kbd>Alt</kbd>)</li>
+          <li><kbd>1–9</kbd>vybrat skupinu, dvakrát = kamera na ni</li>
+          <li><kbd>Shift</kbd>+<kbd>1–9</kbd>přidat skupinu k výběru</li>
           <li><kbd>Esc</kbd>menu / zrušit akci</li>
+          <li><kbd>Enter</kbd>chat místnosti (online)</li>
           <li><kbd>R</kbd>hlavní menu po konci hry</li>
         </ul>
         <button class="btn big" type="button" data-back>Zpět</button>
@@ -301,6 +312,7 @@
 <script src="js/matchview.js"></script>
 <script src="js/account.js"></script>
 <script src="js/voice.js"></script>
+<script src="js/chat.js"></script>
 <script src="js/game.js"></script>
 </body>
 </html>

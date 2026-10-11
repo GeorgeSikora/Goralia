@@ -263,6 +263,25 @@ kbd {
 }
 
 .maps, .slots, .rooms { display: grid; gap: 10px; }
+
+.mapcol { display: grid; gap: 10px; min-width: 0; }
+.mapfilter { display: grid; gap: 4px; font-size: 11px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+.mapfilter select {
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  background: #15121f;
+  color: var(--text);
+  font: inherit;
+  text-transform: none;
+  letter-spacing: 0;
+  box-shadow: 0 0 0 2px var(--ink), 0 0 0 3px var(--brass-d);
+}
+.mapfilter select:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+
+/* dlouhý seznam map se posouvá, ať nepřetéká obrazovku */
+.maps { align-content: start; max-height: min(330px, 42vh); overflow-y: auto; padding: 4px 6px 4px 4px; overscroll-behavior: contain; }
+.maps-empty { margin: 0; padding: 8px 4px; color: var(--muted); font-size: 11px; }
 .rooms { max-height: 190px; overflow: auto; padding: 4px; }
 
 .map-item, .room {
@@ -557,7 +576,7 @@ a.btn { display: block; text-align: center; text-decoration: none; }
 
 /* detail zápasu: tabulky a grafy potřebují klidné pozadí a co nejvíc místa */
 .menu.scene .panel.solid { background: var(--panel); }
-.panel.solid .logo, .panel.solid .tagline { display: none; }
+.panel.solid .logo, .panel.solid .tagline, .panel.compact .logo, .panel.compact .tagline { display: none; }
 .match-detail { max-height: min(62vh, 640px); overflow: auto; margin-bottom: 12px; padding-right: 4px; }
 .match-detail .mv-table th:first-child, .match-detail .mv-table td:first-child { background: var(--panel); }
 .matches, .players { display: grid; gap: 6px; max-height: 220px; overflow: auto; padding: 2px; }
@@ -612,3 +631,166 @@ a.btn { display: block; text-align: center; text-decoration: none; }
 /* sledování zápasů */
 #o-live-box .sub { margin: 10px 0 4px; font-size: 13px; color: var(--muted, #b8b0d4); font-weight: 400; text-transform: uppercase; letter-spacing: 0.06em; }
 .room.live { text-align: left; }
+
+/* ---------- chat místnosti ---------- */
+.chat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font: 12px/1.4 ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
+  color: var(--text);
+}
+
+.chat-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.chat-title { color: var(--amber); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; font-size: 11px; }
+
+.chat-mutebtn, .chat-mute, .chat-toggle, .chat-send {
+  border: 0;
+  background: #2f2a50;
+  color: #ffe9a8;
+  font: 700 11px/1 ui-monospace, "Cascadia Mono", Consolas, monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 6px 10px;
+  box-shadow: 0 0 0 2px var(--ink), inset 1px 1px 0 #6a6296, inset -1px -1px 0 #1a1630, 0 0 0 3px var(--brass-d);
+}
+
+.chat-mutebtn:hover, .chat-mute:hover, .chat-toggle:hover, .chat-send:hover { background: #3d3768; }
+.chat-mute.on { background: #5a2a3c; }
+.chat button:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
+
+.chat-mutes { display: flex; flex-wrap: wrap; gap: 8px; padding: 6px 4px; }
+.chat-empty { color: var(--muted); font-size: 11px; }
+
+.chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  padding: 6px 8px;
+  background: rgba(21, 18, 31, 0.72);
+  box-shadow: 0 0 0 2px var(--ink), 0 0 0 3px var(--brass-d);
+  overscroll-behavior: contain;
+  word-break: break-word;
+}
+
+.chat-line { text-shadow: 0 1px 0 #000; }
+.chat-line.sys { color: var(--muted); font-style: italic; }
+.chat-name { font-weight: 700; margin-right: 6px; }
+.chat-name::after { content: ":"; }
+
+.chat-bar { display: flex; gap: 8px; align-items: stretch; }
+.chat-form { flex: 1; display: flex; gap: 8px; min-width: 0; }
+
+.chat-input {
+  flex: 1;
+  width: 0;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 0;
+  background: #120f1f;
+  color: var(--text);
+  font: inherit;
+  box-shadow: 0 0 0 2px var(--ink), 0 0 0 3px var(--brass-d);
+}
+
+.chat-input:focus { outline: 2px solid var(--amber); outline-offset: 2px; }
+.chat-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  background: var(--amber);
+  color: #15121f;
+}
+
+/* v lobby: pevně pod výběrem mapy */
+.chat.in-lobby { margin: 0; text-align: left; width: 100%; }
+.l-chat { margin-top: 14px; width: 100%; align-self: stretch; }
+.l-chat:empty { margin: 0; }
+.chat.in-lobby .chat-log { height: 110px; }
+.chat.in-lobby .chat-toggle { display: none; }
+
+/* ve hře: překryv vlevo dole, staré zprávy mizí, psát jde po Enteru */
+.chat.in-game {
+  position: absolute;
+  z-index: 8;
+  width: min(360px, calc(100vw - 16px));
+  pointer-events: none;
+}
+
+.chat.in-game .chat-head, .chat.in-game .chat-form { display: none; }
+.chat.in-game .chat-log { max-height: 124px; background: transparent; box-shadow: none; padding: 0 2px; overflow: hidden; }
+.chat.in-game .chat-line {
+  pointer-events: none;
+  width: fit-content;
+  max-width: 100%;
+  padding: 1px 6px;
+  background: rgba(21, 18, 31, 0.6);
+}
+.chat.in-game .chat-title { text-shadow: 0 1px 0 #000, 0 0 4px #000; }
+.chat.in-game .chat-bar { pointer-events: auto; }
+.chat.in-game:not(.open) .chat-line.old { display: none; }
+.chat.in-game:not(.open) .chat-line.sys { display: none; }
+
+.chat.in-game.open { pointer-events: auto; }
+.chat.in-game.open .chat-head, .chat.in-game.open .chat-form { display: flex; }
+.chat.in-game.open .chat-log { max-height: 180px; overflow-y: auto; background: rgba(21, 18, 31, 0.82); box-shadow: 0 0 0 2px var(--ink), 0 0 0 3px var(--brass-d); padding: 6px 8px; }
+.chat.in-game.open .chat-line.sys { display: block; }
+.chat.in-game.open .chat-line { width: auto; background: none; padding: 0; }
+
+@media (pointer: fine) {
+  /* s myší stačí Enter, tlačítko je jen nenápadná nápověda */
+  .chat.in-game:not(.open) .chat-toggle { opacity: 0.55; }
+  .chat.in-game:not(.open) .chat-toggle:hover { opacity: 1; }
+}
+
+@media (max-width: 480px) {
+  .chat.in-lobby .chat-log { height: 96px; }
+}
+
+
+/* ---------- pixelový posuvník (seznam map, místností, chat) ---------- */
+.maps, .rooms, .chat-log { scrollbar-gutter: stable; }
+
+.maps::-webkit-scrollbar, .rooms::-webkit-scrollbar, .chat-log::-webkit-scrollbar { width: 16px; }
+
+.maps::-webkit-scrollbar-track, .rooms::-webkit-scrollbar-track, .chat-log::-webkit-scrollbar-track {
+  background: #120f1f;
+  box-shadow: inset 0 0 0 2px var(--ink), inset 0 0 0 3px var(--brass-d);
+}
+
+.maps::-webkit-scrollbar-thumb, .rooms::-webkit-scrollbar-thumb, .chat-log::-webkit-scrollbar-thumb {
+  min-height: 36px;
+  background: #b08a4c;
+  border: 3px solid #120f1f;
+  box-shadow: inset 2px 2px 0 #ffe0a0, inset -2px -2px 0 #7a5a2c;
+}
+
+.maps::-webkit-scrollbar-thumb:hover, .rooms::-webkit-scrollbar-thumb:hover, .chat-log::-webkit-scrollbar-thumb:hover { background: var(--amber); }
+.maps::-webkit-scrollbar-thumb:active, .rooms::-webkit-scrollbar-thumb:active, .chat-log::-webkit-scrollbar-thumb:active { background: #ffd27a; }
+
+/* šipky nahoře a dole: klik posune o kousek */
+.maps::-webkit-scrollbar-button:single-button, .rooms::-webkit-scrollbar-button:single-button, .chat-log::-webkit-scrollbar-button:single-button {
+  display: block;
+  height: 16px;
+  background-color: #2f2a50;
+  background-repeat: no-repeat;
+  background-position: center;
+  box-shadow: inset 0 0 0 2px var(--ink), inset 3px 3px 0 #6a6296, inset -3px -3px 0 #1a1630;
+}
+
+.maps::-webkit-scrollbar-button:single-button:hover, .rooms::-webkit-scrollbar-button:single-button:hover, .chat-log::-webkit-scrollbar-button:single-button:hover { background-color: #3d3768; }
+
+.maps::-webkit-scrollbar-button:single-button:vertical:decrement, .rooms::-webkit-scrollbar-button:single-button:vertical:decrement, .chat-log::-webkit-scrollbar-button:single-button:vertical:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='6' shape-rendering='crispEdges'%3E%3Cpath fill='%23ffe9a8' d='M3 0h2v1h1v1h1v1h1v1H0V3h1V2h1V1h1z'/%3E%3C/svg%3E");
+}
+
+.maps::-webkit-scrollbar-button:single-button:vertical:increment, .rooms::-webkit-scrollbar-button:single-button:vertical:increment, .chat-log::-webkit-scrollbar-button:single-button:vertical:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='6' shape-rendering='crispEdges'%3E%3Cpath fill='%23ffe9a8' d='M0 0h8v1H7v1H6v1H5v1H4v1H3V4H2V3H1V2H0z'/%3E%3C/svg%3E");
+}
+
+/* Firefox neumí pseudoprvky, dostane aspoň barevný a dobře viditelný posuvník */
+@supports not selector(::-webkit-scrollbar) {
+  .maps, .rooms, .chat-log { scrollbar-width: auto; scrollbar-color: #b08a4c #120f1f; }
+}

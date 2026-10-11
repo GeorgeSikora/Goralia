@@ -447,6 +447,91 @@ makers.push(() => {
   return d;
 });
 
+// 5 hráčů: protáhlá hvězdicová pevnost s citadelou (podle dobového půdorysu) a čtyři útočníci v rozích
+makers.push(() => {
+  const d = new Draft("sance", "Pevnost Šance", "Protáhlá hradební hvězda s příkopem a malou citadelou na západní straně. Obránce sídlí na nádvoří, ze čtyř rohů mapy ji obléhají útočníci.", 1400, 1000, 505);
+  const cx = 700;
+  const cy = 500;
+  const bx = cx + 135;
+  d.base(bx * 2, cy * 2);
+  for (const [x, y] of [[480, 400], [2320, 400], [480, 1600], [2320, 1600]]) d.base(x, y);
+
+  const STRETCH = 1.45;
+  const makeStar = (ox, oy, tips, Ro, Ri, sx, rot = 0) => {
+    const pts = [];
+    for (let k = 0; k < tips; k++) {
+      const a = rot + (k * 2 * Math.PI) / tips;
+      const a2 = a + Math.PI / tips;
+      pts.push([ox + Math.cos(a) * Ro * sx, oy + Math.sin(a) * Ro], [ox + Math.cos(a2) * Ri * sx, oy + Math.sin(a2) * Ri]);
+    }
+    pts.push(pts[0]);
+    return pts.map(([x, y]) => [r1(x), r1(y)]);
+  };
+
+  // průsečík lomené čáry se svislou (x = c) nebo vodorovnou (y = c) přímkou; vrací body setříděné podle druhé souřadnice
+  const cross = (poly, axis, c) => {
+    const out = [];
+    for (let i = 0; i < poly.length - 1; i++) {
+      const [ax, ay] = poly[i];
+      const [bx2, by2] = poly[i + 1];
+      const p = axis === "x" ? ax : ay;
+      const q = axis === "x" ? bx2 : by2;
+      if ((p - c) * (q - c) >= 0) continue;
+      const t = (c - p) / (q - p);
+      out.push([ax + (bx2 - ax) * t, ay + (by2 - ay) * t]);
+    }
+    return out;
+  };
+
+  const main = makeStar(cx, cy, 8, 285, 205, STRETCH, Math.PI / 8);
+  d.wall(main, 4);
+  d.water.push({ pts: main.map(([x, y]) => [r1(cx + (x - cx) * 1.09), r1(cy + (y - cy) * 1.1)]), hw: 5 });
+
+  // citadela: menší hvězda v západní části
+  const kx = cx - 215;
+  const keep = makeStar(kx, cy, 6, 92, 62, 1.2, Math.PI / 6);
+  d.wall(keep, 4);
+
+  // brány hlavní hradby: sever a jih, vpravo od citadely
+  const gx = cx + 95;
+  const hits = cross(main, "x", gx).sort((p, q) => p[1] - q[1]);
+  const gN = hits[0];
+  const gS = hits[hits.length - 1];
+  const outN = [gx + 5, gN[1] - 110];
+  const outS = [gx + 5, gS[1] + 110];
+  const plaza = [bx, cy + 17];
+
+  d.road([plaza, [gx + 6, cy - 80], gN, outN], 7, true, 1.5);
+  d.road([plaza, [gx + 6, cy + 90], gS, outS], 7, true, 1.5);
+
+  // brána citadely na východní straně
+  const kh = cross(keep, "y", cy + 4).sort((p, q) => q[0] - p[0])[0];
+  d.road([plaza, [(plaza[0] + kh[0]) / 2, cy + 8], kh, [kx + 10, cy + 4]], 6, true, 1);
+
+  // venku: okružní silnice útočníků (severní a jižní větev přes brány, boční větve bez bran)
+  const pl = (x, y) => [x / 2, y / 2 + (y > 1000 ? -17 : 17)];
+  const nw = pl(480, 400);
+  const ne = pl(2320, 400);
+  const sw = pl(480, 1600);
+  const se = pl(2320, 1600);
+  d.road([nw, [(nw[0] + outN[0]) / 2, nw[1] - 25], outN, [(ne[0] + outN[0]) / 2, ne[1] - 25], ne], 7, true);
+  d.road([sw, [(sw[0] + outS[0]) / 2, sw[1] + 25], outS, [(se[0] + outS[0]) / 2, se[1] + 25], se], 7, true);
+  d.road([nw, [nw[0] - 30, 340], [sw[0] - 30, 660], sw], 7, true);
+  d.road([ne, [ne[0] + 30, 340], [se[0] + 30, 660], se], 7, true);
+
+  // předsunuté hrady před branami
+  for (const [g, dir] of [[gN, -1], [gS, 1]]) {
+    d.ridge([[g[0] - 40, g[1] + dir * 75], [g[0] - 14, g[1] + dir * 62]], 7, 1);
+    d.ridge([[g[0] + 44, g[1] + dir * 75], [g[0] + 18, g[1] + dir * 62]], 7, 1);
+  }
+
+  for (const ridge of [[[40, 60], [120, 40], [200, 80]], [[1360, 60], [1280, 40], [1200, 80]], [[40, 940], [120, 960], [200, 920]], [[1360, 940], [1280, 960], [1200, 920]]]) d.ridge(ridge, 12);
+  // doly: dva v citadele jako odměna za dobytí, ostatní venku
+  d.extraGold([[kx * 2 - 40, cy * 2 - 70], [kx * 2 - 40, cy * 2 + 70], [1400, 150], [1400, 1850], [160, 1000], [2640, 1000], [1000, 330], [1800, 330], [1000, 1670], [1800, 1670]]);
+  d.scatterTrees(420);
+  return d;
+});
+
 /* ---------- zápis a kontrola ---------- */
 fs.mkdirSync(OUT, { recursive: true });
 let bad = 0;

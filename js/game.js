@@ -42,6 +42,8 @@
   let buildings;
   let resources;
   let selected;
+  const groups = new Map(); // číslo skupiny (0-9) -> id jednotek a budov
+  let lastGroupTap = { n: -1, t: 0 };
 
   let gold;
   let wood;
@@ -160,6 +162,8 @@
     buildings = [];
     resources = [];
     selected = [];
+    groups.clear();
+    lastGroupTap = { n: -1, t: 0 };
     unitMap.clear();
     buildingMap.clear();
     resourceMap.clear();
@@ -360,6 +364,71 @@
     if (e.kind === "unit") return f === "hero" ? "hero" : f === "worker" ? "worker" : "army";
     if (e.progress < 1) return "none";
     return f === "hall" || f === "citadel" ? "hq" : f === "barracks" ? "barracks" : f === "smithy" ? "smithy" : "none";
+  }
+
+  /* ---------- skupiny na čísla (jako ve Warcraftu 3) ----------
+   * Ctrl nebo Alt + číslo uloží výběr do skupiny, Shift k tomu výběr přidá.
+   * Samotné číslo skupinu vybere (Shift ji přidá k výběru), druhé rychlé stisknutí vycentruje kameru.
+   * Čísla se čtou z fyzické klávesy (event.code), takže fungují i na české klávesnici, kde horní řada dává písmena. */
+  const GROUP_DOUBLE = 380; // ms
+
+  const groupEntities = n => (groups.get(n) || [])
+    .map(id => unitMap.get(id) || buildingMap.get(id))
+    .filter(e => e && alive(e) && e.team === me);
+
+  function assignGroup(n, add) {
+    const mine = selected.filter(e => alive(e) && e.team === me);
+
+    if (!mine.length && !add) {
+      groups.delete(n);
+      announce(`Skupina ${n} zrušena.`);
+      return;
+    }
+
+    const ids = new Set(add ? groupEntities(n).map(e => e.id) : []);
+    for (const e of mine) ids.add(e.id);
+    groups.set(n, [...ids]);
+    audio.play("click");
+    announce(`Skupina ${n}: ${ids.size} ${ids.size === 1 ? "kus" : ids.size < 5 ? "kusy" : "kusů"}.`);
+  }
+
+  function recallGroup(n, add) {
+    const list = groupEntities(n);
+    groups.set(n, list.map(e => e.id)); // padlé z paměti rovnou pryč
+
+    if (!list.length) {
+      announce(`Skupina ${n} je prázdná.`);
+      return;
+    }
+
+    const now = performance.now();
+    const again = lastGroupTap.n === n && now - lastGroupTap.t < GROUP_DOUBLE;
+    lastGroupTap = { n, t: now };
+
+    selected = add ? [...new Set([...selected, ...list])] : list;
+    selectedResourceId = 0;
+
+    if (again) {
+      const cx = list.reduce((sum, e) => sum + e.x, 0) / list.length;
+      const cy = list.reduce((sum, e) => sum + e.y, 0) / list.length;
+      centerCamera(cx, cy);
+    } else {
+      audio.play("select");
+      speak(selected, "select");
+    }
+  }
+
+  function groupKey(event) {
+    const m = /^(?:Digit|Numpad)(\d)$/.exec(event.code || "");
+    if (!m || spectator || state !== "playing") return false;
+
+    event.preventDefault();
+    const n = Number(m[1]);
+
+    if (event.ctrlKey || event.altKey) assignGroup(n, event.shiftKey);
+    else recallGroup(n, event.shiftKey);
+
+    return true;
   }
 
   // Klik na avatar ve výběru: jedna jednotka; Shift ji ze výběru vyjme, Ctrl vybere všechny stejného typu.
@@ -1351,6 +1420,7 @@
     }
 
     if (menuOpen || !started) return;
+    if (groupKey(event)) return;
 
     if (key === "tab") {
       event.preventDefault();
@@ -1411,6 +1481,7 @@
     if (name !== "online" && name !== "lobby") leaveLobby();
     menuEl.querySelector(".panel").classList.toggle("wide", name === "lobby" || name === "match");
     menuEl.querySelector(".panel").classList.toggle("solid", name === "match");
+    menuEl.querySelector(".panel").classList.toggle("compact", name === "lobby");
     for (const page of pages) page.hidden = page.dataset.page !== name;
     const first = menuEl.querySelector(`.page[data-page="${name}"] button:not([hidden]):not(:disabled)`);
     if (first) first.focus({ preventScroll: true });
@@ -1504,9 +1575,9 @@
   const oLiveBox = $("o-live-box");
 
   // Stav lobby (hra proti AI i online místnost); sloty odpovídají slotům mapy.
-  const lobby = { online: false, mapId: MAPS.DEFAULT, slots: [], you: 0, host: 0 };
+  const lobby = { online: false, mapId: MAPS.DEFAULT, slots: [], you: 0, host: 0, filter: 0 };
   const lobbyEl = {
-    maps: $("l-maps"), preview: $("l-preview"), name: $("l-name"), desc: $("l-desc"),
+    maps: $("l-maps"), filter: $("l-filter"), preview: $("l-preview"), name: $("l-name"), desc: $("l-desc"),
     meta: $("l-meta"), slots: $("l-slots"), status: $("l-status"), start: $("l-start"), title: $("l-title")
   };
   const previews = new Map();
@@ -1525,6 +1596,7 @@
   function refreshCustomMaps() {
     return PK.customMaps.load().then(changed => {
       if (map === STUB_MAP && MAPS.list.length && !started) loadMap(MAPS.list[0], 0);
+      if (!MAPS.get(lobby.mapId) && MAPS.list.length) lobby.mapId = MAPS.DEFAULT;
       for (const id of changed) previews.delete(id);
       return changed;
     });
@@ -1670,7 +1742,7 @@
 
     if (online.phase === "idle") {
       online.error = "";
-      const pick = mpOff.has(lobby.mapId) ? (mpMaps()[0] || MAPS.get(MAPS.DEFAULT)).id : lobby.mapId;
+      const pick = MAPS.get(lobby.mapId) && !mpOff.has(lobby.mapId) ? lobby.mapId : (mpMaps()[0] || MAPS.get(MAPS.DEFAULT) || STUB_MAP).id;
       net.send({ t: "create", map: pick });
     } else if (online.phase === "offline") {
       connectLobby();
@@ -1763,15 +1835,41 @@
     }
   }
 
+  // Filtr podle počtu hráčů: výchozí "Všechny"; nabízí jen počty, které nějaká mapa opravdu má.
+  function syncMapFilter(maps) {
+    const counts = [...new Set(maps.map(m => m.players))].sort((x, y) => x - y);
+    const key = counts.join(",");
+
+    if (lobbyEl.filter.dataset.key !== key) {
+      lobbyEl.filter.dataset.key = key;
+      lobbyEl.filter.replaceChildren(new Option("Všechny", "0"), ...counts.map(n => new Option(`${n} ${n >= 5 ? "hráčů" : "hráči"}`, String(n))));
+    }
+
+    if (lobby.filter && !counts.includes(lobby.filter)) lobby.filter = 0;
+    lobbyEl.filter.value = String(lobby.filter);
+  }
+
+  lobbyEl.filter.addEventListener("change", () => {
+    lobby.filter = Number(lobbyEl.filter.value) || 0;
+    renderLobby();
+  });
+
   function renderLobby() {
     const map = lobbyMap();
     const host = isHost();
 
     lobbyEl.title.textContent = lobby.online ? "Multiplayer místnost" : "Hra proti AI";
 
-    const shown = lobby.online ? MAPS.list.filter(m => !mpOff.has(m.id) || m.id === lobby.mapId) : MAPS.list;
+    const available = lobby.online ? MAPS.list.filter(m => !mpOff.has(m.id) || m.id === lobby.mapId) : MAPS.list;
+    syncMapFilter(available);
+    const shown = lobby.filter ? available.filter(m => m.players === lobby.filter) : available;
 
-    lobbyEl.maps.replaceChildren(...shown.map(m => {
+    if (!shown.length) {
+      const empty = document.createElement("p");
+      empty.className = "maps-empty";
+      empty.textContent = "Pro tenhle počet hráčů tu není žádná mapa.";
+      lobbyEl.maps.replaceChildren(empty);
+    } else lobbyEl.maps.replaceChildren(...shown.map(m => {
       const item = document.createElement("button");
       item.type = "button";
       item.className = `map-item${m.id === lobby.mapId ? " selected" : ""}`;
@@ -2388,9 +2486,42 @@
         applySnapshot(m);
         break;
 
+      case "chat":
+        PK.chat.receive(m);
+        break;
+
+      case "chatlog":
+        PK.chat.receiveLog(m.list);
+        break;
+
       default:
     }
   };
+
+  /* chat místnosti: kde se právě zobrazuje (lobby / ve hře / vůbec) */
+  function chatWhere() {
+    if (!net.connected || !online.roomId) return "off";
+    if (started && mode === "online") return spectator || menuOpen ? "off" : "game";
+    if (online.phase === "room" && lobby.online && menuOpen && !$("panel-lobby").hidden) return "lobby";
+    return "off";
+  }
+
+  PK.chat.anchor = () => {
+    const rect = canvas.getBoundingClientRect();
+    const k = rect.height / (view.h * 2); // stejné jednotky jako pointerPosition
+    return { left: rect.left + 8, bottom: window.innerHeight - (rect.top + mapAreaH() * k) + 8 };
+  };
+
+  setInterval(() => {
+    const names = lobby.online ? lobby.slots.filter((s, i) => s.kind === "human" && i !== lobby.you).map(s => s.name) : [];
+    PK.chat.sync({
+      roomId: online.roomId,
+      where: chatWhere(),
+      slot: $("l-chat"),
+      me: account.user ? account.user.name : "",
+      players: names
+    });
+  }, 250);
 
   net.onclose = () => {
     if (mode === "online" && started && !matchOver) {
