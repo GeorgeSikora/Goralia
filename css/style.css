@@ -496,6 +496,29 @@ kbd {
 a.btn { display: block; text-align: center; text-decoration: none; }
 
 .form, .social, .own { display: grid; gap: 12px; }
+
+.btn.oauth {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-decoration: none;
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+.btn.oauth svg { flex: none; }
+.btn.oauth.google {
+  background: #fff;
+  color: #3c4043;
+  box-shadow: 0 0 0 2px var(--ink), inset 2px 2px 0 #fff, inset -2px -2px 0 #d2d5da, 0 0 0 4px #9aa0a6;
+}
+.btn.oauth.google:hover { background: #f1f3f4; }
+.btn.oauth.facebook {
+  background: #1877f2;
+  color: #fff;
+  box-shadow: 0 0 0 2px var(--ink), inset 2px 2px 0 #5b9bf7, inset -2px -2px 0 #0d57b8, 0 0 0 4px #0d57b8;
+}
+.btn.oauth.facebook:hover { background: #3189f5; }
 .status.error { color: #ff8f7a; }
 
 .own { padding-top: 12px; border-top: 1px solid #2f2a50; }
