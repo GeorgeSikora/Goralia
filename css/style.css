@@ -491,6 +491,9 @@ kbd {
 
 .footer a { color: #c09c5a; text-decoration: none; }
 .footer a:hover { color: #f0d088; text-decoration: underline; }
+.legal { font-size: 11px; opacity: 0.85; }
+.legal a { color: #c09c5a; }
+.legal a:hover { color: #f0d088; }
 
 /* ---------- účet, profily a žebříček ---------- */
 a.btn { display: block; text-align: center; text-decoration: none; }

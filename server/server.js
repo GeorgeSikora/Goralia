@@ -28,7 +28,9 @@ const MAX_ROOMS = 100;
 const MAX_MSG_PER_SEC = 80;
 const BUFFER_LIMIT = 2 * 1024 * 1024;
 const MAX_MAP_BYTES = 1024 * 1024;
-const PAGES = ["index.html", "editor.html", "robots.txt", "sitemap.xml"];
+const PAGES = ["index.html", "editor.html", "privacy.html", "terms.html", "robots.txt", "sitemap.xml"];
+// Hezké adresy bez přípony (např. https://goralia.cz/privacy).
+const PRETTY = { "/privacy": "/privacy.html", "/terms": "/terms.html" };
 const ADMIN_PAGE = "admin.html";
 const STARTED = Date.now();
 
@@ -138,6 +140,8 @@ const server = http.createServer((req, res) => {
   }
 
   if (pathname === "/") pathname = "/index.html";
+  if (pathname.length > 1 && pathname.endsWith("/")) pathname = pathname.slice(0, -1);
+  if (PRETTY[pathname]) pathname = PRETTY[pathname];
 
   // Panel serveru vidí jen přihlášený admin, ostatním stránka neexistuje.
   if (pathname === "/admin" || pathname === "/admin.html") {
