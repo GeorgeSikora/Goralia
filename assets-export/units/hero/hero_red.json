@@ -1,0 +1,625 @@
+{
+ "frames": {
+  "hero_red idle_0": {
+   "filename": "idle_0",
+   "frame": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 714
+  },
+  "hero_red idle_1": {
+   "filename": "idle_1",
+   "frame": {
+    "x": 32,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 714
+  },
+  "hero_red walk_0": {
+   "filename": "walk_0",
+   "frame": {
+    "x": 0,
+    "y": 32,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 88
+  },
+  "hero_red walk_1": {
+   "filename": "walk_1",
+   "frame": {
+    "x": 32,
+    "y": 32,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 88
+  },
+  "hero_red walk_2": {
+   "filename": "walk_2",
+   "frame": {
+    "x": 64,
+    "y": 32,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 88
+  },
+  "hero_red walk_3": {
+   "filename": "walk_3",
+   "frame": {
+    "x": 96,
+    "y": 32,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 88
+  },
+  "hero_red walk_4": {
+   "filename": "walk_4",
+   "frame": {
+    "x": 128,
+    "y": 32,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 88
+  },
+  "hero_red walk_5": {
+   "filename": "walk_5",
+   "frame": {
+    "x": 160,
+    "y": 32,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 88
+  },
+  "hero_red attack_0": {
+   "filename": "attack_0",
+   "frame": {
+    "x": 0,
+    "y": 64,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 105
+  },
+  "hero_red attack_1": {
+   "filename": "attack_1",
+   "frame": {
+    "x": 32,
+    "y": 64,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 90
+  },
+  "hero_red attack_2": {
+   "filename": "attack_2",
+   "frame": {
+    "x": 64,
+    "y": 64,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 105
+  },
+  "hero_red cast_0": {
+   "filename": "cast_0",
+   "frame": {
+    "x": 0,
+    "y": 96,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 150
+  },
+  "hero_red cast_1": {
+   "filename": "cast_1",
+   "frame": {
+    "x": 32,
+    "y": 96,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 200
+  },
+  "hero_red cast_2": {
+   "filename": "cast_2",
+   "frame": {
+    "x": 64,
+    "y": 96,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 150
+  },
+  "hero_red death_0": {
+   "filename": "death_0",
+   "frame": {
+    "x": 0,
+    "y": 128,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 140
+  },
+  "hero_red death_1": {
+   "filename": "death_1",
+   "frame": {
+    "x": 32,
+    "y": 128,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 785
+  },
+  "hero_red death_2": {
+   "filename": "death_2",
+   "frame": {
+    "x": 64,
+    "y": 128,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 250
+  },
+  "hero_red death_3": {
+   "filename": "death_3",
+   "frame": {
+    "x": 96,
+    "y": 128,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 250
+  },
+  "hero_red death_4": {
+   "filename": "death_4",
+   "frame": {
+    "x": 128,
+    "y": 128,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 250
+  }
+ },
+ "meta": {
+  "app": "Goralia export (procedural sprites from js/units.js)",
+  "image": "hero_red.png",
+  "format": "RGBA8888",
+  "size": {
+   "w": 192,
+   "h": 160
+  },
+  "scale": "1",
+  "frameTags": [
+   {
+    "name": "idle",
+    "from": 0,
+    "to": 1,
+    "direction": "forward",
+    "row": 0
+   },
+   {
+    "name": "walk",
+    "from": 2,
+    "to": 7,
+    "direction": "forward",
+    "row": 1
+   },
+   {
+    "name": "attack",
+    "from": 8,
+    "to": 10,
+    "direction": "forward",
+    "row": 2
+   },
+   {
+    "name": "cast",
+    "from": 11,
+    "to": 13,
+    "direction": "forward",
+    "row": 3
+   },
+   {
+    "name": "death",
+    "from": 14,
+    "to": 18,
+    "direction": "forward",
+    "row": 4
+   }
+  ],
+  "pivot": {
+   "x": 16,
+   "y": 30,
+   "note": "feet point inside each 32x32 cell (game draws at footX-16, footY-30)"
+  },
+  "facing": "right; for left-facing mirror horizontally (game pivots at x=15 when flipped)",
+  "points": {
+   "idle_0": {
+    "lantern": [
+     22,
+     7
+    ],
+    "head": [
+     17,
+     9
+    ]
+   },
+   "idle_1": {
+    "lantern": [
+     22,
+     8
+    ],
+    "head": [
+     17,
+     10
+    ]
+   },
+   "walk_0": {
+    "lantern": [
+     22,
+     6
+    ],
+    "head": [
+     17,
+     8
+    ]
+   },
+   "walk_1": {
+    "lantern": [
+     22,
+     7
+    ],
+    "head": [
+     17,
+     9
+    ]
+   },
+   "walk_2": {
+    "lantern": [
+     22,
+     7
+    ],
+    "head": [
+     17,
+     9
+    ]
+   },
+   "walk_3": {
+    "lantern": [
+     22,
+     6
+    ],
+    "head": [
+     17,
+     8
+    ]
+   },
+   "walk_4": {
+    "lantern": [
+     22,
+     7
+    ],
+    "head": [
+     17,
+     9
+    ]
+   },
+   "walk_5": {
+    "lantern": [
+     22,
+     7
+    ],
+    "head": [
+     17,
+     9
+    ]
+   },
+   "attack_0": {
+    "lantern": [
+     18,
+     6
+    ],
+    "head": [
+     16,
+     9
+    ]
+   },
+   "attack_1": {
+    "lantern": [
+     27,
+     9
+    ],
+    "head": [
+     19,
+     10
+    ]
+   },
+   "attack_2": {
+    "lantern": [
+     25,
+     7
+    ],
+    "head": [
+     18,
+     9
+    ]
+   },
+   "cast_0": {
+    "lantern": [
+     22,
+     6
+    ],
+    "head": [
+     17,
+     9
+    ]
+   },
+   "cast_1": {
+    "lantern": [
+     22,
+     4
+    ],
+    "head": [
+     17,
+     8
+    ]
+   },
+   "cast_2": {
+    "lantern": [
+     25,
+     7
+    ],
+    "head": [
+     18,
+     9
+    ]
+   }
+  },
+  "hitflash_sheet": "hero_red_hitflash.png (same layout, used while hit, ~0.12 s)",
+  "notes": {
+   "idle": "1.4 fps loop",
+   "walk": "frame advances every 4.67 logical px moved; at base speed 53 px/s ≈ 11.4 fps; idx 0 and 3 are drawn 1px higher (bob)",
+   "attack": "one 0.3 s swing (35% / 30% / 35%); while gathering it loops at 4.5 fps",
+   "cast": "hero only, 0.5 s (30% / 40% / 30%)",
+   "death": "hit-flash, lying body (slides 2 px), then ordered-dither dissolve; whole death 1.9 s"
+  }
+ }
+}

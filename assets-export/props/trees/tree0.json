@@ -1,0 +1,33 @@
+{
+ "w": 36,
+ "h": 46,
+ "ax": 18,
+ "ay": 44,
+ "fruit": [
+  [
+   12,
+   20
+  ],
+  [
+   24,
+   18
+  ],
+  [
+   18,
+   23
+  ],
+  [
+   8,
+   15
+  ],
+  [
+   27,
+   14
+  ]
+ ],
+ "anchor": [
+  18,
+  44
+ ],
+ "notes": "crown sways 1px right periodically; fruit points twinkle (#fff6cc/#ffbf45) only on full crown; crown stages: >66%, >33%, rest of wood left"
+}

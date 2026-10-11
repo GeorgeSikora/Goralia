@@ -419,7 +419,10 @@ function createRoom(host, map) {
     slots: map.slots.map(() => ({ kind: "open", client: null }))
   };
 
-  room.slots[0] = { kind: "human", client: host };
+  // kooperativní mapa: slot nemrtvých hraje vždy AI a hostitel sedí na prvním lidském místě
+  const hell = map.coop ? map.coop.ai : -1;
+  if (hell >= 0) room.slots[hell] = { kind: "ai", client: null };
+  room.slots[hell === 0 ? 1 : 0] = { kind: "human", client: host };
   host.room = room;
   rooms.set(room.id, room);
   return room;
@@ -434,8 +437,13 @@ function changeMap(room, map) {
     else if (slot.kind === "human") humans.push(slot);
   });
 
+  // na kooperativní mapě patří slot nemrtvých AI: kdo by na něm seděl, přesune se jinam
+  const hell = map.coop ? map.coop.ai : -1;
+  if (hell >= 0 && next[hell].kind === "human") humans.push(next[hell]);
+  if (hell >= 0) next[hell] = { kind: "ai", client: null };
+
   for (const slot of humans) {
-    const free = next.findIndex(s => s.kind !== "human");
+    const free = next.findIndex((s, i) => s.kind !== "human" && i !== hell);
     next[free] = slot;
   }
 
@@ -446,7 +454,7 @@ function changeMap(room, map) {
 function startMatch(room) {
   const players = room.slots.map((slot, i) => {
     if (slot.kind === "human") return { name: slot.client.name };
-    if (slot.kind === "ai") return { name: `AI ${R.TEAM_NAMES[R.TEAMS[i]]}`, ai: true };
+    if (slot.kind === "ai") return { name: room.map.coop && room.map.coop.ai === i ? R.UNDEAD.short : `AI ${R.TEAM_NAMES[R.TEAMS[i]]}`, ai: true };
     return null;
   });
 
@@ -563,6 +571,8 @@ function recordMatch(room) {
     duration: match.elapsed,
     reason: match.reason,
     winner: match.winner ? R.TEAMS.indexOf(match.winner) : -1,
+    winners: (match.winners || []).map(t => R.TEAMS.indexOf(t)),
+    coop: !!room.map.coop,
     timeline: tl && tl.t.length > 1 ? { every: tl.every, t: tl.t, series: tl.series } : null,
     players: room.participants.map(p => {
       const team = R.TEAMS[p.slot];
@@ -857,7 +867,7 @@ wss.on("connection", (ws, req) => {
         const map = MAPS.get(String(msg.map));
         if (!map) return fail(client, "Neznámá mapa.");
         if (!mapConfig.multiplayer(map.id)) return fail(client, "Tato mapa není pro multiplayer povolená.");
-        if (humansOf(room).length > map.slots.length) return fail(client, "Na té mapě je méně míst, než je v místnosti hráčů.");
+        if (humansOf(room).length > (map.humans || map.slots.length)) return fail(client, "Na té mapě je méně míst, než je v místnosti hráčů.");
 
         changeMap(room, map);
         sendRoom(room);
@@ -866,6 +876,7 @@ wss.on("connection", (ws, req) => {
         const i = Number(msg.i);
         const slot = Number.isInteger(i) ? room.slots[i] : null;
         if (!slot || slot.kind === "human" || !["open", "ai", "closed"].includes(msg.kind)) return;
+        if (room.map.coop && room.map.coop.ai === i) return; // nemrtví zůstávají
 
         room.slots[i] = { kind: msg.kind, client: null };
         sendRoom(room);

@@ -794,3 +794,6 @@ a.btn { display: block; text-align: center; text-decoration: none; }
 @supports not selector(::-webkit-scrollbar) {
   .maps, .rooms, .chat-log { scrollbar-width: auto; scrollbar-color: #b08a4c #120f1f; }
 }
+
+/* lobby: pevný slot nemrtvých na kooperativní mapě */
+.slot-who.hell { color: #ff7a5c; text-shadow: 0 0 6px rgba(255, 80, 40, 0.45); }

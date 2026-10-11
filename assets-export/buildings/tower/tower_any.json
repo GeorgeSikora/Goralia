@@ -1,0 +1,39 @@
+{
+ "w": 32,
+ "h": 62,
+ "banners": [],
+ "smoke": [],
+ "glows": [
+  {
+   "x": 26,
+   "y": 34,
+   "r": 11,
+   "a": 0.5,
+   "color": "#ffbf45",
+   "pulse": true
+  },
+  {
+   "x": 16,
+   "y": 46,
+   "r": 5,
+   "a": 0.3,
+   "color": "#ffbf45"
+  }
+ ],
+ "fire": [
+  16,
+  20
+ ],
+ "anchor": [
+  16,
+  60
+ ],
+ "notes": {
+  "anchor": "ground point; game draws at footX-ax, footY-ay",
+  "banners": "top-left points where buildings/banners/banner_<team>.png frames are drawn",
+  "smoke": "emit smoke particles here",
+  "glows": "additive light circles (see effects/glow)",
+  "flames": "draw effects/flame/flame.png here (centre x-3, y-10)",
+  "blueprint": "_blueprint.png is the under-construction ghost (drawn at 50% alpha, real sprite revealed bottom-up)"
+ }
+}

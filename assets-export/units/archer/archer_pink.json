@@ -1,0 +1,478 @@
+{
+ "frames": {
+  "archer_pink idle_0": {
+   "filename": "idle_0",
+   "frame": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 714
+  },
+  "archer_pink idle_1": {
+   "filename": "idle_1",
+   "frame": {
+    "x": 32,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 714
+  },
+  "archer_pink walk_0": {
+   "filename": "walk_0",
+   "frame": {
+    "x": 0,
+    "y": 32,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 95
+  },
+  "archer_pink walk_1": {
+   "filename": "walk_1",
+   "frame": {
+    "x": 32,
+    "y": 32,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 95
+  },
+  "archer_pink walk_2": {
+   "filename": "walk_2",
+   "frame": {
+    "x": 64,
+    "y": 32,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 95
+  },
+  "archer_pink walk_3": {
+   "filename": "walk_3",
+   "frame": {
+    "x": 96,
+    "y": 32,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 95
+  },
+  "archer_pink walk_4": {
+   "filename": "walk_4",
+   "frame": {
+    "x": 128,
+    "y": 32,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 95
+  },
+  "archer_pink walk_5": {
+   "filename": "walk_5",
+   "frame": {
+    "x": 160,
+    "y": 32,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 95
+  },
+  "archer_pink attack_0": {
+   "filename": "attack_0",
+   "frame": {
+    "x": 0,
+    "y": 64,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 105
+  },
+  "archer_pink attack_1": {
+   "filename": "attack_1",
+   "frame": {
+    "x": 32,
+    "y": 64,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 90
+  },
+  "archer_pink attack_2": {
+   "filename": "attack_2",
+   "frame": {
+    "x": 64,
+    "y": 64,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 105
+  },
+  "archer_pink death_0": {
+   "filename": "death_0",
+   "frame": {
+    "x": 0,
+    "y": 96,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 140
+  },
+  "archer_pink death_1": {
+   "filename": "death_1",
+   "frame": {
+    "x": 32,
+    "y": 96,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 785
+  },
+  "archer_pink death_2": {
+   "filename": "death_2",
+   "frame": {
+    "x": 64,
+    "y": 96,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 250
+  },
+  "archer_pink death_3": {
+   "filename": "death_3",
+   "frame": {
+    "x": 96,
+    "y": 96,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 250
+  },
+  "archer_pink death_4": {
+   "filename": "death_4",
+   "frame": {
+    "x": 128,
+    "y": 96,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 250
+  }
+ },
+ "meta": {
+  "app": "Goralia export (procedural sprites from js/units.js)",
+  "image": "archer_pink.png",
+  "format": "RGBA8888",
+  "size": {
+   "w": 192,
+   "h": 128
+  },
+  "scale": "1",
+  "frameTags": [
+   {
+    "name": "idle",
+    "from": 0,
+    "to": 1,
+    "direction": "forward",
+    "row": 0
+   },
+   {
+    "name": "walk",
+    "from": 2,
+    "to": 7,
+    "direction": "forward",
+    "row": 1
+   },
+   {
+    "name": "attack",
+    "from": 8,
+    "to": 10,
+    "direction": "forward",
+    "row": 2
+   },
+   {
+    "name": "death",
+    "from": 11,
+    "to": 15,
+    "direction": "forward",
+    "row": 3
+   }
+  ],
+  "pivot": {
+   "x": 16,
+   "y": 30,
+   "note": "feet point inside each 32x32 cell (game draws at footX-16, footY-30)"
+  },
+  "facing": "right; for left-facing mirror horizontally (game pivots at x=15 when flipped)",
+  "points": {
+   "idle_0": {
+    "head": [
+     18,
+     13
+    ]
+   },
+   "idle_1": {
+    "head": [
+     18,
+     14
+    ]
+   },
+   "walk_0": {
+    "head": [
+     18,
+     12
+    ]
+   },
+   "walk_1": {
+    "head": [
+     18,
+     13
+    ]
+   },
+   "walk_2": {
+    "head": [
+     18,
+     13
+    ]
+   },
+   "walk_3": {
+    "head": [
+     18,
+     12
+    ]
+   },
+   "walk_4": {
+    "head": [
+     18,
+     13
+    ]
+   },
+   "walk_5": {
+    "head": [
+     18,
+     13
+    ]
+   },
+   "attack_0": {
+    "head": [
+     17,
+     13
+    ]
+   },
+   "attack_1": {
+    "head": [
+     20,
+     14
+    ]
+   },
+   "attack_2": {
+    "head": [
+     19,
+     13
+    ]
+   }
+  },
+  "hitflash_sheet": "archer_pink_hitflash.png (same layout, used while hit, ~0.12 s)",
+  "notes": {
+   "idle": "1.4 fps loop",
+   "walk": "frame advances every 4.67 logical px moved; at base speed 49 px/s ≈ 10.5 fps; idx 0 and 3 are drawn 1px higher (bob)",
+   "attack": "one 0.3 s swing (35% / 30% / 35%); while gathering it loops at 4.5 fps",
+   "cast": "hero only, 0.5 s (30% / 40% / 30%)",
+   "death": "hit-flash, lying body (slides 2 px), then ordered-dither dissolve; whole death 1.9 s"
+  }
+ }
+}

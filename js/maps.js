@@ -91,8 +91,35 @@
       ],
       zone,
       facing: fx,
+      fy,
       spawn: [fx * 58, fy * 29]
     };
+  }
+
+  // Pekelná pevnost nemrtvých (kooperativní mapy): Nekropole uprostřed, kolem krypta, jatka, brána a zigguraty.
+  // fx/fy míří ke středu mapy (fronta), budovy jsou od sebe dost daleko, aby mezi nimi šlo procházet.
+  function hellBase(slot) {
+    const { x, y } = slot.hq;
+    const fx = slot.facing;
+    const fy = slot.fy;
+    slot.hq = { type: "necropolis", x, y };
+    slot.buildings = [
+      { type: "crypt", x: x + fx * 175, y: y - fy * 70 },
+      { type: "slaughterhouse", x: x - fx * 170, y: y - fy * 60 },
+      { type: "portal", x: x - fx * 40, y: y + fy * 175 },
+      { type: "ziggurat", x: x + fx * 215, y: y + fy * 120 },
+      { type: "ziggurat", x: x - fx * 200, y: y + fy * 140 },
+      { type: "ziggurat", x: x + fx * 110, y: y + fy * 250 }
+    ];
+    slot.units = [
+      { type: "ghoul", x: x + fx * 70, y: y + fy * 110 },
+      { type: "ghoul", x: x + fx * 110, y: y + fy * 95 },
+      { type: "ghoul", x: x + fx * 30, y: y + fy * 120 },
+      { type: "skeleton", x: x + fx * 60, y: y + fy * 150 },
+      { type: "skeleton", x: x + fx * 100, y: y + fy * 145 }
+    ];
+    slot.hell = true;
+    return slot;
   }
 
   const baseMines = (s, fx, fy) => [
@@ -133,6 +160,17 @@
       const ay = s.hq.y / 2;
       const fx = s.facing;
       const fy = s.plot.y > s.hq.y ? 1 : -1;
+
+      // pekelná pevnost: spálená zem s žhnoucími puklinami, mrtvé stromy a kameny místo náměstí a lucerny
+      if (s.hell) {
+        ashCircles.push([ax, ay + fy * 30, 175], [ax + fx * 120, ay + fy * 110, 110], [ax - fx * 110, ay + fy * 90, 100]);
+        for (let k = 0; k < 7; k++) {
+          const a = k / 7 * Math.PI * 2 + r() * 0.4;
+          const d = 150 + r() * 40;
+          landmarks.push([k % 2 ? "deadTree" : "monolith", ax + Math.cos(a) * d, ay + Math.sin(a) * d * 0.8, true, 9]);
+        }
+        continue;
+      }
 
       plazas.push({ x: ax, y: ay + 17 * fy, rx: 34, ry: 17, kind: "hall" });
       landmarks.push(["campfire", ax - fx * 28, ay + fy * 49, true, 9], ["crates", ax - fx * 42, ay + fy * 31, true, 9]);
@@ -263,6 +301,11 @@
       bases, gold, trees, water, roads, mountains, walls
     };
 
+    // Kooperace: hráči v jednom týmu proti AI nemrtvým, kteří obsadí základnu s indexem coop.ai.
+    if (raw.coop && typeof raw.coop === "object" && Number.isInteger(raw.coop.ai) && raw.coop.ai >= 0 && raw.coop.ai < bases.length && bases.length >= 2) {
+      doc.coop = { ai: raw.coop.ai, faction: "undead" };
+    }
+
     return { doc, errors };
   }
 
@@ -307,16 +350,22 @@
     const zones = zonesFor(d.bases, LW, LH);
     const slots = d.bases.map((b, i) => baseAt(b.x, b.y, LW, LH, zones[i]));
     const n = slots.length;
+    const coop = d.coop ? { ai: d.coop.ai, faction: d.coop.faction || "undead" } : null;
+    if (coop) hellBase(slots[coop.ai]);
+    const humans = coop ? n - 1 : n;
     const terrain = autoTerrain(d.seed, w, h, slots, d.water.map(s => ({ pts: s.pts, hw: s.hw })), [], {
       straight: true, autoRoads: d.autoRoads, roads: d.roads.map(s => ({ w: s.w, main: s.main, pts: s.pts })),
       mountains: d.mountains.map(s => ({ pts: s.pts, hw: s.hw })), walls: d.walls.map(s => ({ pts: s.pts, hw: s.hw }))
     });
 
+    const count = coop ? `${humans === 1 ? "1 hráč" : humans < 5 ? `${humans} hráči` : `${humans} hráčů`} proti nemrtvým` : n === 2 ? "1v1" : n < 5 ? `${n} hráči` : `${n} hráčů`;
+
     return {
-      id: d.id, name: d.name, players: n, size: [w, h],
-      tag: `${n === 2 ? "1v1" : n < 5 ? `${n} hráči` : `${n} hráčů`}${w > 480 || h > 240 ? " · velká" : ""}`,
+      id: d.id, name: d.name, players: n, humans, size: [w, h],
+      tag: `${count}${w > 480 || h > 240 ? " · velká" : ""}`,
       description: d.description,
-      slots, gold: d.gold, trees: d.trees, terrain, custom: true
+      slots, gold: d.gold, trees: d.trees, terrain, custom: true,
+      ...(coop ? { coop } : {})
     };
   }
 

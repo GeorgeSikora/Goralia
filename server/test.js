@@ -11,7 +11,7 @@ const path = require("path");
 const WebSocket = require("ws");
 const MAPS = require("../js/maps.js");
 const R = require("../js/rules.js");
-const { Match, TICK } = require("../js/sim.js");
+const { Match, TICK, BUILDING_TYPES } = require("../js/sim.js");
 const NAV = require("../js/nav.js");
 const CHECK = require("../js/mapcheck.js");
 const fs = require("fs");
@@ -41,7 +41,8 @@ function testMaps() {
     const inside = (x, y, margin = 30) => x >= margin && x <= LW - margin && y >= margin && y <= LH - margin;
 
     map.slots.forEach((slot, i) => {
-      assert.strictEqual(slot.hq.type, R.HQ[R.TEAMS[i]], `${label}: typ základny slotu ${i}`);
+      const hq = map.coop && map.coop.ai === i ? R.UNDEAD.hq : R.HQ[R.TEAMS[i]];
+      assert.strictEqual(slot.hq.type, hq, `${label}: typ základny slotu ${i}`);
       const z = slot.zone;
       assert(z.x0 < z.x1 && z.y0 < z.y1 && z.x0 >= 0 && z.x1 <= LW && z.y1 <= LH, `${label}: zóna slotu ${i}`);
 
@@ -73,7 +74,7 @@ function testMaps() {
       }
     });
 
-    for (const s of map.slots) {
+    for (const s of map.slots.filter(s => !s.hell)) {
       const own = map.gold.filter(([x, y]) => Math.hypot(x - s.hq.x, y - s.hq.y) < 450).length;
       assert(own >= 2, `${label}: každý hráč má aspoň dva doly poblíž`);
     }
@@ -125,7 +126,7 @@ function testSimulation() {
     if (map.players <= 4) assert.strictEqual(match.phase, "playing", `${map.id}: AI hra neskončí během 90 s`);
     else assert(match.phase === "playing" || t >= 30, `${map.id}: AI hra neskončí v první půlminutě`);
     // u velkých map se AI občas rozhodne dřív pro vojsko; drtivá většina ale dělníky má
-    const counts = match.active.filter(team => !match.out.has(team)).map(team => match.units.filter(u => u.team === team && u.type === "worker").length);
+    const counts = match.active.filter(team => !match.out.has(team) && match.faction[team] === "human").map(team => match.units.filter(u => u.team === team && u.type === "worker").length);
     assert(counts.every(n => n >= 1), `${map.id}: každá AI má aspoň jednoho dělníka`);
     assert(counts.filter(n => n >= 3).length >= Math.ceil(counts.length * 0.75), `${map.id}: AI cvičí dělníky`);
   }
@@ -407,7 +408,7 @@ class Bot {
 async function testServer() {
   const mapsDir = fs.mkdtempSync(path.join(os.tmpdir(), "goralia-maps-"));
   const repoMaps = path.join(__dirname, "..", "maps");
-  for (const id of ["valley", "highland", "crowns"]) fs.copyFileSync(path.join(repoMaps, `${id}.json`), path.join(mapsDir, `${id}.json`));
+  for (const id of ["valley", "highland", "crowns", "brana-pekel"]) fs.copyFileSync(path.join(repoMaps, `${id}.json`), path.join(mapsDir, `${id}.json`));
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "goralia-data-"));
   const proc = spawn(process.execPath, [path.join(__dirname, "server.js")], {
     env: { ...process.env, PORT: String(PORT), GORALIA_MAPS_DIR: mapsDir, GORALIA_DATA_DIR: dataDir, GORALIA_ADMIN_PASSWORD: ADMIN_PASSWORD },
@@ -470,7 +471,7 @@ async function testServer() {
 
     const ids = async () => (await api("GET", "/api/maps")).json.maps.map(m => m.id).sort();
     const doc = sampleDoc("test-arena");
-    assert.deepStrictEqual(await ids(), ["crowns", "highland", "valley"]);
+    assert.deepStrictEqual(await ids(), ["brana-pekel", "crowns", "highland", "valley"]);
     assert.strictEqual((await api("PUT", "/api/maps/test-arena", doc)).status, 200, "platná mapa se uloží");
     assert(fs.existsSync(path.join(mapsDir, "test-arena.json")), "mapa je v souboru");
     assert((await ids()).includes("test-arena"));
@@ -498,7 +499,7 @@ async function testServer() {
     assert.strictEqual((await api("DELETE", "/api/maps/neexistuje")).status, 404, "neexistující mapu nelze smazat");
     assert.strictEqual((await api("DELETE", "/api/maps/test-arena")).status, 200);
     assert(!fs.existsSync(path.join(mapsDir, "test-arena.json")), "soubor je pryč");
-    assert.deepStrictEqual(await ids(), ["crowns", "highland", "valley"]);
+    assert.deepStrictEqual(await ids(), ["brana-pekel", "crowns", "highland", "valley"]);
 
     // správa map pro admina: ukládání a mazání odkudkoli (i za proxy), jen pro přihlášeného admina
     const proxied = { "X-Forwarded-For": "8.8.8.8" };
@@ -567,7 +568,7 @@ async function testServer() {
     assert.strictEqual((await api("DELETE", "/api/maps/test-arena", undefined, asUser)).status, 403);
     assert.strictEqual((await api("DELETE", "/api/maps/test-arena", undefined, asAdmin)).status, 200, "admin smaže mapu za proxy");
     assert.deepStrictEqual((await api("GET", "/api/mapconfig")).json, { off: [] }, "nastavení smazané mapy zmizelo");
-    assert.deepStrictEqual(await ids(), ["crowns", "highland", "valley"]);
+    assert.deepStrictEqual(await ids(), ["brana-pekel", "crowns", "highland", "valley"]);
     const audit = (await api("GET", "/api/admin/audit", undefined, asAdmin)).json.audit.map(a => a.action);
     assert(["map-save", "map-delete", "map-mp-off", "map-mp-on"].every(a => audit.includes(a)), "akce nad mapami jsou v záznamu");
 
@@ -872,6 +873,42 @@ async function testServer() {
     assert.strictEqual(b.ended.w, b.match.slot);
     assert.strictEqual(b.ended.why, "disconnect");
 
+    /* ----- kooperace: hráči v jednom týmu proti nemrtvým ----- */
+    const e1 = bot("Alice");
+    const e2 = bot("Bob");
+    await Promise.all([e1.opened, e2.opened]);
+    await Promise.all([e1, e2].map(p => p.until(() => p.hello, 2000, "hello kooperace")));
+    e1.send({ t: "create", map: "brana-pekel" });
+    await e1.until(() => e1.room, 2000, "kooperativní místnost");
+    assert.strictEqual(e1.room.you, 0);
+    assert.strictEqual(e1.room.slots[1].kind, "ai", "slot nemrtvých hraje AI");
+    e1.send({ t: "slot", i: 1, kind: "open" });
+    await sleep(150);
+    assert.strictEqual(e1.room.slots[1].kind, "ai", "slot nemrtvých nejde změnit");
+    e2.send({ t: "join", room: e1.room.id });
+    await e2.until(() => e2.room && e2.room.you === 2, 2000, "Bob na lidském místě, ne na místě nemrtvých");
+    e1.send({ t: "start" });
+    await Promise.all([e1, e2].map(p => p.until(() => p.match && p.snap && p.snap.p === "playing", 6000, "start kooperace")));
+    assert.strictEqual(e1.match.players.find(p => p.slot === 1).name, R.UNDEAD.short);
+    assert(e1.snap.b.some(x => x[1] === BUILDING_TYPES.indexOf("necropolis") && x[2] === 1), "Nekropole stojí");
+
+    // spojence napadnout nejde
+    const ally = e1.snap.u.find(u => u[2] === 2);
+    const mineU = e1.snap.u.find(u => u[2] === 0);
+    e1.cmd({ c: "order", k: "attack", ids: [mineU[0]], target: ally[0] });
+    await sleep(150);
+    assert.strictEqual(e1.snap.u.find(u => u[0] === mineU[0])[11], 0, "na spojence se neútočí");
+
+    // Alice se vzdá, Bob hraje dál; když se vzdá i Bob, vyhrávají nemrtví
+    e1.cmd({ c: "surrender" });
+    await e2.until(() => e2.outs.some(o => o.t === 0), 2000, "Alice vypadla");
+    await sleep(200);
+    assert(!e2.ended, "spojenec hraje dál");
+    e2.cmd({ c: "surrender" });
+    await e2.until(() => e2.ended, 2000, "konec kooperace");
+    assert.strictEqual(e2.ended.w, 1, "vyhráli nemrtví");
+    assert.deepStrictEqual(e2.ended.ws, [1]);
+
     console.log("OK: všechny testy serveru prošly");
   } finally {
     for (const p of bots) p.ws.terminate();
@@ -1001,12 +1038,65 @@ function testHugeMap() {
   assert.strictEqual(match.phase, "playing");
 }
 
+/* ---------- kooperace proti nemrtvým (simulace) ---------- */
+function testCoop() {
+  const map = MAPS.get("brana-pekel");
+  assert(map && map.coop && map.coop.ai === 1, "kooperativní mapa");
+  assert.strictEqual(map.humans, 3);
+
+  const m = new Match(map, [{ name: "A" }, null, { name: "B" }, null], { countdown: 0 });
+  assert.strictEqual(m.faction.red, "undead");
+  assert(m.players[1] && m.players[1].ai, "slot nemrtvých hraje AI i bez lobby");
+  assert(m.friendly("blue", "gold") && !m.friendly("blue", "red") && !m.friendly("gold", "red"));
+  assert.strictEqual(m.hqOf("red").type, "necropolis");
+  assert(m.buildings.filter(b => b.team === "red").length >= 6, "pevnost má budovy");
+
+  const blueU = m.units.find(u => u.team === "blue");
+  const goldU = m.units.find(u => u.team === "gold");
+  m.command("blue", { c: "order", k: "attack", ids: [blueU.id], target: goldU.id });
+  assert(!blueU.order, "na spojence se neútočí");
+
+  m.econ.blue.gold = 9999;
+  m.econ.blue.wood = 9999;
+  m.command("blue", { c: "train", type: "abomination" });
+  m.command("blue", { c: "train", type: "lich" });
+  assert(!m.units.some(u => u.team === "blue" && R.UNDEAD.units.includes(u.type)), "nemrtvé lidé necvičí");
+
+  for (let i = 0; i < 20 * 60; i++) m.step(TICK);
+  assert(m.units.some(u => u.team === "red" && u.type === "lich"), "lich povstal");
+  assert(m.units.filter(u => u.team === "red").length > 6, "pevnost vyrábí");
+  assert(!m.units.some(u => u.team !== "red" && u.hp < u.maxHp), "spojenci na sebe neútočí a nemrtví zatím nevyrazili");
+
+  // útočný pochod: jednotka jde k cíli a cestou bojuje
+  const fighter = m.units.find(u => u.team === "red" && u.type === "ghoul");
+  fighter.order = { type: "amove", x: fighter.x, y: fighter.y + 200 };
+  m.step(TICK);
+  assert(fighter.order && fighter.order.type === "amove");
+
+  // padne spojenec: hra jde dál; padne Nekropole: vyhrávají všichni lidé, i vyřazený
+  m.hqOf("gold").hp = 0;
+  m.step(TICK);
+  assert(m.out.has("gold") && m.phase === "playing");
+  m.hqOf("red").hp = 0;
+  m.step(TICK);
+  assert.strictEqual(m.phase, "ended");
+  assert.deepStrictEqual([...m.winners].sort(), ["blue", "gold"]);
+
+  // lidé bez základen: vyhrávají nemrtví
+  const m2 = new Match(map, [{ name: "A" }, null, null, null], { countdown: 0 });
+  m2.hqOf("blue").hp = 0;
+  m2.step(TICK);
+  assert.strictEqual(m2.winner, "red");
+  assert.deepStrictEqual(m2.winners, ["red"]);
+}
+
 async function main() {
   require("./mapstore.js").load(); // mapy z repozitáře (maps/*.json)
   testMaps();
   testHugeMap();
   testMapDocs();
   testSimulation();
+  testCoop();
   await testServer();
 }
 

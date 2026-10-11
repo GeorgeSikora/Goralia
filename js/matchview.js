@@ -16,8 +16,14 @@
   const REASONS = {
     hq: "zničená hlavní budova", surrender: "vzdal se", disconnect: "odpojení", abandoned: "všichni odešli", defeat: "porážka lidí"
   };
-  const UNITS = { worker: "dělníci", soldier: "vojáci", archer: "lučištníci", hero: "hrdina" };
-  const BUILDINGS = { barracks: "kasárna", tower: "věže", hut: "budy", smithy: "kovárny" };
+  const UNITS = {
+    worker: "dělníci", soldier: "vojáci", archer: "lučištníci", hero: "hrdina",
+    ghoul: "ghúlové", skeleton: "kostlivci", abomination: "zrůdy", banshee: "přízraky", lich: "lich"
+  };
+  const BUILDINGS = {
+    barracks: "kasárna", tower: "věže", hut: "budy", smithy: "kovárny",
+    crypt: "krypty", slaughterhouse: "jatka", ziggurat: "zikkuraty", portal: "pekelné brány"
+  };
 
   const el = (tag, className, text) => {
     const node = document.createElement(tag);

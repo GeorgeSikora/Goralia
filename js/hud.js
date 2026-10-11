@@ -474,7 +474,7 @@
       g.drawImage(PK.units.portrait(e.type, e.team, fi), wx, wy);
     } else {
       const spr = PK.buildings.get(e.type, e.team);
-      const cy = { hall: 30, barracks: 30, tower: 22, citadel: 34 }[e.type] || 30;
+      const cy = { hall: 30, barracks: 30, tower: 22, citadel: 34, necropolis: 40, ziggurat: 26, crypt: 26, portal: 34, slaughterhouse: 28 }[e.type] || 30;
       g.drawImage(spr.c, wx + 20 - spr.ax, wy + 20 - cy);
     }
 
@@ -635,12 +635,23 @@
         tower: "Automatická obrana.",
         hut: "Limit jednotek +5.",
         smithy: "Zbroj a zbraně vojáků.",
-        citadel: own ? "Výcvik dělníků." : "Cíl tvého útoku."
+        citadel: own ? "Výcvik dělníků." : "Cíl tvého útoku.",
+        necropolis: "Srdce pekla. Znič ji a vyhraješ.",
+        crypt: "Chrlí ghúly a kostlivce.",
+        slaughterhouse: "Sešívá zrůdy.",
+        ziggurat: "Pekelná střílna.",
+        portal: "Z pekla jí lezou přízraky."
       }[e.type];
 
       if (e.type === "tower") {
         stat(PK.icons.small.sword, 20, x0);
         stat(PK.icons.small.range, 155, x0 + 40);
+      }
+
+      const def = PK.rules.UNDEAD.defense[e.type];
+      if (def) {
+        stat(PK.icons.small.sword, def.damage, x0);
+        stat(PK.icons.small.range, def.range, x0 + 40);
       }
 
       if (e.research) {

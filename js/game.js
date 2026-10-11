@@ -35,7 +35,18 @@
     tower: "Strážní věž",
     hut: "Buda",
     smithy: "Kovárna",
-    citadel: "Rudá pevnost"
+    citadel: "Rudá pevnost",
+    // nemrtví z pekla
+    ghoul: "Ghúl",
+    skeleton: "Kostlivý střelec",
+    abomination: "Zrůda",
+    banshee: "Přízrak",
+    lich: "Pekelný lich",
+    necropolis: "Nekropole",
+    crypt: "Krypta",
+    slaughterhouse: "Jatka",
+    ziggurat: "Zikkurat",
+    portal: "Pekelná brána"
   };
 
   let units;
@@ -77,6 +88,7 @@
   let spectator = false; // divák: vidí celý zápas, nic neovládá
   let specEcon = new Map(); // slot -> [slot, zlato, dřevo, limit, zbroj, zbraně] (jen pro diváka)
   let endWinner = -1;
+  let endWinners = [];
   let mySlot = 0;
   let me = R.TEAMS[0];
   let players = [];
@@ -116,7 +128,7 @@
 
   const UNIT_TYPES = sim.UNIT_TYPES;
   const BUILDING_TYPES = sim.BUILDING_TYPES;
-  const ORDER_TYPES = [null, "move", "attack", "gather", "deliver", "build"];
+  const ORDER_TYPES = [null, "move", "attack", "gather", "deliver", "build", "amove"];
 
   const online = {
     phase: "offline", // offline | connecting | idle | room | countdown | playing | ended
@@ -295,18 +307,22 @@
     syncMenu();
   }
 
-  function finishMatch(winner, why) {
+  function finishMatch(winner, why, winners) {
     if (matchOver) return;
 
     matchOver = true;
     matchPhase = "ended";
     endWinner = winner;
+    endWinners = Array.isArray(winners) && winners.length ? winners : winner >= 0 ? [winner] : [];
     endWhy = why;
     endT = 0;
     if (mode === "online") online.phase = "ended";
 
-    if (state === "playing") {
-      state = winner === mySlot ? "win" : winner < 0 ? "draw" : "lose";
+    // v kooperaci vyhrává celý tým, i ten, komu už padla základna
+    const won = endWinners.includes(mySlot);
+
+    if (state === "playing" || (won && state === "lose")) {
+      state = won ? "win" : winner < 0 ? "draw" : "lose";
       placement = null;
       spellMode = null;
       commandMode = false;
@@ -1502,6 +1518,11 @@
       return endWhy === "connection" ? "Spojení se serverem bylo přerušeno." : "Zápas skončil bez vítěze.";
     }
 
+    if (map && map.coop) {
+      if (state === "win") return "Nekropole padla. Peklo je zapečetěno!";
+      if (state === "lose" && endWinners.length && !endWinners.includes(mySlot)) return "Nemrtví srovnali vaše základny se zemí.";
+    }
+
     if (state === "win") {
       if (endWhy === "surrender") return "Soupeři se vzdali.";
       if (endWhy === "disconnect") return "Soupeři se odpojili.";
@@ -1821,6 +1842,7 @@
     const next = MAPS.get(id);
     lobby.mapId = id;
     lobby.slots = next.slots.map((_, i) => lobby.slots[i] || { kind: "ai", name: "" });
+    if (next.coop) lobby.slots[next.coop.ai] = { kind: "ai", name: "" };
     renderLobby();
   }
 
@@ -1837,7 +1859,7 @@
 
   // Filtr podle počtu hráčů: výchozí "Všechny"; nabízí jen počty, které nějaká mapa opravdu má.
   function syncMapFilter(maps) {
-    const counts = [...new Set(maps.map(m => m.players))].sort((x, y) => x - y);
+    const counts = [...new Set(maps.map(m => m.humans || m.players))].sort((x, y) => x - y);
     const key = counts.join(",");
 
     if (lobbyEl.filter.dataset.key !== key) {
@@ -1862,7 +1884,7 @@
 
     const available = lobby.online ? MAPS.list.filter(m => !mpOff.has(m.id) || m.id === lobby.mapId) : MAPS.list;
     syncMapFilter(available);
-    const shown = lobby.filter ? available.filter(m => m.players === lobby.filter) : available;
+    const shown = lobby.filter ? available.filter(m => (m.humans || m.players) === lobby.filter) : available;
 
     if (!shown.length) {
       const empty = document.createElement("p");
@@ -1889,7 +1911,7 @@
 
     lobbyEl.name.textContent = map.name;
     lobbyEl.desc.textContent = map === STUB_MAP ? "Na serveru zatím nejsou žádné mapy. Vytvoř je v editoru." : map.description;
-    lobbyEl.meta.textContent = `Hráči: ${map.players} · Velikost: ${sizeLabel(map)} (${map.size[0] * 2}×${map.size[1] * 2}) · Zlaté doly: ${map.gold.length}`;
+    lobbyEl.meta.textContent = `Hráči: ${map.coop ? `${map.humans} + nemrtví (AI)` : map.players} · Velikost: ${sizeLabel(map)} (${map.size[0] * 2}×${map.size[1] * 2}) · Zlaté doly: ${map.gold.length}`;
 
     lobbyEl.slots.replaceChildren(...lobby.slots.map((slot, i) => {
       const team = R.TEAMS[i];
@@ -1905,7 +1927,12 @@
       label.textContent = R.TEAM_NAMES[team];
       row.append(swatch, label);
 
-      if (slot.kind === "human") {
+      if (map.coop && map.coop.ai === i) {
+        const who = document.createElement("span");
+        who.className = "slot-who hell";
+        who.textContent = `${R.UNDEAD.name} (AI)`;
+        row.append(who);
+      } else if (slot.kind === "human") {
         const who = document.createElement("span");
         who.className = "slot-who";
         who.textContent = lobby.online
@@ -1920,7 +1947,7 @@
         for (const kind of lobby.online ? ["open", "ai", "closed"] : ["ai", "closed"]) {
           const option = document.createElement("option");
           option.value = kind;
-          option.textContent = SLOT_LABELS[kind];
+          option.textContent = map.coop && kind === "ai" ? "Spojenec (AI)" : SLOT_LABELS[kind];
           select.append(option);
         }
 
@@ -2046,8 +2073,11 @@
     const next = MAPS.get(c.mapId);
     const roster = [];
 
+    const hell = next && next.coop ? next.coop.ai : -1;
+
     c.slots.forEach((s, i) => {
-      if (s.kind === "human") roster.push({ slot: i, name: "Ty", ai: false });
+      if (i === hell) roster.push({ slot: i, name: R.UNDEAD.short, ai: true });
+      else if (s.kind === "human") roster.push({ slot: i, name: "Ty", ai: false });
       else if (s.kind === "ai") roster.push({ slot: i, name: `AI ${R.TEAM_NAMES[R.TEAMS[i]]}`, ai: true });
     });
 
@@ -2139,6 +2169,18 @@
         const hero = unitMap.get(e.h);
         if (!hero) return;
         hero.castT = 0.5;
+
+        // pekelný výbuch licha: kruh ohně kolem něj
+        if (e.nova) {
+          for (let k = 0; k < 6; k++) {
+            const a = k / 6 * Math.PI * 2;
+            fx.fireball(hero.x, hero.y - 10, e.x + Math.cos(a) * 60, e.y + Math.sin(a) * 42 + 8, 36);
+          }
+          audio.play("fireCast", { x: hero.x });
+          fx.later(0.3, () => audio.play("explosion", { x: e.x }));
+          break;
+        }
+
         hero.facing = e.x < hero.x ? -1 : 1;
         fx.fireball(hero.x + hero.facing * 14, hero.y - 6, e.x, e.y + 8, 47);
         audio.play("fireCast", { x: hero.x });
@@ -2199,7 +2241,19 @@
         break;
 
       case "end":
-        finishMatch(e.w, e.why);
+        finishMatch(e.w, e.why, e.ws);
+        break;
+
+      case "wave": {
+        const target = players.find(p => p.slot === e.t);
+        const mine = e.t === mySlot;
+        announce(mine ? `Nemrtví táhnou na tvou základnu! (vlna ${e.n})` : `Nemrtví táhnou na ${target ? target.name : "spojence"} (vlna ${e.n}).`);
+        audio.play("horn");
+        break;
+      }
+
+      case "lich":
+        announce("Pekelný lich povstal z Nekropole!");
         break;
 
       default:
@@ -2752,10 +2806,12 @@
   });
 
   /* ======================= hit visuals ======================= */
+  const RANGED = new Set(["archer", "tower", "skeleton", "banshee", "lich", "ziggurat", "necropolis"]);
+  const BOLTS = new Set(["tower", "banshee", "lich", "ziggurat", "necropolis"]);
   // Čísla zásahů počítá simulace; tady jsou jen efekty a zvuky (volá je událost "hit").
   function hitVisuals(attacker, target, amount, opts, killed) {
     let wait = opts.delay || 0;
-    const ranged = attacker.type === "archer" || attacker.type === "tower";
+    const ranged = RANGED.has(attacker.type);
     const tx = target.x;
     const ty = target.kind === "building" ? target.y - 8 : target.y - 6;
     const dirTo = attacker.x <= target.x ? 1 : -1;
@@ -2765,17 +2821,18 @@
       if (!opts.silent) fx.hit(tx, ty, amount >= 20);
       if (target.kind === "unit" || target.hp > 0) target.flashT = 0.12;
       fx.text(tx, ty - (target.kind === "building" ? 56 : 28), Math.round(amount), friendlyFire ? 0xff8f7a : 0xfff0c4);
-      if (!opts.silent) audio.play(target.kind === "building" || attacker.type === "hero" ? "hitHeavy" : "hit", { x: tx });
+      if (!opts.silent) audio.play(target.kind === "building" || attacker.type === "hero" || attacker.type === "abomination" ? "hitHeavy" : "hit", { x: tx });
     };
 
     if (!opts.silent) {
       if (ranged) {
-        const ox = attacker.type === "tower" ? attacker.x : attacker.x + (attacker.facing || dirTo) * 14;
-        const oy = attacker.type === "tower" ? attacker.y - 30 : attacker.y - 14;
-        const fn = attacker.type === "tower" ? fx.bolt : fx.arrow;
+        const tall = attacker.kind === "building";
+        const ox = tall ? attacker.x : attacker.x + (attacker.facing || dirTo) * 14;
+        const oy = tall ? attacker.y - (attacker.type === "necropolis" ? 70 : attacker.type === "ziggurat" ? 44 : 30) : attacker.y - 14;
+        const fn = BOLTS.has(attacker.type) ? fx.bolt : fx.arrow;
         wait += fn(ox, oy, tx, ty - 2, null);
         attacker.fireT = 0.2;
-        audio.play(attacker.type === "tower" ? "tower" : "arrow", { x: attacker.x });
+        audio.play(BOLTS.has(attacker.type) ? "tower" : "arrow", { x: attacker.x });
       } else {
         fx.slash(tx, ty, dirTo);
         audio.play("slash", { x: attacker.x });
@@ -2858,7 +2915,7 @@
     for (const b of buildings) {
       if (b.progress < 1) continue;
 
-      const spr = PK.buildings.get(b.type);
+      const spr = PK.buildings.get(b.type, b.team);
       const ox = Math.round(b.x / 2) - spr.ax;
       const oy = Math.round(b.y / 2) + 19 - spr.ay;
       const frac = b.hp / b.maxHp;
@@ -2873,12 +2930,12 @@
           fx.smoke(px, oy + spr.h * 0.25, true);
         } else if (spr.smoke.length) {
           const [sx, sy] = spr.smoke[Math.floor(Math.random() * spr.smoke.length)];
-          fx.smoke(ox + sx, oy + sy, b.type === "citadel");
+          fx.smoke(ox + sx, oy + sy, b.type === "citadel" || !!spr.hell);
         }
       }
 
-      if (b.type === "citadel" && Math.random() < dt * 9) {
-        const [fxx, fyy] = spr.flames[Math.random() < 0.5 ? 0 : 1];
+      if (spr.flames && spr.flames.length && Math.random() < dt * 9) {
+        const [fxx, fyy] = spr.flames[Math.floor(Math.random() * spr.flames.length)];
         fx.ember(ox + fxx, oy + fyy - 6);
       }
     }
@@ -2908,10 +2965,11 @@
     return c;
   }
 
-  const HB_TOP = { worker: 25, soldier: 28, archer: 29, hero: 33, raider: 29 };
+  const HB_TOP = { worker: 25, soldier: 28, archer: 29, hero: 33, raider: 29, ghoul: 24, skeleton: 27, abomination: 30, banshee: 30, lich: 31 };
+  const BIG = { hero: 16, abomination: 19, lich: 17 };
 
   function unitAnim(u) {
-    if (u.castT > 0 && u.type === "hero") {
+    if (u.castT > 0 && (u.type === "hero" || u.type === "lich")) {
       const p = 1 - u.castT / 0.5;
       return ["cast", p < 0.3 ? 0 : p < 0.7 ? 1 : 2];
     }
@@ -2931,7 +2989,7 @@
     const footY = Math.round(u.y / 2) + 6;
     const flip = u.facing < 0;
 
-    const sh = world.shadow("ellipse", u.type === "hero" ? 16 : 13, 5);
+    const sh = world.shadow("ellipse", BIG[u.type] || 13, 5);
     g.drawImage(sh, footX - (sh.width >> 1), footY - (sh.height >> 1));
 
     const [anim, idx] = unitAnim(u);
@@ -3034,7 +3092,7 @@
       const t = PK.makeCanvas(spr.c.width, spr.c.height);
       t.g.drawImage(spr.c, 0, 0);
       t.g.globalCompositeOperation = "source-atop";
-      t.g.fillStyle = "rgba(70,150,255,0.7)";
+      t.g.fillStyle = spr.hell ? "rgba(200,40,30,0.75)" : "rgba(70,150,255,0.7)";
       t.g.fillRect(0, 0, t.c.width, t.c.height);
       c = t.c;
       blueprints.set(spr, c);
@@ -3070,14 +3128,16 @@
       g.drawImage(spr.c, x0, y0);
       g.restore();
 
-      // lešení: dva sloupky a stavební čára
-      g.fillStyle = "#946b45";
-      g.fillRect(x0 - 1, top, 1, y0 + spr.h - top);
-      g.fillRect(x0 + spr.w, top, 1, y0 + spr.h - top);
+      // pekelná budova se vyvolává ze země (žhnoucí čára), ostatní stojí na lešení
+      if (!spr.hell) {
+        g.fillStyle = "#946b45";
+        g.fillRect(x0 - 1, top, 1, y0 + spr.h - top);
+        g.fillRect(x0 + spr.w, top, 1, y0 + spr.h - top);
+      }
 
       for (let x = x0 - 1; x <= x0 + spr.w; x++) {
         if (((x + Math.floor(clock * 8)) & 1) === 0) {
-          g.fillStyle = "#ffe08a";
+          g.fillStyle = spr.hell ? "#ff8f4a" : "#ffe08a";
           g.fillRect(x, top, 1, 1);
         }
       }
@@ -3792,6 +3852,8 @@
     online,
     cheat(k, v) { if (k === "gold") gold = v; if (k === "wood") wood = v; },
     select(list) { selected = list; },
+    look(x, y) { centerCamera(x, y); },
+    step(seconds) { if (simMatch) for (let t = 0; t < seconds; t += sim.TICK) simMatch.step(sim.TICK); },
     startOffline,
     reset
   };

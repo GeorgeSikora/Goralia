@@ -603,6 +603,331 @@
     };
   }
 
+  /* ====================== nemrtví z pekla ====================== */
+  const hellStone = seed => brick([C.b[0], C.b[1], C.b[2], C.b[3]], 6, 3, seed);
+
+  function skull(P, x, y) {
+    P.rect(x, y, 3, 2, C.bone[0]);
+    P.set(x, y + 2, C.bone[1]);
+    P.set(x + 2, y + 2, C.bone[1]);
+    P.set(x, y, C.b[0]);
+    P.set(x + 2, y, C.b[0]);
+  }
+
+  // žhnoucí výplň (výheň, brána, oko): od bílé přes oranžovou do tmavě rudé
+  const ember = (t) => (t < 0.18 ? C.r[5] : t < 0.4 ? C.r[4] : t < 0.7 ? C.r[3] : C.r[2]);
+
+  /* ---------- Nekropole: srdce pekla ---------- */
+  function necropolis(team = "red") {
+    const W = 88;
+    const H = 86;
+    const P = new Pix(W, H);
+    const T = TEAM[team];
+    const B = C.b;
+    const stone = hellStone(61);
+
+    // dvoustupňový podstavec
+    P.shade(4, 74, 84, 85, stone);
+    P.rect(4, 74, 80, 1, B[4]);
+    P.shade(10, 66, 78, 75, stone);
+    P.rect(10, 66, 68, 1, B[4]);
+    for (let x = 8; x < 82; x += 9) skull(P, x, 78);
+
+    // boční věžičky s trny
+    for (const x0 of [8, 66]) {
+      P.shade(x0, 34, x0 + 14, 67, stone);
+      edges(P, x0, 34, x0 + 13, 66, B[4], B[0]);
+      P.poly([[x0 - 1, 35], [x0 + 15, 35], [x0 + 7, 12]], (x, y) => (x > x0 + 8 ? B[1] : B[3]));
+      P.line(x0 + 7, 12, x0 + 7, 6, C.bone[1]);
+      P.set(x0 + 7, 5, C.bone[0]);
+      P.rect(x0 + 5, 44, 4, 6, B[0]);
+      P.shade(x0 + 6, 45, x0 + 8, 50, (x, y) => ember((y - 45) / 5));
+    }
+
+    // jádro: tmavá hradba s kostěnými žebry
+    P.shade(20, 28, 68, 68, stone);
+    edges(P, 20, 28, 67, 67, B[4], B[0]);
+    P.rect(64, 28, 4, 40, B[0]);
+    for (const [xa, xb] of [[22, 36], [52, 66]]) {
+      for (let i = 0; i < 4; i++) {
+        const y = 34 + i * 8;
+        P.line(xa, y + 6, (xa + xb) / 2, y, C.bone[0]);
+        P.line((xa + xb) / 2, y, xb, y + 6, C.bone[1]);
+      }
+    }
+
+    // středová věž: zužující se hrot s rudou štěrbinou
+    P.poly([[32, 30], [56, 30], [48, 6], [40, 6]], (x, y) => (x < 41 ? B[3] : x > 50 ? B[1] : B[2]));
+    P.poly([[40, 7], [48, 7], [44, -2]], B[3]);
+    P.shade(42, 12, 46, 28, (x, y) => ember(Math.abs(x - 43.5) / 3 + (y % 4 === 0 ? 0.3 : 0)));
+    P.rect(39, 30, 10, 1, C.gold[0]);
+
+    // vznášející se oko
+    P.disc(44, 18, 5, 3.4, (x, y) => {
+      const ny = (y + 0.5 - 18) / 3.4;
+      return ny < -0.4 ? C.r[5] : ny < 0.3 ? C.r[4] : C.r[3];
+    });
+    P.rect(44, 15, 1, 6, B[0]);
+    P.set(42, 17, C.white);
+
+    // brána
+    P.rect(34, 50, 20, 18, B[4]);
+    P.poly([[34, 50], [54, 50], [44, 42]], B[4]);
+    P.shade(36, 50, 52, 68, (x, y) => ember(1 - (y - 50) / 18 * 0.8));
+    P.poly([[36, 50], [52, 50], [44, 44]], C.r[2]);
+    for (let x = 37; x < 52; x += 3) P.rect(x, 50, 1, 18, B[1]);
+    skull(P, 43, 39);
+
+    // týmové praporce na rozích jádra
+    P.rect(22, 30, 3, 7, T.m);
+    P.rect(22, 30, 3, 1, T.l);
+    P.rect(63, 30, 3, 7, T.m);
+    P.rect(63, 30, 3, 1, T.l);
+
+    // pánve s ohněm
+    for (const x of [26, 62]) {
+      P.rect(x, 60, 1, 7, B[0]);
+      P.rect(x - 2, 58, 5, 2, B[2]);
+      P.rect(x - 2, 58, 5, 1, B[4]);
+    }
+
+    P.outline(C.ink, 0.7);
+
+    return {
+      c: P.toCanvas(), w: W, h: H, ax: 44, ay: 82, hell: true,
+      banners: [],
+      smoke: [[15, 4], [44, -2], [73, 4]],
+      flames: [[26, 57], [62, 57]],
+      glows: [
+        { x: 44, y: 18, r: 18, a: 0.7, color: C.r[4], pulse: true },
+        { x: 44, y: 60, r: 15, a: 0.5, color: C.r[4] },
+        { x: 26, y: 56, r: 10, a: 0.45, color: C.r[4], flicker: true },
+        { x: 62, y: 56, r: 10, a: 0.45, color: C.r[4], flicker: true },
+        { x: 44, y: 76, r: 26, a: 0.4, color: C.r[3], ground: true }
+      ]
+    };
+  }
+
+  /* ---------- Krypta: ghúlové a kostlivci ---------- */
+  function crypt(team = "red") {
+    const W = 50;
+    const H = 42;
+    const P = new Pix(W, H);
+    const T = TEAM[team];
+    const H2 = C.h;
+    const stone = brick([H2[0], H2[1], H2[2], H2[3]], 5, 3, 13);
+
+    P.rect(3, 37, 44, 4, H2[2]);
+    P.rect(3, 37, 44, 1, H2[4]);
+    P.shade(6, 20, 44, 38, stone);
+    edges(P, 6, 20, 43, 37, H2[4], H2[0]);
+
+    // kostěné sloupy
+    for (const x of [8, 39]) {
+      P.rect(x, 20, 3, 17, C.bone[1]);
+      P.rect(x, 20, 1, 17, C.bone[0]);
+      skull(P, x, 17);
+    }
+
+    // štít střechy
+    P.poly([[2, 21], [48, 21], [25, 3]], (x, y) => (x > 26 ? C.b[1] : (y + x) % 5 === 0 ? C.b[3] : C.b[2]));
+    P.rect(2, 21, 46, 1, C.b[4]);
+    P.line(25, 3, 25, 0, C.bone[1]);
+    P.rect(23, 1, 5, 1, C.bone[1]);
+
+    // dveře do hrobky s rudým svitem
+    P.rect(18, 23, 14, 15, C.b[0]);
+    P.poly([[18, 23], [32, 23], [25, 17]], C.b[0]);
+    P.shade(20, 24, 30, 38, (x, y) => ember(0.4 + (38 - y) / 30));
+    P.rect(24, 24, 2, 14, C.b[1]);
+    skull(P, 24, 13);
+
+    // roztrhaný týmový praporec
+    P.rect(12, 9, 1, 12, C.w[1]);
+    P.rect(13, 9, 4, 5, T.m);
+    P.rect(13, 9, 4, 1, T.l);
+    P.set(14, 14, T.d);
+    P.set(16, 15, T.d);
+
+    P.outline(C.ink, 0.72);
+
+    return {
+      c: P.toCanvas(), w: W, h: H, ax: 25, ay: 40, hell: true,
+      banners: [],
+      smoke: [],
+      glows: [{ x: 25, y: 31, r: 11, a: 0.5, color: C.r[3], pulse: true }]
+    };
+  }
+
+  /* ---------- Jatka: zrůdy ---------- */
+  function slaughterhouse(team = "red") {
+    const W = 56;
+    const H = 46;
+    const P = new Pix(W, H);
+    const T = TEAM[team];
+    const wood = (x, y) => ((x - 6) % 5 === 4 ? C.w[0] : hash(x >> 1, y >> 2, 23) > 0.75 ? C.w[2] : C.w[1]);
+
+    P.rect(4, 42, 48, 3, C.b[2]);
+    P.rect(4, 42, 48, 1, C.b[3]);
+    P.shade(6, 22, 50, 43, wood);
+    edges(P, 6, 22, 49, 42, C.w[2], C.w[0]);
+
+    // krvavé skvrny
+    for (const [x, y] of [[12, 36], [13, 37], [40, 30], [41, 31], [30, 40], [31, 40], [33, 41]]) P.set(x, y, C.r[1]);
+
+    // komín s rudým kouřem
+    P.rect(40, 4, 6, 16, C.b[2]);
+    P.rect(40, 4, 6, 1, C.b[4]);
+    P.rect(44, 5, 2, 15, C.b[1]);
+
+    // plechová střecha s nýty
+    P.poly([[2, 24], [54, 24], [46, 10], [10, 10]], (x, y) => (y % 3 === 0 ? C.s[1] : x > 40 ? C.s[1] : C.s[2]));
+    P.rect(2, 24, 52, 1, C.s[3]);
+    for (let x = 12; x < 46; x += 6) P.set(x, 12, C.s[4]);
+
+    // otevřená vrata: háky s masem
+    P.rect(16, 27, 22, 16, C.b[0]);
+    P.shade(17, 28, 37, 43, (x, y) => (y > 38 ? C.r[1] : C.b[1]));
+    P.rect(16, 27, 22, 1, C.w[3]);
+    for (const [x, len] of [[20, 7], [26, 9], [32, 6]]) {
+      P.rect(x, 28, 1, 3, C.s[4]);
+      P.rect(x - 1, 28 + 3, 3, len, C.r[2]);
+      P.rect(x - 1, 28 + 3, 1, len, C.r[3]);
+      P.set(x, 28 + 3 + len - 1, C.bone[0]);
+    }
+
+    // sekáček zaseknutý ve špalku a týmový hadr
+    P.rect(44, 36, 6, 6, C.w[2]);
+    P.rect(44, 36, 6, 1, C.w[3]);
+    P.rect(46, 32, 3, 4, C.s[4]);
+    P.rect(46, 32, 3, 1, C.s[5]);
+    P.rect(8, 27, 5, 6, T.m);
+    P.rect(8, 27, 5, 1, T.l);
+
+    P.outline(C.ink, 0.72);
+
+    return {
+      c: P.toCanvas(), w: W, h: H, ax: 28, ay: 44, hell: true,
+      banners: [],
+      smoke: [[43, 3]],
+      glows: [{ x: 27, y: 38, r: 12, a: 0.35, color: C.r[3] }]
+    };
+  }
+
+  /* ---------- Zikkurat: pekelná střílna ---------- */
+  function ziggurat(team = "red") {
+    const W = 36;
+    const H = 54;
+    const P = new Pix(W, H);
+    const T = TEAM[team];
+    const B = C.b;
+    const stone = hellStone(37);
+
+    // tři stupně
+    for (const [x0, x1, y0, y1] of [[2, 34, 42, 53], [6, 30, 31, 43], [10, 26, 21, 32]]) {
+      P.shade(x0, y0, x1, y1, stone);
+      P.rect(x0, y0, x1 - x0, 1, B[4]);
+      P.rect(x1 - 3, y0, 3, y1 - y0, B[0]);
+    }
+
+    // schodiště uprostřed
+    for (let y = 22; y < 53; y += 2) P.rect(15, y, 6, 1, B[3]);
+    P.rect(15, 22, 6, 31, B[2]);
+    for (let y = 22; y < 53; y += 2) P.rect(15, y, 6, 1, B[4]);
+
+    // runy žhnou ve stupních
+    for (const [x, y] of [[6, 47], [29, 47], [9, 36], [26, 36]]) {
+      P.rect(x, y, 1, 3, C.r[3]);
+      P.set(x, y, C.r[4]);
+    }
+
+    // oltář a plovoucí koule s trny
+    P.rect(12, 16, 12, 6, B[3]);
+    P.rect(12, 16, 12, 1, B[4]);
+    for (const x of [12, 23]) P.poly([[x - 1, 16], [x + 2, 16], [x + 0.5, 9]], C.bone[1]);
+    P.disc(18, 9, 4, 4, (x, y) => ember(Math.hypot(x + 0.5 - 17, y + 0.5 - 8) / 4));
+    P.set(17, 7, C.white);
+
+    // týmová stužka
+    P.rect(12, 21, 12, 1, T.m);
+
+    P.outline(C.ink, 0.72);
+
+    return {
+      c: P.toCanvas(), w: W, h: H, ax: 18, ay: 52, hell: true,
+      banners: [],
+      smoke: [],
+      glows: [
+        { x: 18, y: 9, r: 12, a: 0.65, color: C.r[4], pulse: true },
+        { x: 18, y: 44, r: 8, a: 0.3, color: C.r[3] }
+      ],
+      fire: [18, 9]
+    };
+  }
+
+  /* ---------- Pekelná brána: přízraky ---------- */
+  function portal(team = "red") {
+    const W = 56;
+    const H = 56;
+    const P = new Pix(W, H);
+    const T = TEAM[team];
+    const B = C.b;
+    const stone = hellStone(91);
+
+    // podstavec
+    P.shade(3, 47, 53, 55, stone);
+    P.rect(3, 47, 50, 1, B[4]);
+
+    // vír uvnitř oblouku: spirála žhavých pásů
+    P.disc(28, 30, 15, 17, (x, y) => {
+      const dx = x + 0.5 - 28;
+      const dy = (y + 0.5 - 30) * 0.88;
+      const r = Math.hypot(dx, dy) / 15;
+      const a = Math.atan2(dy, dx);
+      const band = (a / (Math.PI * 2) + r * 1.6) % 0.33;
+      if (r < 0.22) return C.r[5];
+      return band < 0.1 ? C.r[4] : band < 0.2 ? C.r[3] : r > 0.8 ? C.r[1] : C.r[2];
+    });
+
+    // kamenný oblouk se zuby
+    P.ring(28, 30, 19, 21, B[3], 4);
+    P.ring(28, 30, 19, 21, B[4], 1);
+    P.rect(8, 30, 6, 18, B[2]);
+    P.rect(42, 30, 6, 18, B[1]);
+    P.rect(8, 30, 1, 18, B[4]);
+    for (let a = -2.6; a <= -0.5; a += 0.42) {
+      const x = 28 + Math.cos(a) * 20;
+      const y = 30 + Math.sin(a) * 22;
+      P.poly([[x - 1.5, y + 1], [x + 1.5, y + 1], [x + Math.cos(a) * 5, y + Math.sin(a) * 5]], C.bone[1]);
+    }
+
+    // rohy na vrcholu
+    P.poly([[19, 10], [23, 10], [14, 0]], C.bone[0]);
+    P.poly([[33, 10], [37, 10], [42, 0]], C.bone[1]);
+
+    // pánve s ohněm u paty a lebky
+    for (const x of [6, 50]) {
+      P.rect(x - 2, 43, 5, 2, B[2]);
+      P.rect(x - 2, 43, 5, 1, B[4]);
+    }
+    skull(P, 26, 49);
+    P.rect(10, 34, 2, 6, T.m);
+    P.rect(44, 34, 2, 6, T.m);
+
+    P.outline(C.ink, 0.7);
+
+    return {
+      c: P.toCanvas(), w: W, h: H, ax: 28, ay: 54, hell: true,
+      banners: [],
+      smoke: [],
+      flames: [[6, 42], [50, 42]],
+      glows: [
+        { x: 28, y: 30, r: 22, a: 0.6, color: C.r[4], pulse: true },
+        { x: 28, y: 50, r: 18, a: 0.4, color: C.r[3], ground: true }
+      ]
+    };
+  }
+
   /* ---------- banners (waving) ---------- */
   const bannerCache = {};
 
@@ -669,7 +994,7 @@
 
   /* ---------- rubble left behind by destroyed buildings ---------- */
   function rubble(type, team) {
-    const w = type === "tower" ? 26 : type === "barracks" ? 46 : 60;
+    const w = type === "tower" || type === "ziggurat" ? 26 : type === "barracks" || type === "crypt" || type === "slaughterhouse" ? 46 : type === "necropolis" ? 74 : 60;
     const h = 16;
     const P = new Pix(w, h);
     const ramp = team === "red" ? C.b : C.s;
@@ -709,7 +1034,12 @@
         tower,
         citadel,
         hut,
-        smithy
+        smithy,
+        necropolis,
+        crypt,
+        slaughterhouse,
+        ziggurat,
+        portal
       }[type](team);
     }
 

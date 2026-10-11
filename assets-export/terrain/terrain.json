@@ -1,0 +1,163 @@
+{
+ "maps": {
+  "crowns": {
+   "name": "Čtyři koruny",
+   "size": [
+    1100,
+    760
+   ],
+   "waterRect": {
+    "x": 6,
+    "y": 17,
+    "w": 1089,
+    "h": 737
+   },
+   "water": "4 frames, 3.2 fps (312 ms), drawn at waterRect.x/y over terrain.png"
+  },
+  "ctyri-reky": {
+   "name": "Čtyři řeky",
+   "size": [
+    1000,
+    600
+   ],
+   "waterRect": {
+    "x": 138,
+    "y": 122,
+    "w": 728,
+    "h": 359
+   },
+   "water": "4 frames, 3.2 fps (312 ms), drawn at waterRect.x/y over terrain.png"
+  },
+  "eight": {
+   "name": "Osm království",
+   "size": [
+    1800,
+    900
+   ],
+   "waterRect": {
+    "x": 885,
+    "y": 16,
+    "w": 31,
+    "h": 878
+   },
+   "water": "4 frames, 3.2 fps (312 ms), drawn at waterRect.x/y over terrain.png"
+  },
+  "fortress": {
+   "name": "Hradby",
+   "size": [
+    1200,
+    800
+   ],
+   "waterRect": null,
+   "water": "4 frames, 3.2 fps (312 ms), drawn at waterRect.x/y over terrain.png"
+  },
+  "highland": {
+   "name": "Pustá vysočina",
+   "size": [
+    1100,
+    700
+   ],
+   "waterRect": {
+    "x": 539,
+    "y": 17,
+    "w": 21,
+    "h": 160
+   },
+   "water": "4 frames, 3.2 fps (312 ms), drawn at waterRect.x/y over terrain.png"
+  },
+  "pass": {
+   "name": "Horský průsmyk",
+   "size": [
+    900,
+    500
+   ],
+   "waterRect": null,
+   "water": "4 frames, 3.2 fps (312 ms), drawn at waterRect.x/y over terrain.png"
+  },
+  "sance": {
+   "name": "Pevnost Šance",
+   "size": [
+    1400,
+    1000
+   ],
+   "waterRect": {
+    "x": 279,
+    "y": 204,
+    "w": 843,
+    "h": 591
+   },
+   "water": "4 frames, 3.2 fps (312 ms), drawn at waterRect.x/y over terrain.png"
+  },
+  "six": {
+   "name": "Šest říší",
+   "size": [
+    1500,
+    900
+   ],
+   "waterRect": {
+    "x": 485,
+    "y": 16,
+    "w": 530,
+    "h": 878
+   },
+   "water": "4 frames, 3.2 fps (312 ms), drawn at waterRect.x/y over terrain.png"
+  },
+  "sixteen": {
+   "name": "Velká válka",
+   "size": [
+    1600,
+    1600
+   ],
+   "waterRect": {
+    "x": 5,
+    "y": 17,
+    "w": 1590,
+    "h": 1578
+   },
+   "water": "4 frames, 3.2 fps (312 ms), drawn at waterRect.x/y over terrain.png"
+  },
+  "ten": {
+   "name": "Deset říší",
+   "size": [
+    2250,
+    900
+   ],
+   "waterRect": {
+    "x": 6,
+    "y": 434,
+    "w": 2240,
+    "h": 34
+   },
+   "water": "4 frames, 3.2 fps (312 ms), drawn at waterRect.x/y over terrain.png"
+  },
+  "twelve": {
+   "name": "Dvanáct pevností",
+   "size": [
+    1800,
+    1350
+   ],
+   "waterRect": null,
+   "water": "4 frames, 3.2 fps (312 ms), drawn at waterRect.x/y over terrain.png"
+  },
+  "valley": {
+   "name": "Údolí potoka",
+   "size": [
+    760,
+    420
+   ],
+   "waterRect": {
+    "x": 365,
+    "y": 17,
+    "w": 27,
+    "h": 398
+   },
+   "water": "4 frames, 3.2 fps (312 ms), drawn at waterRect.x/y over terrain.png"
+  }
+ },
+ "shared": {
+  "clouds_tile_240.png": "seamless 240x240 cloud-shadow tile, drawn at 17% alpha, scrolling 3 px/s right, 0.8 px/s down",
+  "mist_N.png": "mist bands drawn at 10% alpha drifting along each map's mist lanes",
+  "warmth_overlay.png": "added (additive) in the top-left corner of the screen",
+  "grass_tuft.png": "3 frames 7x6: lean left / straight / lean right, chosen by a sine wave per tuft"
+ }
+}

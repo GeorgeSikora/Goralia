@@ -461,12 +461,307 @@
     k.meta.eye = [lx + 1, dy - 18];
   }
 
+  /* ---------- nemrtví z pekla ---------- */
+  // Ghúl: shrbený, šedozelená hnijící kůže, dlouhé drápy, týmový bederní hadr.
+  function drawGhoul(k) {
+    const { T, pose: p } = k;
+    const G = [0x232b26, 0x3c4a40, 0x5a6c58, 0x7f9479, 0xa3b59a];
+    const dy = p.dy;
+    const lx = p.lunge;
+
+    legs(k, 5, { clothB: G[1], clothF: G[2], boot: G[1], bootL: G[3] });
+
+    // zadní paže visí dolů
+    k.L2(lx - 3, dy - 11, lx - 3 + (p.sw === "back" ? -2 : 0), dy - 5, G[1]);
+
+    // shrbený trup nakloněný dopředu
+    k.Q([[lx - 6, dy - 6], [lx + 3, dy - 6], [lx + 5, dy - 12], [lx + 1, dy - 16], [lx - 4, dy - 16], [lx - 7, dy - 12]], G[2]);
+    k.R(lx - 6, dy - 13, 2, 6, G[3]);
+    k.R(lx - 4, dy - 16, 4, 1, G[3]);
+    for (const [x, y] of [[-4, -17], [-2, -17], [0, -17]]) k.px(lx + x, dy + y, G[4]); // páteř
+    for (const y of [-11, -9]) k.R(lx - 1, dy + y, 3, 1, G[1]); // žebra
+    k.px(lx + 2, dy - 13, C.r[1]); // rána
+    k.px(lx + 3, dy - 12, C.r[2]);
+
+    // týmový hadr
+    k.R(lx - 5, dy - 7, 8, 2, T.m);
+    k.R(lx - 5, dy - 7, 8, 1, T.l);
+    k.px(lx - 2, dy - 5, T.d);
+    k.px(lx + 1, dy - 5 + p.cape, T.d);
+
+    // hlava nízko vpředu, otevřená tlama
+    const hx = lx + 3;
+    const hy = dy - 18;
+    k.R(hx, hy, 6, 5, G[2]);
+    k.R(hx, hy, 6, 1, G[3]);
+    k.R(hx + 1, hy - 1, 3, 1, G[3]);
+    k.R(hx + 2, hy + 4, 5, 2, G[1]);
+    k.px(hx + 3, hy + 4, C.bone[0]);
+    k.px(hx + 5, hy + 4, C.bone[0]);
+    k.px(hx + 4, hy + 5, C.bone[1]);
+    k.px(hx + 6, hy + 2, C.ink);
+    k.meta.eye = [hx + 4, hy + 2];
+
+    // přední paže s drápy
+    const hand = { idle: [7, -7], back: [2, -17], strike: [11, -10], low: [10, -4] }[p.sw] || [7, -7];
+    k.L2(lx + 2, dy - 13, lx + hand[0], dy + hand[1], G[2]);
+    const cx = lx + hand[0] + 1;
+    const cy = dy + hand[1];
+    for (const o of [-1, 1, 3]) k.L(cx, cy, cx + 3, cy + o, C.bone[0]);
+
+    k.meta.head = [hx + 3, hy + 2];
+  }
+
+  // Kostlivý střelec: kosti, lebka s žhnoucíma očima, rezavý luk, týmový šátek.
+  function drawSkeleton(k) {
+    const { T, pose: p } = k;
+    const B = C.bone;
+    const dy = p.dy;
+    const lx = p.lunge;
+    const draw = p.sw === "back";
+
+    legs(k, 7, { clothB: B[2], clothF: B[1], boot: B[2], bootL: B[0] });
+
+    // pánev, páteř, žebra
+    k.R(lx - 3, dy - 9, 6, 2, B[1]);
+    k.R(lx - 3, dy - 9, 6, 1, B[0]);
+    k.R(lx - 1, dy - 17, 2, 8, B[1]);
+    for (const y of [-16, -14, -12]) {
+      k.R(lx - 3, dy + y, 6, 1, B[0]);
+      k.px(lx - 3, dy + y + 1, B[2]);
+      k.px(lx + 2, dy + y + 1, B[2]);
+    }
+
+    // týmový cár přes rameno a toulec
+    k.R(lx - 4, dy - 18, 7, 2, T.m);
+    k.R(lx - 4, dy - 18, 7, 1, T.l);
+    k.px(lx - 5, dy - 16 + p.cape, T.d);
+    k.px(lx - 6, dy - 15 + p.cape, T.s);
+    k.R(lx - 6, dy - 17, 2, 6, C.w[1]);
+    k.px(lx - 6, dy - 18, C.bone[1]);
+    k.px(lx - 5, dy - 19, C.r[3]);
+
+    // lebka
+    k.R(lx - 2, dy - 24, 6, 5, B[0]);
+    k.R(lx - 2, dy - 24, 6, 1, 0xf2ead8);
+    k.R(lx - 2, dy - 20, 1, 1, B[1]);
+    k.R(lx, dy - 22, 2, 2, C.ink);
+    k.R(lx + 3, dy - 22, 1, 2, C.ink);
+    k.R(lx, dy - 19, 4, 1, B[1]);
+    k.px(lx + 1, dy - 19, C.ink);
+    k.px(lx + 3, dy - 19, C.ink);
+    k.meta.eye = [lx + 1, dy - 22];
+
+    // rezavý luk
+    const bx = lx + 7;
+    const bow = [[-2, -25], [0, -23], [1, -20], [1, -16], [1, -12], [1, -8], [0, -5], [-2, -3]];
+    for (let i = 0; i < bow.length - 1; i++) {
+      k.L(bx + bow[i][0], dy + bow[i][1], bx + bow[i + 1][0], dy + bow[i + 1][1], C.w[1]);
+    }
+    k.px(bx + 1, dy - 16, C.r[2]);
+    k.px(bx + 1, dy - 12, C.r[1]);
+
+    const pull = draw ? -5 : 0;
+    k.L(bx - 2, dy - 25, bx - 2 + pull, dy - 14, B[2]);
+    k.L(bx - 2 + pull, dy - 14, bx - 2, dy - 3, B[2]);
+    k.L(lx + 1, dy - 15, bx - 1, dy - 14, B[1]);
+
+    if (draw) {
+      k.L(bx - 2 + pull, dy - 14, bx + 6, dy - 14, C.w[3]);
+      k.px(bx + 7, dy - 14, C.r[4]);
+    }
+
+    k.meta.head = [lx + 2, dy - 21];
+  }
+
+  // Zrůda: obří sešité tělo, malá hlava, hák na řetězu a sekáček; týmová zástěra.
+  function drawAbomination(k) {
+    const { T, pose: p } = k;
+    const F = [0x2d3529, 0x46553f, 0x667a5a, 0x8aa07a, 0xb2c4a0];
+    const dy = p.dy;
+    const lx = p.lunge;
+
+    // krátké tlusté nohy
+    k.R(lx - 7 + p.bx, dy - 6 - p.bl, 5, 6, F[1]);
+    k.R(lx - 7 + p.bx, dy - 1 - p.bl, 5, 1, F[0]);
+    k.R(lx + 2 + p.fx, dy - 6 - p.fl, 5, 6, F[2]);
+    k.R(lx + 2 + p.fx, dy - 1 - p.fl, 5, 1, F[1]);
+
+    // zadní paže s hákem na řetězu
+    k.L2(lx - 8, dy - 17, lx - 11, dy - 9, F[1]);
+    k.L(lx - 11, dy - 9, lx - 12, dy - 4 + p.cape, C.s[2]);
+    k.L(lx - 12, dy - 4 + p.cape, lx - 13, dy - 2 + p.cape, C.s[4]);
+    k.px(lx - 14, dy - 3 + p.cape, C.s[4]);
+
+    // obří břicho se stehy
+    k.Dfn(lx, dy - 14, 10, 9.5, (nx, ny) => {
+      const l = nx * 0.6 + ny;
+      return l < -0.6 ? F[4] : l < -0.1 ? F[3] : l < 0.5 ? F[2] : F[1];
+    });
+    for (let y = -21; y <= -8; y += 2) k.px(lx + 1, dy + y, C.r[1]);
+    for (let y = -21; y <= -8; y += 4) { k.px(lx, dy + y, C.r[0]); k.px(lx + 2, dy + y, C.r[0]); }
+    k.L(lx - 7, dy - 16, lx - 3, dy - 12, C.r[1]);
+    k.px(lx - 6, dy - 15, C.bone[1]);
+    k.px(lx + 6, dy - 18, C.r[2]); // rána
+    k.px(lx + 7, dy - 17, C.r[3]);
+
+    // zástěra v barvě týmu
+    k.R(lx - 6, dy - 10, 12, 4, T.m);
+    k.R(lx - 6, dy - 10, 12, 1, T.l);
+    k.R(lx + 5, dy - 10, 1, 4, T.s);
+    k.px(lx - 3, dy - 7, C.r[2]);
+
+    // malá hlava zapadlá v ramenou
+    k.R(lx + 1, dy - 26, 6, 5, F[3]);
+    k.R(lx + 1, dy - 26, 6, 1, F[4]);
+    k.R(lx + 4, dy - 23, 3, 1, C.ink);
+    k.px(lx + 5, dy - 22, C.bone[0]);
+    k.R(lx + 1, dy - 22, 2, 1, C.r[1]);
+    k.meta.eye = [lx + 4, dy - 24];
+
+    // přední paže se sekáčkem
+    const hand = { idle: [10, -12], back: [6, -22], strike: [12, -10], low: [11, -6] }[p.sw] || [10, -12];
+    const ang = { idle: -1.2, back: -2.4, strike: 0.1, low: 0.6 }[p.sw] || -1.2;
+    const hx = lx + hand[0];
+    const hy = dy + hand[1];
+    k.L2(lx + 7, dy - 17, hx, hy, F[2]);
+    const tx = hx + Math.cos(ang) * 8;
+    const ty = hy + Math.sin(ang) * 8;
+    k.L(hx, hy, tx, ty, C.s[4]);
+    k.L(hx + 1, hy, tx + 1, ty, C.s[3]);
+    k.L(hx + 2, hy + 1, tx + 2, ty + 1, C.s[5]);
+    k.px(Math.round(tx + 1), Math.round(ty), C.r[3]);
+
+    k.meta.head = [lx + 4, dy - 23];
+  }
+
+  // Přízrak (banshee): vznášející se cár mlhy, bílé vlasy, natažené ruce, týmová šerpa.
+  function drawBanshee(k) {
+    const { T, pose: p } = k;
+    const Y = [0x23465a, 0x3f7f94, 0x76b8c8, 0xb4e4ea, 0xe8fbfb];
+    const lift = 3 + (p.step != null ? (p.step % 2) : p.dy);
+    const dy = p.dy - lift;
+    const lx = p.lunge;
+    const f = p.cape;
+
+    // roztřepený konec šatu (cáry mlhy)
+    for (const [x, len] of [[-5, 4], [-3, 6], [-1, 5], [1, 7], [3, 4]]) {
+      k.L(lx + x, dy - 4, lx + x - 1 - f, dy - 4 + len, x % 2 ? Y[1] : Y[2]);
+    }
+
+    // šat zúžený dolů
+    k.Q([[lx - 6, dy - 3], [lx + 5, dy - 3], [lx + 3, dy - 15], [lx - 3, dy - 15]], (x, y) => {
+      const t = (y - (30 + dy - 15)) / 12;
+      return x < 16 + lx - 2 ? Y[3] : t > 0.6 ? Y[1] : Y[2];
+    });
+    k.R(lx - 4, dy - 11, 8, 1, T.m);
+    k.R(lx - 4, dy - 11, 8, 1, T.l);
+    k.px(lx - 5, dy - 10 + f, T.d);
+
+    // vlasy vlají dozadu
+    k.R(lx - 6, dy - 21, 4, 9 + f, Y[4]);
+    k.R(lx - 7, dy - 18, 1, 6 + f, Y[3]);
+    k.px(lx - 8, dy - 14 + f, Y[3]);
+
+    // hlava: bledá tvář, prázdné oči, otevřená ústa
+    k.R(lx - 2, dy - 22, 6, 6, Y[4]);
+    k.R(lx - 3, dy - 22, 3, 3, Y[4]);
+    k.R(lx + 1, dy - 20, 1, 2, C.ink);
+    k.R(lx + 3, dy - 20, 1, 2, C.ink);
+    k.R(lx + 2, dy - 17, 2, 2, Y[0]);
+    k.meta.eye = [lx + 1, dy - 19];
+
+    // ruce natažené k cíli
+    const hand = { idle: [6, -12], back: [2, -18], strike: [10, -14], low: [9, -10] }[p.sw] || [6, -12];
+    k.L(lx + 2, dy - 14, lx + hand[0], dy + hand[1], Y[3]);
+    k.L(lx + 2, dy - 13, lx + hand[0], dy + hand[1] + 1, Y[2]);
+    k.px(lx + hand[0] + 1, dy + hand[1] - 1, Y[4]);
+    k.px(lx + hand[0] + 1, dy + hand[1] + 1, Y[4]);
+
+    k.meta.head = [lx + 1, dy - 19];
+  }
+
+  // Pekelný lich: vysoká kostra v rudo-černé róbě, rohatá koruna, hůl se žhnoucí lebkou.
+  function drawLich(k) {
+    const { T, pose: p } = k;
+    const B = C.b;
+    const dy = p.dy;
+    const lx = p.lunge;
+    const f = p.cape;
+
+    // plášť vzadu
+    k.R(lx - 8, dy - 18, 4, 16 + f, B[1]);
+    k.R(lx - 8, dy - 18, 1, 16 + f, B[0]);
+    k.R(lx - 9, dy - 3 + f, 3, 1, T.d);
+
+    // dlouhá róba až na zem
+    k.Q([[lx - 6, dy], [lx + 6, dy], [lx + 4, dy - 17], [lx - 4, dy - 17]], x => {
+      const rel = x - (16 + lx);
+      return rel < -2 ? B[3] : rel > 2 ? B[1] : B[2];
+    });
+    k.R(lx - 6, dy - 1, 12, 1, T.m);
+    k.R(lx - 1, dy - 16, 2, 15, T.d);
+    k.R(lx - 5, dy - 9, 10, 1, C.gold[0]);
+    k.px(lx, dy - 9, C.r[4]);
+    for (const [x, y] of [[-3, -6], [3, -4], [-2, -13], [2, -14]]) k.px(lx + x, dy + y, C.r[3]);
+
+    // ramena s kostěnými trny
+    k.R(lx - 6, dy - 18, 12, 3, B[3]);
+    k.R(lx - 6, dy - 18, 12, 1, B[4]);
+    for (const x of [-6, -4, 3, 5]) k.px(lx + x, dy - 19, C.bone[0]);
+
+    // lebka a koruna s rohy
+    k.R(lx - 2, dy - 24, 6, 6, C.bone[0]);
+    k.R(lx - 2, dy - 24, 6, 1, 0xf2ead8);
+    k.R(lx, dy - 22, 1, 2, C.ink);
+    k.R(lx + 2, dy - 22, 2, 2, C.ink);
+    k.R(lx, dy - 19, 4, 1, C.bone[1]);
+    k.R(lx - 3, dy - 26, 8, 2, C.gold[0]);
+    k.px(lx - 1, dy - 27, C.gold[1]);
+    k.px(lx + 1, dy - 28, C.gold[2]);
+    k.px(lx + 3, dy - 27, C.gold[1]);
+    for (const [x, y] of [[-4, -27], [-5, -28], [-5, -29]]) k.px(lx + x, dy + y, C.bone[1]);
+    for (const [x, y] of [[5, -27], [6, -28], [6, -29]]) k.px(lx + x, dy + y, C.bone[1]);
+    k.meta.eye = [lx + 2, dy - 22];
+
+    // hůl se žhnoucí lebkou
+    const st = { idle: [8, 0], up: [8, -1], flare: [8, -2], fwd: [10, -1], back: [5, -1], strike: [10, 1], low: [9, 0] }[p.sw] || [8, 0];
+    const sx = lx + st[0];
+    const top = dy - 20 + st[1];
+    k.L(sx, dy - 1, sx, top, C.w[1]);
+    k.R(sx - 2, top - 4, 5, 4, C.bone[0]);
+    k.px(sx - 1, top - 3, C.ink);
+    k.px(sx + 1, top - 3, C.ink);
+    k.R(sx - 1, top - 6, 3, 2, p.sw === "flare" ? C.r[5] : C.r[4]);
+    k.px(sx, top - 7, C.r[5]);
+    k.meta.lantern = [sx, top - 5];
+    k.L2(lx + 3, dy - 15, sx - 1, dy - 11, B[2]);
+    k.R(sx - 1, dy - 12, 2, 2, C.bone[0]);
+
+    // volná ruka při kouzlu
+    if (p.sw === "up" || p.sw === "flare" || p.sw === "fwd") {
+      k.L2(lx - 3, dy - 15, lx - 7, dy - 22, B[2]);
+      k.R(lx - 8, dy - 24, 2, 2, C.bone[0]);
+      if (p.sw !== "up") {
+        k.R(lx - 9, dy - 27, 3, 3, C.r[4]);
+        k.px(lx - 8, dy - 26, C.r[5]);
+      }
+    }
+
+    k.meta.head = [lx + 1, dy - 21];
+  }
+
   const RIGS = {
     soldier: drawSoldier,
     worker: drawWorker,
     archer: drawArcher,
     hero: drawHero,
-    raider: drawRaider
+    raider: drawRaider,
+    ghoul: drawGhoul,
+    skeleton: drawSkeleton,
+    abomination: drawAbomination,
+    banshee: drawBanshee,
+    lich: drawLich
   };
 
   /* ---------- atlas ---------- */
@@ -476,7 +771,7 @@
     const out = {};
 
     for (const [anim, poses] of Object.entries(POSES)) {
-      if (anim === "cast" && type !== "hero") continue;
+      if (anim === "cast" && type !== "hero" && type !== "lich") continue;
 
       out[anim] = poses.map(pose => {
         const P = new Pix(CELL, CELL);
@@ -554,7 +849,12 @@
     soldier: [AX - 10, AY - 26],
     archer: [AX - 10, AY - 27],
     hero: [AX - 10, AY - 29],
-    raider: [AX - 10, AY - 26]
+    raider: [AX - 10, AY - 26],
+    ghoul: [AX - 8, AY - 22],
+    skeleton: [AX - 10, AY - 27],
+    abomination: [AX - 10, AY - 29],
+    banshee: [AX - 11, AY - 28],
+    lich: [AX - 10, AY - 28]
   };
 
   const portraitCache = {};

@@ -1,5 +1,6 @@
 /*
- * Autoritativní simulace zápasu pro 2 až 6 hráčů (každý sám za sebe), lidi i AI.
+ * Autoritativní simulace zápasu pro 2 až 16 hráčů, lidi i AI. Každý hraje sám za sebe,
+ * na kooperativních mapách (map.coop) jsou hráči v jednom týmu proti AI nemrtvým z pekla.
  * Klienti posílají jen záměry (rozkazy, nákup, stavba, kouzla). Simulace je ověří
  * a sáma spočítá ekonomiku, pohyb, souboje i výsledek, takže nejde podvádět.
  * Běží na serveru (online) i v prohlížeči (hra proti AI).
@@ -16,10 +17,13 @@
 const TICK = 0.05;
 const MAX_IDS = 40;
 
-const UNIT_TYPES = ["worker", "soldier", "archer", "hero"];
-const BUILDING_TYPES = ["hall", "citadel", "barracks", "tower", "hut", "smithy"];
+// Pořadí určuje číslo typu ve snímku: nové typy jen na konec.
+const UNIT_TYPES = ["worker", "soldier", "archer", "hero", ...R.UNDEAD.units];
+const BUILDING_TYPES = ["hall", "citadel", "barracks", "tower", "hut", "smithy", ...R.UNDEAD.buildings];
+const HUMAN_UNITS = ["worker", "soldier", "archer", "hero"];
 const RESEARCH_KINDS = ["armor", "weapon"];
-const ORDER_CODES = { move: 1, attack: 2, gather: 3, deliver: 4, build: 5 };
+const ORDER_CODES = { move: 1, attack: 2, gather: 3, deliver: 4, build: 5, amove: 6 };
+const UD = R.UNDEAD;
 const UNIT_RADIUS = 15; // nejmenší odstup středů dvou jednotek
 
 const alive = entity => !!entity && entity.hp > 0;
@@ -29,6 +33,10 @@ const xpNeeded = level => level * 40;
 const round1 = v => Math.round(v * 10) / 10;
 const isNum = v => typeof v === "number" && Number.isFinite(v);
 const teamIndex = team => R.TEAMS.indexOf(team);
+
+function hordeBrain() {
+  return { wave: 0, waveT: UD.firstWave, buildT: UD.buildEvery * 1.6, lichT: 0, target: null };
+}
 
 class Match {
   // players: pole podle slotů mapy, každý prvek { name, ai } nebo null (prázdný slot bez základny).
@@ -56,12 +64,24 @@ class Match {
     this.elapsed = 0;
     this.winner = null;
     this.reason = null;
+    this.winners = [];
     this.events = [];
+    this.coop = map.coop || null;
+    this.side = {};    // tým -> strana; spojenci mají stejnou stranu
+    this.faction = {}; // tým -> "human" | "undead"
+
+    // Kooperativní mapa: slot nemrtvých hraje vždy AI, i kdyby ho lobby nechalo prázdné.
+    if (this.coop && this.coop.ai >= 0 && this.coop.ai < this.players.length) {
+      this.players[this.coop.ai] = { name: UD.short, ai: true };
+    }
 
     map.slots.forEach((slot, i) => {
       if (!this.players[i]) return;
 
       const team = R.TEAMS[i];
+      const undead = !!this.coop && i === this.coop.ai;
+      this.faction[team] = undead ? "undead" : "human";
+      this.side[team] = !this.coop ? team : undead ? "dead" : "living";
       this.active.push(team);
       this.econ[team] = { gold: R.BASE_GOLD, wood: R.BASE_WOOD };
       this.upgrades[team] = { armor: 0, weapon: 0 };
@@ -70,9 +90,10 @@ class Match {
         kills: 0, unitsLost: 0, buildingsDestroyed: 0, buildingsLost: 0, gold: 0, wood: 0, trained: 0, built: 0, heroLevel: 0,
         spentGold: 0, spentWood: 0, trainedBy: {}, builtBy: {}
       };
-      if (this.players[i].ai) this.brains[team] = AI.createBrain(team);
+      if (undead) this.brains[team] = { horde: true, ...hordeBrain() };
+      else if (this.players[i].ai) this.brains[team] = AI.createBrain(team);
 
-      this.createBuilding(slot.hq.type, team, slot.hq.x, slot.hq.y, false);
+      this.createBuilding(undead ? UD.hq : slot.hq.type, team, slot.hq.x, slot.hq.y, false);
       for (const b of slot.buildings) this.createBuilding(b.type, team, b.x, b.y, false);
       for (const u of slot.units) this.createUnit(u.type, team, u.x, u.y);
     });
@@ -117,8 +138,18 @@ class Match {
     return unit;
   }
 
+  hqType(team) {
+    return this.faction[team] === "undead" ? UD.hq : R.HQ[team];
+  }
+
   hqOf(team) {
-    return this.buildings.find(b => b.team === team && b.type === R.HQ[team] && alive(b));
+    const type = this.hqType(team);
+    return this.buildings.find(b => b.team === team && b.type === type && alive(b));
+  }
+
+  // Spojenci (a tým sám se sebou) na sebe neútočí.
+  friendly(a, b) {
+    return a === b || (!!this.side[a] && this.side[a] === this.side[b]);
   }
 
   heroOf(team) {
@@ -194,7 +225,7 @@ class Match {
   }
 
   train(team, type, srcId) {
-    if (!UNIT_TYPES.includes(type)) return;
+    if (!HUMAN_UNITS.includes(type) || this.faction[team] !== "human") return;
 
     const done = b => b.team === team && alive(b) && b.progress >= 1;
     const source = type === "worker"
@@ -325,7 +356,7 @@ class Match {
 
     if (msg.k === "attack") {
       target = this.entity(msg.target);
-      if (!alive(target) || target.team === team) return;
+      if (!alive(target) || this.friendly(target.team, team)) return;
     } else if (msg.k === "gather") {
       target = this.resources.find(r => r.id === msg.target && r.amount > 0);
       if (!target) return;
@@ -335,7 +366,7 @@ class Match {
     } else if (msg.k === "build") {
       target = this.buildings.find(b => b.id === msg.target && b.team === team && b.progress < 1 && alive(b));
       if (!target) return;
-    } else if (msg.k === "move") {
+    } else if (msg.k === "move" || msg.k === "amove") {
       if (!isNum(msg.x) || !isNum(msg.y)) return;
     } else {
       return;
@@ -357,6 +388,8 @@ class Match {
         // po vyložení se pokračuje v předchozí těžbě
         const resume = unit.order && unit.order.type === "gather" ? unit.order.target : null;
         unit.order = { type: "deliver", target, resume };
+      } else if (msg.k === "amove" && unit.type !== "worker") {
+        unit.order = { type: "amove", x: point.x, y: point.y };
       } else {
         unit.order = { type: "move", x: point.x, y: point.y };
       }
@@ -384,7 +417,7 @@ class Match {
     let hits = 0;
 
     for (const enemy of [...this.units, ...this.buildings]) {
-      if (!alive(enemy) || enemy.team === team) continue;
+      if (!alive(enemy) || this.friendly(enemy.team, team)) continue;
 
       const radius = enemy.kind === "building" ? 70 : 47;
 
@@ -410,7 +443,7 @@ class Match {
     const healed = [];
 
     for (const ally of this.units) {
-      if (ally.team !== team || !alive(ally) || distance(ally, hero) > 90 || ally.hp >= ally.maxHp) continue;
+      if (!this.friendly(ally.team, team) || !alive(ally) || distance(ally, hero) > 90 || ally.hp >= ally.maxHp) continue;
       ally.hp = Math.min(ally.maxHp, ally.hp + amount);
       healed.push(ally.id);
     }
@@ -538,7 +571,7 @@ class Match {
 
     for (const list of [this.units, this.buildings]) {
       for (const candidate of list) {
-        if (!alive(candidate) || candidate.team === entity.team) continue;
+        if (!alive(candidate) || this.friendly(candidate.team, entity.team)) continue;
         const d = distance(entity, candidate);
 
         if (d < best) {
@@ -740,7 +773,10 @@ class Match {
     this.elapsed += dt;
 
     for (const team of this.active) {
-      if (this.brains[team] && !this.out.has(team)) AI.think(this, this.brains[team], dt);
+      const brain = this.brains[team];
+      if (!brain || this.out.has(team)) continue;
+      if (brain.horde) this.hordeThink(team, brain, dt);
+      else AI.think(this, brain, dt);
     }
 
     for (const building of this.buildings) {
@@ -764,6 +800,26 @@ class Match {
           building.cooldown = 0.85;
         }
       }
+
+      // pekelné budovy rostou samy a Nekropole se zigguraty střílí
+      if (this.faction[building.team] === "undead") {
+        if (building.progress < 1) {
+          const dp = dt / (R.BUILD_TIME[building.type] || 20);
+          building.progress = Math.min(1, building.progress + dp);
+          building.hp = Math.min(building.maxHp, building.hp + building.maxHp * 0.9 * dp);
+        }
+
+        const def = UD.defense[building.type];
+
+        if (def && building.progress >= 1 && building.cooldown <= 0) {
+          const target = this.nearestEnemy(building, def.range);
+
+          if (target) {
+            this.damage(building, target, def.damage);
+            building.cooldown = def.delay;
+          }
+        }
+      }
     }
 
     for (const unit of this.units) {
@@ -783,11 +839,19 @@ class Match {
         continue;
       }
 
+      const amove = unit.order && unit.order.type === "amove";
       let target = unit.order && unit.order.type === "attack" && alive(unit.order.target)
         ? unit.order.target
         : null;
 
-      if (!target) target = this.nearestEnemy(unit, 100);
+      if (!target) target = this.nearestEnemy(unit, amove ? Math.max(130, unit.range + 30) : 100);
+
+      // útočný pochod: jde k cíli a bije všechno, na co cestou narazí
+      if (!target && amove) {
+        if (this.moveTowards(unit, unit.order, dt, 24)) unit.order = null;
+        continue;
+      }
+
       if (!target) continue;
 
       const reach = unit.range + (target.kind === "building" ? 24 : 0);
@@ -795,7 +859,7 @@ class Match {
       if (distance(unit, target) > reach) {
         // Bez rozkazu se bojové jednotky samy pustí do nepřátel v dosahu; dělníci zůstávají stát.
         const hunting = unit.order
-          ? unit.order.type === "attack"
+          ? unit.order.type === "attack" || amove
           : unit.type !== "worker";
 
         if (hunting) this.moveTowards(unit, target, dt, reach - 2);
@@ -846,24 +910,185 @@ class Match {
     this.checkEnd(why);
   }
 
+  // Konec: zbyla jediná strana (v kooperaci celý tým hráčů, nebo nemrtví), nebo už nehraje žádný člověk.
   checkEnd(why = "hq") {
     if (this.phase === "ended") return;
 
     const standing = this.active.filter(t => !this.out.has(t));
     const humans = standing.filter(t => !this.brains[t]);
+    const sides = new Set(standing.map(t => this.side[t]));
 
-    if (standing.length <= 1 || !humans.length) {
-      this.finish(standing.length === 1 ? standing[0] : null, standing.length === 1 ? why : "defeat");
+    if (sides.size === 1) {
+      // vítězí celá strana, i spojenci, kteří už vypadli
+      const side = this.side[standing[0]];
+      const winners = this.active.filter(t => this.side[t] === side);
+      this.finish(standing.find(t => !this.brains[t]) || standing[0], why, winners);
+    } else if (!standing.length) {
+      this.finish(null, why);
+    } else if (!humans.length) {
+      // v kooperaci lidé prohráli: vyhrávají nemrtví
+      const dead = this.coop ? standing.find(t => this.faction[t] === "undead") : null;
+      if (dead) this.finish(dead, why, [dead]);
+      else this.finish(null, "defeat");
     }
   }
 
-  finish(winner, reason) {
+  finish(winner, reason, winners) {
     if (this.phase === "ended") return;
 
     this.phase = "ended";
     this.winner = winner;
+    this.winners = winners || (winner ? [winner] : []);
     this.reason = reason;
-    this.events.push({ e: "end", w: winner ? teamIndex(winner) : -1, why: reason });
+    this.events.push({ e: "end", w: winner ? teamIndex(winner) : -1, ws: this.winners.map(teamIndex), why: reason });
+  }
+
+  /* ---------- pekelná pevnost (AI nemrtvých) ---------- */
+  hordeThink(team, brain, dt) {
+    const necro = this.hqOf(team);
+    if (!necro) return;
+
+    const foes = this.active.filter(t => !this.out.has(t) && !this.friendly(t, team));
+    if (!foes.length) return;
+
+    const n = foes.length;
+    const mine = this.units.filter(u => u.team === team && alive(u));
+    // síla roste s časem (po 8 minutách dvojnásobná) a s počtem hráčů
+    const tempo = (0.5 + this.elapsed / 520) * (0.55 + 0.45 * Math.min(1, n / 3));
+    const cap = Math.min(70, 8 + 4 * brain.wave + 2 * n);
+
+    // výroba v hotových budovách
+    for (const b of this.buildings) {
+      if (b.team !== team || !alive(b) || b.progress < 1) continue;
+      const plan = UD.produce[b.type];
+      if (!plan) continue;
+
+      if (b.spawnT == null) b.spawnT = plan[0][1] * (b.type === "slaughterhouse" ? 3 : 0.4 + Math.random() * 0.4);
+      b.spawnT -= dt * tempo;
+      if (b.spawnT > 0) continue;
+
+      const [type, every] = plan[(b.spawnI = ((b.spawnI || 0) + 1) % plan.length)];
+      b.spawnT = every;
+      if (mine.length >= cap) continue;
+
+      const toward = this.hordeFront(necro);
+      const u = this.createUnit(type, team, clamp(b.x + toward.x * 50, 20, this.LW - 20), clamp(b.y + toward.y * 50 + 18, 40, this.LH - 20));
+      u.order = { type: "move", x: necro.x + toward.x * 120 + (Math.random() - 0.5) * 120, y: necro.y + toward.y * 120 + (Math.random() - 0.5) * 120 };
+      mine.push(u);
+    }
+
+    // lich: na začátku a znovu po čase od smrti
+    let lich = mine.find(u => u.type === "lich");
+
+    if (!lich) {
+      brain.lichT -= dt;
+      if (brain.lichT <= 0) {
+        lich = this.createUnit("lich", team, necro.x, necro.y + 60);
+        brain.lichT = UD.lichRespawn;
+        this.events.push({ e: "lich", id: lich.id });
+      }
+    } else if (lich.fireCooldown <= 0) {
+      // pekelný výbuch kolem licha, když jsou nepřátelé blízko
+      const near = [...this.units, ...this.buildings].filter(e =>
+        alive(e) && !this.friendly(e.team, team) && distance(e, lich) <= UD.novaRadius + (e.kind === "building" ? 20 : 0));
+
+      if (near.length) {
+        lich.fireCooldown = UD.novaEvery;
+        this.events.push({ e: "fire", h: lich.id, x: round1(lich.x), y: round1(lich.y), nova: 1 });
+        const dmg = Math.round(35 + this.elapsed / 40);
+        for (const e of near) this.damage(lich, e, e.kind === "building" ? Math.round(dmg * 0.6) : dmg, { silent: true, delay: 0.25 });
+      }
+    }
+
+    // obrana: kdo se přiblíží k pevnosti, na toho se vrhnou všichni doma
+    const home = mine.filter(u => distance(u, necro) < 520 && (!u.order || u.order.type === "move"));
+    const intruder = this.units.find(u => alive(u) && !this.friendly(u.team, team) &&
+      this.buildings.some(b => b.team === team && alive(b) && distance(b, u) < 300));
+
+    if (intruder) {
+      for (const u of home) u.order = { type: "amove", x: intruder.x, y: intruder.y };
+    }
+
+    // vlny
+    brain.waveT -= dt;
+
+    if (brain.waveT <= 0) {
+      const size = Math.round((4 + 2 * brain.wave) * (0.5 + n / 6));
+      const ready = mine.filter(u => (u.type !== "lich" || brain.wave >= 5) && (!u.order || u.order.type === "move"));
+
+      if (ready.length >= Math.min(size, 4)) {
+        const target = this.hordeTarget(team, brain, necro);
+
+        if (target) {
+          // nejdřív ti nejblíž frontě, ať se vlna nerozpadne
+          ready.sort((a, b) => distance(a, target) - distance(b, target));
+          for (const u of ready.slice(0, size)) u.order = { type: "amove", x: target.x, y: target.y };
+          this.events.push({ e: "wave", n: brain.wave + 1, t: teamIndex(target.team) });
+          brain.wave++;
+          brain.waveT = Math.max(UD.minWaveEvery, UD.waveEvery - brain.wave * 5);
+        }
+      } else {
+        brain.waveT = 15;
+      }
+    }
+
+    // kdo dobojoval daleko od pevnosti (obrana nebo dobytá základna), vrátí se k frontě a čeká na další vlnu
+    const front = this.hordeFront(necro);
+
+    for (const u of mine) {
+      if (u.order || distance(u, necro) < 520 || this.nearestEnemy(u, 160)) continue;
+      u.order = { type: "move", x: necro.x + front.x * 140 + (Math.random() - 0.5) * 160, y: necro.y + front.y * 140 + (Math.random() - 0.5) * 120 };
+    }
+
+    // pevnost se rozrůstá
+    brain.buildT -= dt;
+
+    if (brain.buildT <= 0) {
+      brain.buildT = UD.buildEvery;
+      const count = this.buildings.filter(b => b.team === team && alive(b)).length;
+
+      if (count < UD.maxBuildings) {
+        const total = UD.expand.reduce((sum, [, w]) => sum + w, 0);
+        let pick = Math.random() * total;
+        const type = UD.expand.find(([, w]) => (pick -= w) < 0)[0];
+        const toward = this.hordeFront(necro);
+
+        for (let i = 0; i < 20; i++) {
+          const a = Math.atan2(toward.y, toward.x) + (Math.random() - 0.5) * 2.6;
+          const d = 150 + Math.random() * 230;
+          const x = Math.round(necro.x + Math.cos(a) * d);
+          const y = Math.round(necro.y + Math.sin(a) * d);
+
+          if (!this.placementProblem(team, x, y)) {
+            this.createBuilding(type, team, x, y, true);
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // Směr od Nekropole ke středu mapy (tam stojí fronta a staví se nové budovy).
+  hordeFront(necro) {
+    const dx = this.LW / 2 - necro.x;
+    const dy = this.LH / 2 - necro.y;
+    const d = Math.hypot(dx, dy) || 1;
+    return { x: dx / d, y: dy / d };
+  }
+
+  // Cíl vlny: základny hráčů se střídají dokola; keep = drž současný cíl, dokud stojí.
+  hordeTarget(team, brain, necro, keep) {
+    const hqs = this.active
+      .filter(t => !this.out.has(t) && !this.friendly(t, team))
+      .map(t => this.hqOf(t))
+      .filter(Boolean)
+      .sort((a, b) => distance(a, necro) - distance(b, necro));
+
+    if (!hqs.length) return null;
+    if (keep && brain.target && hqs.includes(brain.target)) return brain.target;
+
+    brain.target = hqs[brain.wave % hqs.length];
+    return brain.target;
   }
 
   /* ---------- state sent to clients ---------- */

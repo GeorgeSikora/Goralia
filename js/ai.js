@@ -130,7 +130,7 @@
     let best = null;
 
     for (const b of match.buildings) {
-      if (b.team === team || b.type !== R.HQ[b.team] || !alive(b) || match.out.has(b.team)) continue;
+      if (match.friendly(b.team, team) || b.type !== match.hqType(b.team) || !alive(b) || match.out.has(b.team)) continue;
       if (!best || distance(b, from) < distance(best, from)) best = b;
     }
 
@@ -143,7 +143,21 @@
     const team = brain.team;
     const fighters = army;
 
-    if (!brain.attacking && fighters.length >= brain.nextWave && match.elapsed >= FIRST_WAVE_AT) {
+    // proti pekelné pevnosti nemá smysl útočit po kouskách: větší armáda a později
+    if (match.coop && !brain.coop) {
+      brain.coop = true;
+      brain.nextWave = 18;
+    }
+
+    // v kooperaci se útočí společně: až má celý tým dost vojska, vyrazí všichni najednou
+    const allied = brain.coop
+      ? match.units.filter(u => alive(u) && match.friendly(u.team, team) && u.type !== "worker" && !match.out.has(u.team)).length
+      : 0;
+    const ready = brain.coop
+      ? allied >= 15 * Math.max(1, match.active.filter(t => !match.out.has(t) && match.friendly(t, team)).length) && fighters.length >= 8 && match.elapsed >= 420
+      : fighters.length >= brain.nextWave && match.elapsed >= FIRST_WAVE_AT;
+
+    if (!brain.attacking && ready) {
       brain.attacking = true;
       brain.target = null;
     }
@@ -151,13 +165,17 @@
     if (brain.attacking) {
       if (fighters.length < 3) {
         brain.attacking = false;
-        brain.nextWave = Math.min(MAX_WAVE, brain.nextWave + 3);
+        brain.nextWave = Math.min(brain.coop ? 30 : MAX_WAVE, brain.nextWave + 3);
         match.command(team, { c: "order", k: "move", ids: fighters.map(u => u.id).slice(0, 40), x: hq.x, y: hq.y + 90 });
       } else {
         if (!alive(brain.target) || match.out.has(brain.target.team)) brain.target = nearestEnemyHq(match, team, hq);
 
         if (!brain.target) {
           brain.attacking = false;
+        } else if (brain.coop) {
+          // útočný pochod: cestou bojují se vším, i se zigguraty před Nekropolí
+          const idle = fighters.filter(u => !u.order || u.order.type !== "amove").map(u => u.id).slice(0, 40);
+          if (idle.length) match.command(team, { c: "order", k: "amove", ids: idle, x: brain.target.x, y: brain.target.y });
         } else {
           const idle = fighters.filter(u => !hasAttackOrder(u)).map(u => u.id).slice(0, 40);
           if (idle.length) match.command(team, { c: "order", k: "attack", ids: idle, target: brain.target.id });
@@ -165,7 +183,7 @@
       }
     } else {
       const threat = match.units.find(u =>
-        u.team !== team && alive(u) && !match.out.has(u.team) && distance(u, hq) < 320);
+        !match.friendly(u.team, team) && alive(u) && !match.out.has(u.team) && distance(u, hq) < 320);
 
       if (threat) {
         const idle = fighters.filter(u => !hasAttackOrder(u)).map(u => u.id).slice(0, 40);
@@ -185,7 +203,7 @@
       let target = null;
 
       for (const e of [...match.units, ...match.buildings]) {
-        if (e.team === team || !alive(e) || match.out.has(e.team)) continue;
+        if (match.friendly(e.team, team) || !alive(e) || match.out.has(e.team)) continue;
         if (distance(e, hero) < 170 && (!target || distance(e, hero) < distance(target, hero))) target = e;
       }
 

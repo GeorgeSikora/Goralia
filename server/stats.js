@@ -36,10 +36,13 @@ function createStats(store) {
     if (duration < MIN_DURATION) return null;
 
     const humans = info.players.filter(p => !p.ai).length;
-    const pvp = humans >= 2;
+    // kooperace proti nemrtvým není souboj lidí proti sobě
+    const pvp = humans >= 2 && !info.coop;
+    // v kooperaci vítězí celý tým (winners); jinak jeden hráč
+    const winners = Array.isArray(info.winners) && info.winners.length ? info.winners : [info.winner];
 
     const players = info.players.map(p => {
-      const result = info.winner === p.slot ? "win" : info.winner < 0 && info.reason === "hq" ? "draw" : "loss";
+      const result = winners.includes(p.slot) ? "win" : info.winner < 0 && info.reason === "hq" ? "draw" : "loss";
       const entry = { slot: p.slot, team: TEAMS[p.slot] || "", userId: p.userId || null, name: p.name, ai: !!p.ai, result };
       for (const key of SUMS) entry[key] = int(p.stats && p.stats[key]);
       for (const key of EXTRA) entry[key] = int(p.stats && p.stats[key]);
@@ -60,6 +63,7 @@ function createStats(store) {
       reason: String(info.reason || ""), winner: Number.isInteger(info.winner) ? info.winner : -1,
       humans, ais: players.length - humans, players
     };
+    if (info.coop) match.coop = true;
     if (info.timeline) match.timeline = info.timeline;
 
     data.matches.push(match);

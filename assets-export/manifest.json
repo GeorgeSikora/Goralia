@@ -1,0 +1,34 @@
+{
+ "units": {
+  "types": [
+   "soldier",
+   "worker",
+   "archer",
+   "hero",
+   "raider"
+  ],
+  "teams": [
+   "blue",
+   "red",
+   "gold",
+   "violet",
+   "green",
+   "silver",
+   "orange",
+   "teal",
+   "pink",
+   "brown",
+   "lime",
+   "black",
+   "maroon",
+   "sand",
+   "magenta",
+   "olive"
+  ],
+  "cell": 32,
+  "pivot": [
+   16,
+   30
+  ]
+ }
+}

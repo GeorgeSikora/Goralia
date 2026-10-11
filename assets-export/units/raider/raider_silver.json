@@ -1,0 +1,522 @@
+{
+ "frames": {
+  "raider_silver idle_0": {
+   "filename": "idle_0",
+   "frame": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 714
+  },
+  "raider_silver idle_1": {
+   "filename": "idle_1",
+   "frame": {
+    "x": 32,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 714
+  },
+  "raider_silver walk_0": {
+   "filename": "walk_0",
+   "frame": {
+    "x": 0,
+    "y": 32,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 104
+  },
+  "raider_silver walk_1": {
+   "filename": "walk_1",
+   "frame": {
+    "x": 32,
+    "y": 32,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 104
+  },
+  "raider_silver walk_2": {
+   "filename": "walk_2",
+   "frame": {
+    "x": 64,
+    "y": 32,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 104
+  },
+  "raider_silver walk_3": {
+   "filename": "walk_3",
+   "frame": {
+    "x": 96,
+    "y": 32,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 104
+  },
+  "raider_silver walk_4": {
+   "filename": "walk_4",
+   "frame": {
+    "x": 128,
+    "y": 32,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 104
+  },
+  "raider_silver walk_5": {
+   "filename": "walk_5",
+   "frame": {
+    "x": 160,
+    "y": 32,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 104
+  },
+  "raider_silver attack_0": {
+   "filename": "attack_0",
+   "frame": {
+    "x": 0,
+    "y": 64,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 105
+  },
+  "raider_silver attack_1": {
+   "filename": "attack_1",
+   "frame": {
+    "x": 32,
+    "y": 64,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 90
+  },
+  "raider_silver attack_2": {
+   "filename": "attack_2",
+   "frame": {
+    "x": 64,
+    "y": 64,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 105
+  },
+  "raider_silver death_0": {
+   "filename": "death_0",
+   "frame": {
+    "x": 0,
+    "y": 96,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 140
+  },
+  "raider_silver death_1": {
+   "filename": "death_1",
+   "frame": {
+    "x": 32,
+    "y": 96,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 785
+  },
+  "raider_silver death_2": {
+   "filename": "death_2",
+   "frame": {
+    "x": 64,
+    "y": 96,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 250
+  },
+  "raider_silver death_3": {
+   "filename": "death_3",
+   "frame": {
+    "x": 96,
+    "y": 96,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 250
+  },
+  "raider_silver death_4": {
+   "filename": "death_4",
+   "frame": {
+    "x": 128,
+    "y": 96,
+    "w": 32,
+    "h": 32
+   },
+   "rotated": false,
+   "trimmed": false,
+   "spriteSourceSize": {
+    "x": 0,
+    "y": 0,
+    "w": 32,
+    "h": 32
+   },
+   "sourceSize": {
+    "w": 32,
+    "h": 32
+   },
+   "duration": 250
+  }
+ },
+ "meta": {
+  "app": "Goralia export (procedural sprites from js/units.js)",
+  "image": "raider_silver.png",
+  "format": "RGBA8888",
+  "size": {
+   "w": 192,
+   "h": 128
+  },
+  "scale": "1",
+  "frameTags": [
+   {
+    "name": "idle",
+    "from": 0,
+    "to": 1,
+    "direction": "forward",
+    "row": 0
+   },
+   {
+    "name": "walk",
+    "from": 2,
+    "to": 7,
+    "direction": "forward",
+    "row": 1
+   },
+   {
+    "name": "attack",
+    "from": 8,
+    "to": 10,
+    "direction": "forward",
+    "row": 2
+   },
+   {
+    "name": "death",
+    "from": 11,
+    "to": 15,
+    "direction": "forward",
+    "row": 3
+   }
+  ],
+  "pivot": {
+   "x": 16,
+   "y": 30,
+   "note": "feet point inside each 32x32 cell (game draws at footX-16, footY-30)"
+  },
+  "facing": "right; for left-facing mirror horizontally (game pivots at x=15 when flipped)",
+  "points": {
+   "idle_0": {
+    "head": [
+     19,
+     13
+    ],
+    "eye": [
+     18,
+     12
+    ]
+   },
+   "idle_1": {
+    "head": [
+     19,
+     14
+    ],
+    "eye": [
+     18,
+     13
+    ]
+   },
+   "walk_0": {
+    "head": [
+     19,
+     12
+    ],
+    "eye": [
+     18,
+     11
+    ]
+   },
+   "walk_1": {
+    "head": [
+     19,
+     13
+    ],
+    "eye": [
+     18,
+     12
+    ]
+   },
+   "walk_2": {
+    "head": [
+     19,
+     13
+    ],
+    "eye": [
+     18,
+     12
+    ]
+   },
+   "walk_3": {
+    "head": [
+     19,
+     12
+    ],
+    "eye": [
+     18,
+     11
+    ]
+   },
+   "walk_4": {
+    "head": [
+     19,
+     13
+    ],
+    "eye": [
+     18,
+     12
+    ]
+   },
+   "walk_5": {
+    "head": [
+     19,
+     13
+    ],
+    "eye": [
+     18,
+     12
+    ]
+   },
+   "attack_0": {
+    "head": [
+     18,
+     13
+    ],
+    "eye": [
+     17,
+     12
+    ]
+   },
+   "attack_1": {
+    "head": [
+     21,
+     14
+    ],
+    "eye": [
+     20,
+     13
+    ]
+   },
+   "attack_2": {
+    "head": [
+     20,
+     13
+    ],
+    "eye": [
+     19,
+     12
+    ]
+   }
+  },
+  "hitflash_sheet": "raider_silver_hitflash.png (same layout, used while hit, ~0.12 s)",
+  "notes": {
+   "idle": "1.4 fps loop",
+   "walk": "frame advances every 4.67 logical px moved; at base speed 45 px/s ≈ 9.6 fps; idx 0 and 3 are drawn 1px higher (bob)",
+   "attack": "one 0.3 s swing (35% / 30% / 35%); while gathering it loops at 4.5 fps",
+   "cast": "hero only, 0.5 s (30% / 40% / 30%)",
+   "death": "hit-flash, lying body (slides 2 px), then ordered-dither dissolve; whole death 1.9 s"
+  }
+ }
+}

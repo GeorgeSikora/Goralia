@@ -60,7 +60,12 @@ class Draft {
     this.mountains = [];
     this.walls = [];
     this.trees = [];
+    this.coop = null; // { ai: index základny nemrtvých }
   }
+
+  // Základny lidí (pekelná pevnost nemrtvých netěží, nemá doly a nepotřebuje lesy).
+  get humanBases() { return this.bases.filter((_, i) => !this.coop || i !== this.coop.ai); }
+  get hellBase() { return this.coop ? this.bases[this.coop.ai] : null; }
 
   get LW() { return this.W * 2; }
   get LH() { return this.H * 2; }
@@ -131,7 +136,7 @@ class Draft {
   // Dva doly u každé základny přidá editor/hra sama (baseMinesFor); tady jsou jen doly navíc a stromy.
   allGold() {
     const out = [];
-    for (const b of this.bases) out.push(...MAPS.baseMinesFor(b.x, b.y, this.LW, this.LH).map(([x, y]) => [x, y]));
+    for (const b of this.humanBases) out.push(...MAPS.baseMinesFor(b.x, b.y, this.LW, this.LH).map(([x, y]) => [x, y]));
     return [...out, ...this.gold];
   }
 
@@ -145,6 +150,7 @@ class Draft {
       x >= 40 && x <= LW - 40 && y >= 90 && y <= LH - 50 &&
       slots.every(s => Math.hypot(x - s.hq.x, y - s.hq.y) > 160 && Math.hypot(x - s.plot.x, y - s.plot.y) > 120) &&
       gold.every(g => Math.hypot(x - g[0], y - g[1]) > 80) &&
+      (!this.hellBase || Math.hypot(x - this.hellBase.x, y - this.hellBase.y) > (this.hellR || 700)) &&
       out.every(t => Math.hypot(x - t[0], y - t[1]) > 34) &&
       this.free(x, y, 12);
 
@@ -153,8 +159,8 @@ class Draft {
 
     for (let i = 0; i < nClusters; i++) centers.push([60 + rnd() * (LW - 120), 100 + rnd() * (LH - 170)]);
 
-    // lesíky za základnami
-    for (const s of slots) {
+    // lesíky za základnami (ne u pekelné pevnosti)
+    for (const s of slots.filter((_, i) => !this.coop || i !== this.coop.ai)) {
       const fx = s.facing;
       const fy = s.plot.y > s.hq.y ? 1 : -1;
       centers.push([s.hq.x - fx * 150, s.hq.y - fy * 160], [s.hq.x + fx * 20, s.hq.y - fy * 230]);
@@ -186,7 +192,7 @@ class Draft {
     const gold = this.gold.map(g => g.slice());
     // doly u základen vytváří editor jako běžné doly v dokumentu
     const base = [];
-    for (const b of this.bases) base.push(...MAPS.baseMinesFor(b.x, b.y, this.LW, this.LH).map(([x, y]) => [Math.round(x), Math.round(y)]));
+    for (const b of this.humanBases) base.push(...MAPS.baseMinesFor(b.x, b.y, this.LW, this.LH).map(([x, y]) => [Math.round(x), Math.round(y)]));
 
     return {
       format: MAPS.DOC.FORMAT, version: MAPS.DOC.VERSION,
@@ -195,7 +201,8 @@ class Draft {
       bases: this.bases.map(b => ({ x: Math.round(b.x), y: Math.round(b.y) })),
       gold: [...base, ...gold],
       trees: this.trees,
-      water: this.water, roads: this.roads, mountains: this.mountains, walls: this.walls
+      water: this.water, roads: this.roads, mountains: this.mountains, walls: this.walls,
+      ...(this.coop ? { coop: { ai: this.coop.ai } } : {})
     };
   }
 }
@@ -529,6 +536,44 @@ makers.push(() => {
   // doly: dva v citadele jako odměna za dobytí, ostatní venku
   d.extraGold([[kx * 2 - 40, cy * 2 - 70], [kx * 2 - 40, cy * 2 + 70], [1400, 150], [1400, 1850], [160, 1000], [2640, 1000], [1000, 330], [1800, 330], [1000, 1670], [1800, 1670]]);
   d.scatterTrees(420);
+  return d;
+});
+
+// Kooperace: 3 hráči v jednom týmu proti AI nemrtvým z pekla
+makers.push(() => {
+  const d = new Draft("brana-pekel", "Brána pekel",
+    "Kooperace: tři hráči v jednom týmu proti nemrtvým z pekla. Na severu za horami se rozpíná spálená pevnost s Nekropolí, " +
+    "která v sílících vlnách posílá ghúly, kostlivce, zrůdy a přízraky. Zničte Nekropoli, než padnou vaše základny.",
+    1500, 1000, 666);
+  d.base(480, 1560);
+  d.base(1500, 400);
+  d.base(1500, 1640);
+  d.base(2520, 1560);
+  d.coop = { ai: 1 };
+  d.hellR = 1050;
+
+  // horský val mezi peklem a krajem živých se třemi průsmyky
+  d.ridge([[12, 520], [150, 512], [300, 506]], 24, 2);
+  d.ridge([[392, 500], [540, 510], [702, 506]], 24, 2);
+  d.ridge([[800, 506], [960, 510], [1108, 500]], 24, 2);
+  d.ridge([[1200, 506], [1350, 512], [1488, 520]], 24, 2);
+  // skalní zuby v pekle a hřebeny na okrajích
+  d.massif(300, 200, 70, 18, 3, 0.3);
+  d.massif(1200, 200, 70, 18, 3, 2.1);
+  for (const ridge of [[[30, 640], [40, 760], [30, 900]], [[1470, 640], [1460, 760], [1470, 900]]]) d.ridge(ridge, 13);
+
+  // cesty: z každé základny průsmykem k Nekropoli a po kraji mezi základnami
+  const hell = [750, 217];
+  const homes = [[240, 763], [750, 803], [1260, 763]];
+  const passes = [[346, 503], [751, 508], [1154, 503]];
+  homes.forEach((h, i) => {
+    const p = passes[i];
+    d.road([h, [(h[0] + p[0]) / 2, (h[1] + p[1]) / 2 + 40], p, [(p[0] + hell[0]) / 2, (p[1] + hell[1]) / 2 + 30], hell], 7, true, 3);
+  });
+  d.road([homes[0], [490, 820], homes[1], [1010, 820], homes[2]], 6, true, 3);
+
+  d.extraGold([[1000, 1300], [2000, 1300], [300, 1250], [2700, 1250], [1500, 1180]]);
+  d.scatterTrees(380);
   return d;
 });
 

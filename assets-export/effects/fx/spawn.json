@@ -1,0 +1,11 @@
+{
+ "frame": {
+  "w": 96,
+  "h": 96
+ },
+ "frames": 27,
+ "columns": 10,
+ "fps": 30,
+ "duration_ms": 33.33,
+ "note": "pre-rendered run of the game's particle system (js/fx.js) with its fixed seed; the game spawns these live, so real ones vary slightly"
+}

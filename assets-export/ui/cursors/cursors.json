@@ -1,0 +1,42 @@
+{
+ "default": {
+  "hotspot32": [
+   2,
+   2
+  ],
+  "hotspot16": [
+   1,
+   1
+  ]
+ },
+ "attack": {
+  "hotspot32": [
+   16,
+   16
+  ],
+  "hotspot16": [
+   8,
+   8
+  ]
+ },
+ "gather": {
+  "hotspot32": [
+   6,
+   6
+  ],
+  "hotspot16": [
+   3,
+   3
+  ]
+ },
+ "target": {
+  "hotspot32": [
+   16,
+   16
+  ],
+  "hotspot16": [
+   8,
+   8
+  ]
+ }
+}
