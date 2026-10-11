@@ -1413,7 +1413,7 @@
 
   function play() {
     audio.unlock();
-    if (settings.autoFullscreen && !isFullscreen()) toggleFullscreen();
+    if (settings.autoFullscreen && fsSupported && !isFullscreen()) toggleFullscreen(true);
     if (liveMatch()) closeMenu();
     else openOfflineLobby();
   }
@@ -2258,17 +2258,73 @@
     return !!(document.fullscreenElement || document.webkitFullscreenElement);
   }
 
-  function toggleFullscreen() {
+  // iPhone a vestavěné prohlížeče (Facebook, Messenger, Instagram) Fullscreen API pro stránky nemají.
+  const fsSupported = !!(fsRoot.requestFullscreen || fsRoot.webkitRequestFullscreen) &&
+    document.fullscreenEnabled !== false && document.webkitFullscreenEnabled !== false;
+  const isStandalone = () => window.matchMedia("(display-mode: fullscreen), (display-mode: standalone)").matches || navigator.standalone === true;
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const isInApp = /FBAN|FBAV|FB_IAB|Instagram|Messenger|Line\/|TikTok/i.test(navigator.userAgent);
+  const isTouch = window.matchMedia("(pointer: coarse)").matches;
+
+  function showFsHint() {
+    let text;
+
+    if (isInApp) {
+      text = "Tento vestavěný prohlížeč celou obrazovku nepodporuje. Otevři goralia.cz v Safari nebo Chrome (v menu „Otevřít v prohlížeči“).";
+    } else if (isIOS) {
+      text = "Na iPhonu Safari celou obrazovku pro hry nepovoluje. Klepni na tlačítko Sdílet (čtvereček se šipkou), zvol „Přidat na plochu“ a spouštěj Goralii z ikony na ploše. Poběží přes celý displej.";
+    } else {
+      text = "Prohlížeč celou obrazovku nepovolil. Můžeš si hru přidat na plochu (menu prohlížeče → „Přidat na plochu“ nebo „Instalovat aplikaci“) a spouštět ji z ikony, pak poběží přes celý displej.";
+    }
+
+    $("fs-hint-text").textContent = text;
+    $("fs-hint").hidden = false;
+    $("fs-hint-ok").focus();
+  }
+
+  function hideFsHint() {
+    $("fs-hint").hidden = true;
+  }
+
+  // Na mobilu po přepnutí zkusí otočit na šířku; když to systém nedovolí, nic se neděje.
+  function lockLandscape() {
+    if (!isTouch || !screen.orientation || !screen.orientation.lock) return;
+    screen.orientation.lock("landscape").catch(() => {});
+  }
+
+  function toggleFullscreen(quiet) {
     try {
       if (isFullscreen()) {
+        if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
         (document.exitFullscreen || document.webkitExitFullscreen).call(document);
-      } else {
-        const request = fsRoot.requestFullscreen || fsRoot.webkitRequestFullscreen;
-        const result = request && request.call(fsRoot);
-        if (result && result.catch) result.catch(() => {});
+        return;
       }
-    } catch (e) { /* fullscreen not available */ }
+
+      if (!fsSupported) {
+        if (quiet !== true) showFsHint();
+        return;
+      }
+
+      const request = fsRoot.requestFullscreen || fsRoot.webkitRequestFullscreen;
+      const result = request.call(fsRoot, { navigationUI: "hide" });
+      const failed = () => { if (quiet !== true && !isFullscreen()) showFsHint(); };
+
+      if (result && result.then) result.then(lockLandscape, failed);
+      else setTimeout(() => (isFullscreen() ? lockLandscape() : failed()), 400);
+    } catch (e) {
+      if (quiet !== true) showFsHint();
+    }
   }
+
+  // Spuštěno z plochy jako aplikace: hra už běží přes celý displej, tlačítko není potřeba.
+  function syncFsButton() {
+    const hide = isStandalone() && !fsSupported;
+    $("fs-btn").hidden = hide;
+    $("s-fullscreen").closest(".row").hidden = hide;
+  }
+
+  syncFsButton();
+  try { window.matchMedia("(display-mode: standalone)").addEventListener("change", syncFsButton); } catch (e) { /* starší Safari */ }
 
   function onFullscreenChange() {
     const on = isFullscreen();
@@ -2307,8 +2363,10 @@
   $("m-restart").addEventListener("click", openOfflineLobby);
   $("m-settings").addEventListener("click", () => showPage("settings"));
   $("m-help").addEventListener("click", () => showPage("help"));
-  $("fs-btn").addEventListener("click", toggleFullscreen);
-  $("s-fullscreen").addEventListener("click", toggleFullscreen);
+  $("fs-btn").addEventListener("click", () => toggleFullscreen());
+  $("s-fullscreen").addEventListener("click", () => toggleFullscreen());
+  $("fs-hint-ok").addEventListener("click", hideFsHint);
+  $("fs-hint").addEventListener("click", event => { if (event.target === event.currentTarget) hideFsHint(); });
   menuBtn.addEventListener("click", () => openMenu());
 
   for (const back of menuEl.querySelectorAll("[data-back]")) {

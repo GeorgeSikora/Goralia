@@ -28,7 +28,7 @@ const MAX_ROOMS = 100;
 const MAX_MSG_PER_SEC = 80;
 const BUFFER_LIMIT = 2 * 1024 * 1024;
 const MAX_MAP_BYTES = 1024 * 1024;
-const PAGES = ["index.html", "editor.html", "privacy.html", "terms.html", "robots.txt", "sitemap.xml"];
+const PAGES = ["index.html", "editor.html", "privacy.html", "terms.html", "manifest.webmanifest", "robots.txt", "sitemap.xml"];
 // Hezké adresy bez přípony (např. https://goralia.cz/privacy).
 const PRETTY = { "/privacy": "/privacy.html", "/terms": "/terms.html" };
 const ADMIN_PAGE = "admin.html";
@@ -47,7 +47,8 @@ const MIME = {
   ".json": "application/json; charset=utf-8",
   ".ico": "image/x-icon",
   ".txt": "text/plain; charset=utf-8",
-  ".xml": "application/xml; charset=utf-8"
+  ".xml": "application/xml; charset=utf-8",
+  ".webmanifest": "application/manifest+json; charset=utf-8"
 };
 
 /* ---------- vlastní mapy (editor) ---------- */

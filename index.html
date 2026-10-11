@@ -13,6 +13,11 @@
 <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="assets/favicon-192.png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Goralia">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Goralia">
 <meta property="og:locale" content="cs_CZ">
@@ -42,6 +47,14 @@
   <button id="fs-btn" class="fs-btn" type="button" aria-label="Celá obrazovka" title="Celá obrazovka">
     <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1 6V1h5M10 1h5v5M15 10v5h-5M6 15H1v-5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
   </button>
+
+  <div id="fs-hint" class="fs-hint" role="dialog" aria-modal="true" aria-labelledby="fs-hint-title" hidden>
+    <div class="panel">
+      <h2 id="fs-hint-title">Celá obrazovka</h2>
+      <p id="fs-hint-text"></p>
+      <button id="fs-hint-ok" class="btn big" type="button">Rozumím</button>
+    </div>
+  </div>
 
   <div id="menu" class="menu scene" role="dialog" aria-modal="true" aria-labelledby="menu-title">
     <canvas id="menubg" class="menubg" aria-hidden="true"></canvas>
