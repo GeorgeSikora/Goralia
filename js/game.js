@@ -183,6 +183,7 @@
     world.build(map);
     fx.reset();
 
+    zoom = Math.max(zoom, zoomMin());
     const hq = map.slots[slot || 0].hq;
     centerCamera(hq.x, hq.y);
   }
@@ -1336,7 +1337,7 @@
 
     if (key === "r" && matchOver) {
       if (mode === "online") returnToRoom();
-      else startOffline(lastOffline);
+      else leaveOnline();
     }
   });
 
@@ -1399,9 +1400,9 @@
     $("m-online").hidden = onl && live;
     $("m-online").textContent = onl && over ? "Zpět do místnosti" : "Multiplayer";
     $("m-play").textContent = live ? "Pokračovat" : "Hra proti AI";
-    $("m-restart").hidden = !started || onl;
+    $("m-restart").hidden = !started || onl || over;
     $("m-surrender").hidden = !playing;
-    $("m-leave").hidden = !(onl && (over || !playing));
+    $("m-leave").hidden = !((onl && (over || !playing)) || (started && !onl && over));
     menuBtn.hidden = !started || menuOpen;
     menuEl.classList.toggle("scene", !started);
 
@@ -1590,7 +1591,7 @@
   }
 
   function leaveOnline() {
-    net.close();
+    if (mode === "online") net.close();
     reset();
     started = false;
     mode = "ai";
@@ -2008,6 +2009,9 @@
     const first = online.firstSnapshot;
     online.firstSnapshot = false;
 
+    // Po startu se kamera znovu vycentruje na vlastní základnu (rozměry okna se mohly od načtení mapy změnit).
+    if (first && map && map.slots[mySlot]) centerCamera(map.slots[mySlot].hq.x, map.slots[mySlot].hq.y);
+
     for (const e of s.e) netEvent(e);
     for (const note of s.n) announce(note);
 
@@ -2173,7 +2177,8 @@
       }
     }
 
-    selected = selected.filter(alive);
+    // Jednotka, která zmizela ze snímku (padla), musí zmizet i z výběru.
+    selected = selected.filter(e => alive(e) && (unitMap.get(e.id) === e || buildingMap.get(e.id) === e));
     if (selected.length) selectedResourceId = 0;
   }
 
@@ -3357,7 +3362,7 @@
       cam: { x: cam.x, y: cam.y, w: view.w / zoom, h: view.mapH / zoom },
       spectating: !matchOver && state !== "playing",
       endReason: matchOver ? endReason() : "",
-      endHint: mode === "online" ? "R: zpět do místnosti · Esc: menu" : "R: nová hra · Esc: menu"
+      endHint: mode === "online" ? "R: zpět do místnosti · Esc: menu" : "R: hlavní menu · Esc: menu"
     };
 
     if (matchPhase === "countdown" && mode === "online") drawCountdown();
