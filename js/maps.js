@@ -131,20 +131,16 @@
     for (const s of slots) {
       const ax = s.hq.x / 2;
       const ay = s.hq.y / 2;
-      const bx = s.plot.x / 2;
-      const by = s.plot.y / 2;
       const fx = s.facing;
       const fy = s.plot.y > s.hq.y ? 1 : -1;
 
       plazas.push({ x: ax, y: ay + 17 * fy, rx: 34, ry: 17, kind: "hall" });
       landmarks.push(["campfire", ax - fx * 28, ay + fy * 49, true, 9], ["crates", ax - fx * 42, ay + fy * 31, true, 9]);
 
-      plazas.push({ x: bx, y: by + 19 * fy, rx: 23, ry: 11, kind: "yard" });
       pave.push([ax, ay + 17 * fy, 52]);
       // zrcadlené mapy: oblouk cesty se zrcadlí spolu se základnou, střední základny jdou rovně
       const jog = opts.straight ? 0 : !mirror ? (r() - 0.5) * 50 : Math.abs(ax - center[0]) < 8 ? 0 : 22 * fx * fy;
       if (opts.autoRoads !== false) roads.push({ w: 7, main: true, pts: roadTo([ax, ay + 17 * fy], center, jog) });
-      roads.push({ w: 4.5, pts: [[bx, by + 12 * fy], [(bx + ax) / 2, ay + 20 * fy], [ax + fx * 24, ay + 19 * fy]] });
       landmarks.push(["lanternPost", ax + fx * 44, ay + 34 * fy, true, 5], ["lanternPost", ax + fx * 90, ay + 40 * fy, true, 5]);
     }
 
