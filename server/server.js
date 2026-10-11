@@ -821,6 +821,13 @@ function flush(room) {
   if (room.spectators.size) {
     const spec = match.snapshot(R.TEAMS[room.roster[0].slot]);
     spec.n = [];
+    // suroviny, limit jednotek a vylepšení každého týmu: [slot, zlato, dřevo, limit, zbroj, zbraně]
+    spec.ec = room.roster.map(p => {
+      const team = R.TEAMS[p.slot];
+      const eco = match.econ[team] || { gold: 0, wood: 0 };
+      const up = match.upgrades[team] || {};
+      return [p.slot, Math.floor(eco.gold || 0), Math.floor(eco.wood || 0), match.supplyCap(team), up.armor || 0, up.weapon || 0];
+    });
     const text = JSON.stringify(spec);
     for (const client of room.spectators) send(client, text);
   }

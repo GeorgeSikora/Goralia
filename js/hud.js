@@ -327,7 +327,7 @@
     if (vm.placement) hint = "UMÍSTI STAVBU · KLIKNI NA MAPU";
     else if (vm.spellMode) hint = "OHNIVÁ KOULE · KLIKNI NA CÍL";
     else if (vm.commandMode) hint = "ROZKAZ · KLIKNI NA CÍL";
-    else if (vm.spectator) hint = "DIVÁK · SLEDUJEŠ ZÁPAS";
+    else if (vm.spectator) hint = vm.specTeam ? `DIVÁK · ${vm.specName.toUpperCase()}` : "DIVÁK · SLEDUJEŠ ZÁPAS";
     else if (vm.spectating) hint = "VYPADL JSI · SLEDUJEŠ HRU";
 
     if (hint) {
@@ -520,9 +520,8 @@
     if (!e) {
       T(g, vm.spectator ? "DIVÁK" : "VELENÍ", x0, L.y + 5, 0xf0d088);
       const lines = vm.spectator ? [
-        "Vidíš celý zápas, ale nic neovládáš.",
-        "Kameru posouvej šipkami, myší u okraje nebo v minimapě.",
-        "Esc otevře menu."
+        "Klikni na jednotku či budovu: údaje a suroviny hráče.",
+        "Kamera: šipky, okraj, minimapa."
       ] : [
         "Vyber jednotku nebo budovu.",
         "Dělník těží a staví.",
@@ -870,7 +869,7 @@
     // central ornament over the border
     g.drawImage(PK.icons.ringEmblem(13, C.a[2], C.a[4]), Math.round(V.w / 2) - 6, V.mapH - 5 + Math.round(Math.sin(T0 * 1.4) * 0.6));
 
-    if (!vm.spectator) drawResources(g, vm, dt);
+    if (!vm.spectator || vm.specTeam) drawResources(g, vm, dt);
     drawPlayers(g, vm);
     drawBanners(g, vm, T0);
     drawTooltip(g, vm);

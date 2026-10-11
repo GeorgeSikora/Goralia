@@ -68,6 +68,7 @@
   let mode = "ai";
   let map = MAPS.get(MAPS.DEFAULT);
   let spectator = false; // divák: vidí celý zápas, nic neovládá
+  let specEcon = new Map(); // slot -> [slot, zlato, dřevo, limit, zbroj, zbraně] (jen pro diváka)
   let endWinner = -1;
   let mySlot = 0;
   let me = R.TEAMS[0];
@@ -148,6 +149,7 @@
 
   function reset() {
     spectator = false;
+    specEcon = new Map();
     endWinner = -1;
     units = [];
     buildings = [];
@@ -502,6 +504,16 @@
 
     if (selected.length || res) audio.play("select");
     speak(selected, "select");
+  }
+
+  // Divák může vybrat cokoli (jednotku, budovu i surovinu), jen si to prohlíží.
+  function spectatorSelectAt(x, y, grow = 1) {
+    const unit = findEntity(x, y, units.filter(alive), 19 * grow);
+    const building = unit ? null : findEntity(x, y, buildings.filter(alive), 42 * grow);
+
+    selected = unit ? [unit] : building ? [building] : [];
+    const res = selected.length ? null : resourceUnder(x, y);
+    selectedResourceId = res ? res.id : 0;
   }
 
   // Výběr jednotek v obdélníku daném dvěma světovými body.
@@ -898,6 +910,11 @@
     pointerEnd = null;
     pressedBtn = null;
 
+    if (spectator) {
+      if (start.y < mapAreaH() && Math.hypot(world_.x - start.wx, world_.y - start.wy) <= 9) spectatorSelectAt(world_.x, world_.y);
+      return;
+    }
+
     if (state !== "playing") return;
 
     if (start.y >= mapAreaH()) {
@@ -1192,6 +1209,15 @@
   }
 
   function touchTap(event) {
+    if (spectator) {
+      const p = pointerPosition(event);
+      if (p.y < mapAreaH()) {
+        const w = toWorld(p);
+        spectatorSelectAt(w.x, w.y, FINGER);
+      }
+      return;
+    }
+
     if (state !== "playing") return;
 
     const w = toWorld(pointerPosition(event));
@@ -2079,6 +2105,7 @@
 
     const first = online.firstSnapshot;
     online.firstSnapshot = false;
+    if (spectator && s.ec) specEcon = new Map(s.ec.map(r => [r[0], r]));
 
     // Po startu se kamera znovu vycentruje na vlastní základnu (rozměry okna se mohly od načtení mapy změnit).
     if (first && map && map.slots[mySlot]) centerCamera(map.slots[mySlot].hq.x, map.slots[mySlot].hq.y);
@@ -3426,8 +3453,17 @@
 
     PK.hud.setCard(cardContext());
 
+    // Divák vidí suroviny týmu, jehož jednotku nebo budovu právě prohlíží.
+    const specTeam = spectator && selected.length ? selected[0].team : null;
+    const specRow = specTeam ? specEcon.get(R.TEAMS.indexOf(specTeam)) : null;
+    const specPlayer = specTeam ? players.find(p => p.team === specTeam) : null;
+
     const vm = {
-      gold, wood, army: units.filter(u => u.team === me).length, supplyMax: supplyCap,
+      gold: specRow ? specRow[1] : gold,
+      wood: specRow ? specRow[2] : wood,
+      army: specTeam ? units.filter(u => u.team === specTeam).length : units.filter(u => u.team === me).length,
+      supplyMax: specRow ? specRow[3] : supplyCap,
+      specTeam, specName: specPlayer ? specPlayer.name : "",
       focus: focusType(),
       typeCount: selectionTypes().length,
       primary: selected.find(e => e.type === focus) || selected[0],
@@ -3435,7 +3471,7 @@
       message, messageTimer, placement, spellMode, commandMode, names, costs: vmCosts, titles: vmTitles, tips: vmTips, btn,
       hoverBtn: hoverBtnObj ? hoverBtnObj.type : null,
       pressedBtn: pressed,
-      myTeam: me,
+      myTeam: specTeam || me,
       players,
       resource: selectedResource(),
       cam: { x: cam.x, y: cam.y, w: view.w / zoom, h: view.mapH / zoom },

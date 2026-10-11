@@ -643,6 +643,9 @@ async function testServer() {
     assert.strictEqual(spec.match.slot, -1);
     assert.strictEqual(spec.match.spectate, true);
     assert.strictEqual(spec.snap.u.length, 8, "divák vidí všechny jednotky");
+    assert.strictEqual(spec.snap.ec.length, 2, "divák vidí suroviny obou týmů");
+    assert(spec.snap.ec.every(r => r.length === 6 && r[1] >= 0 && r[2] >= 0 && r[3] > 0), "tvar řádku surovin");
+    assert(!("ec" in a.snap), "hráči soupeřovy suroviny nedostanou");
     const goldBefore = a.snap.g;
     spec.cmd({ c: "train", type: "hero" });
     spec.cmd({ c: "surrender" });
