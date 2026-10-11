@@ -4,7 +4,7 @@ npm.cmd install
 npm.cmd start
 
 Zjisti heslo admina v logu: 
-    pm2 logs goralia --lines 100 --nostream.
+    pm2 logs goralia --lines 100 --nostream
 
 PORT=3100 pm2 start server/server.js --name goralia
 
