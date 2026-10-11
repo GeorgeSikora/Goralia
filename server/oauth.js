@@ -31,11 +31,11 @@ const PROVIDERS = {
     authorize: "https://www.facebook.com/v19.0/dialog/oauth",
     token: "https://graph.facebook.com/v19.0/oauth/access_token",
     tokenMethod: "GET",
-    userinfo: "https://graph.facebook.com/v19.0/me?fields=id,name",
-    scope: "public_profile",
+    userinfo: "https://graph.facebook.com/v19.0/me?fields=id,name,email",
+    scope: "public_profile,email",
     extra: {},
-    // e-mail z Facebooku se nepoužívá, spolehlivě ověřený není
-    profile: j => ({ id: j.id, email: "", emailVerified: false, name: j.name })
+    // e-mail vrací Facebook jen potvrzený a jen když ho uživatel povolil; slouží k uložení k účtu (nikdy k propojení s cizím účtem)
+    profile: j => ({ id: j.id, email: j.email || "", emailVerified: !!j.email, name: j.name })
   }
 };
 

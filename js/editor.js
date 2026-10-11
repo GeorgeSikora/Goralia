@@ -33,13 +33,15 @@
 
   const blank = () => ({
     format: DOC.FORMAT, version: DOC.VERSION, id: "", name: "", description: "",
-    size: [640, 400], seed: 1, autoRoads: true, bases: [], gold: [], trees: [], water: [], roads: []
+    size: [640, 400], seed: 1, autoRoads: true, bases: [], gold: [], trees: [], water: [], roads: [], mountains: [], walls: []
   });
 
   const TOOLS = {
     move: { hint: "Táhni základnu, důl nebo strom. Prázdné místo posouvá mapu." },
     water: { size: ["Šířka řeky", 2, 20] },
     road: { size: ["Šířka cesty", 2, 12], main: true },
+    mountain: { size: ["Šířka hřebene", 4, 40], hint: "Kresli hřebeny hor. Jednotky přes ně neprojdou." },
+    wall: { size: ["Tloušťka hradby", 2, 5], hint: "Kresli hradby. Projít se dá jen tam, kde přes ně vede cesta (brána)." },
     tree: { size: ["Poloměr štětce", 4, 200] },
     gold: { amount: true, hint: "Klikni pro nový důl, táhni pro přesun." },
     base: { hint: "Klikni pro novou základnu (2–16), táhni pro přesun." },
@@ -49,7 +51,11 @@
   /* ---------- stav ---------- */
   let doc = blank();
   let tool = "water";
-  const sizes = { water: 6, road: 4, tree: 20, erase: 20 };
+  const sizes = { water: 6, road: 4, mountain: 12, wall: 3, tree: 20, erase: 20 };
+  // tahy s šířkou "hw": voda, hory a hradby
+  const HW_KINDS = { water: ["water", "MAX_WATER"], mountain: ["mountains", "MAX_MOUNTAINS"], wall: ["walls", "MAX_WALLS"] };
+  const isStroke = k => k === "water" || k === "road" || k === "mountain" || k === "wall";
+  const allStrokes = () => [...doc.water, ...doc.roads, ...doc.mountains, ...doc.walls];
   const view = { real: false, grid: true, zones: true };
   const cam = { x: 0, y: 0 }; // levý horní roh pohledu v art px
   let zoom = 1; // obrazovkových px na art px
@@ -117,7 +123,7 @@
   const uniq = (pts, gap) => pts.filter((p, i) => pts.findIndex(q => dist(p, q) < gap) === i);
 
   // Je bod (logické souřadnice) blíž než `extra` art px od hrany nějaké vody? Cesty přes vodu se záměrně ignorují.
-  const nearWater = (lx, ly, extra) => doc.water.some(s => segDist([lx / 2, ly / 2], s.pts) < s.hw + extra);
+  const nearWater = (lx, ly, extra) => [...doc.water, ...doc.mountains, ...doc.walls].some(s => segDist([lx / 2, ly / 2], s.pts) < s.hw + extra);
 
   function layout() {
     if (!layoutCache) {
@@ -129,7 +135,7 @@
   }
 
   function totalPoints() {
-    return doc.water.reduce((n, s) => n + s.pts.length, 0) + doc.roads.reduce((n, s) => n + s.pts.length, 0);
+    return allStrokes().reduce((n, s) => n + s.pts.length, 0);
   }
 
   function segDist(p, pts) {
@@ -219,7 +225,7 @@
     doc.trees = doc.trees.filter(keep);
     doc.gold = doc.gold.filter(keep);
     doc.bases = doc.bases.filter(keep);
-    for (const s of [...doc.water, ...doc.roads]) s.pts = s.pts.map(([x, y]) => [clamp(x, 0, w), clamp(y, 0, h)]);
+    for (const s of allStrokes()) s.pts = s.pts.map(([x, y]) => [clamp(x, 0, w), clamp(y, 0, h)]);
     scene = null;
   }
 
@@ -312,12 +318,16 @@
     const tol = 3 / zoom;
 
     for (let i = doc.roads.length - 1; i >= 0; i--) if (segDist(p, doc.roads[i].pts) <= doc.roads[i].w + tol) return { kind: "road", i };
-    for (let i = doc.water.length - 1; i >= 0; i--) if (segDist(p, doc.water[i].pts) <= doc.water[i].hw + tol) return { kind: "water", i };
+    for (const kind of ["wall", "mountain", "water"]) {
+      const list = doc[HW_KINDS[kind][0]];
+      for (let i = list.length - 1; i >= 0; i--) if (segDist(p, list[i].pts) <= list[i].hw + tol) return { kind, i };
+    }
+
     return null;
   }
 
   function removeObject(hit) {
-    const list = hit.kind === "base" ? doc.bases : hit.kind === "gold" ? doc.gold : hit.kind === "tree" ? doc.trees : hit.kind === "road" ? doc.roads : doc.water;
+    const list = hit.kind === "base" ? doc.bases : hit.kind === "gold" ? doc.gold : hit.kind === "tree" ? doc.trees : hit.kind === "road" ? doc.roads : hit.kind === "mountain" ? doc.mountains : hit.kind === "wall" ? doc.walls : doc.water;
     list.splice(hit.i, 1);
   }
 
@@ -333,14 +343,14 @@
 
   /* ---------- nástroje: tahy (voda, cesta) ---------- */
   function beginStroke(kind, p) {
-    const list = kind === "water" ? doc.water : doc.roads;
-    const max = kind === "water" ? DOC.MAX_WATER : DOC.MAX_ROADS;
+    const list = kind === "road" ? doc.roads : doc[HW_KINDS[kind][0]];
+    const max = kind === "road" ? DOC.MAX_ROADS : DOC[HW_KINDS[kind][1]];
     const starts = orbit(p[0], p[1], W(), H());
 
     if (list.length + starts.length > max) return say(`Víc tahů už se nevejde (nejvýše ${max}).`, "error");
 
-    const strokes = starts.map(([x, y]) => (kind === "water"
-      ? { pts: [[r1(x), r1(y)]], hw: sizes.water }
+    const strokes = starts.map(([x, y]) => (kind !== "road"
+      ? { pts: [[r1(x), r1(y)]], hw: sizes[kind] }
       : { pts: [[r1(x), r1(y)]], w: sizes.road, main: $("o-main").checked }));
 
     list.push(...strokes);
@@ -455,6 +465,8 @@
     if (what === "all" || what === "base") doc.bases = doc.bases.filter(b => !hit(b.x, b.y));
     if (what === "all" || what === "water") doc.water = doc.water.filter(s => segDist(p, s.pts) >= radius + s.hw);
     if (what === "all" || what === "road") doc.roads = doc.roads.filter(s => segDist(p, s.pts) >= radius + s.w);
+    if (what === "all" || what === "mountain") doc.mountains = doc.mountains.filter(s => segDist(p, s.pts) >= radius + s.hw);
+    if (what === "all" || what === "wall") doc.walls = doc.walls.filter(s => segDist(p, s.pts) >= radius + s.hw);
   }
 
   /* ---------- myš ---------- */
@@ -486,7 +498,7 @@
     layoutCache = null;
     drag = { kind: "none", before: snapshot(), remembered: false };
 
-    if (tool === "water" || tool === "road") {
+    if (isStroke(tool)) {
       beginStroke(tool, p);
     } else if (tool === "tree") {
       drag.kind = "brush";
@@ -539,7 +551,7 @@
     if (!drag) return updateCursor(p);
     if (!(ev.buttons & 1)) return;
 
-    if (drag.kind === "water" || drag.kind === "road") extendStroke(p);
+    if (isStroke(drag.kind)) extendStroke(p);
     else if (drag.kind === "move") moveObject(drag.hit, p);
     else if (drag.kind === "brush" && tool === "tree") sprayTrees(p);
     else if (drag.kind === "brush" && tool === "erase") eraseAt(p);
@@ -572,7 +584,7 @@
 
     if (!drag) return;
 
-    if (drag.kind === "water" || drag.kind === "road") finishStroke();
+    if (isStroke(drag.kind)) finishStroke();
     touched();
     drag = null;
     changed();
@@ -720,6 +732,10 @@
       const road = doc.roads[stroke.i];
       items.push({ head: "Cesta" }, { label: "Hlavní cesta (širší brod)", checked: !!road.main, run: () => mutate(() => { road.main = !road.main; }) },
         { label: "Smazat cestu", run: () => mutate(() => removeObject(stroke)) });
+    } else if (stroke && stroke.kind === "mountain") {
+      items.push({ head: "Hory" }, { label: "Smazat hřeben", run: () => mutate(() => removeObject(stroke)) });
+    } else if (stroke && stroke.kind === "wall") {
+      items.push({ head: "Hradba" }, { label: "Smazat hradbu", run: () => mutate(() => removeObject(stroke)) });
     } else if (stroke) {
       items.push({ head: "Voda" }, { label: "Smazat tah vody", run: () => mutate(() => removeObject(stroke)) });
     }
@@ -768,6 +784,8 @@
   function drawObjects(u, x0, y0, x1, y1) {
     for (const s of doc.water) strokeLine(s.pts, s.hw, "#2f6fb0");
     for (const s of doc.roads) strokeLine(s.pts, s.w, s.main ? "#b09060" : "#8a7048");
+    for (const s of doc.mountains) strokeLine(s.pts, s.hw, "#8d8a9c");
+    for (const s of doc.walls) strokeLine(s.pts, s.hw, "#c9c2d8");
 
     const tr = Math.max(3.4, 2 * u);
     g.fillStyle = "#1f4a2a";
@@ -848,7 +866,7 @@
   }
 
   function cursorRadius() {
-    return tool === "road" ? sizes.road : tool === "water" ? sizes.water : tool === "tree" ? sizes.tree : tool === "erase" ? sizes.erase : 0;
+    return tool === "road" ? sizes.road : tool === "water" ? sizes.water : tool === "mountain" ? sizes.mountain : tool === "wall" ? sizes.wall : tool === "tree" ? sizes.tree : tool === "erase" ? sizes.erase : 0;
   }
 
   function drawCursor(u, x0, y0, x1, y1) {
@@ -1002,7 +1020,7 @@
     }));
 
     $("e-summary").textContent =
-      `Hráči: ${doc.bases.length} · doly: ${doc.gold.length} · stromy: ${doc.trees.length} · voda: ${doc.water.length} · cesty: ${doc.roads.length}`;
+      `Hráči: ${doc.bases.length} · doly: ${doc.gold.length} · stromy: ${doc.trees.length} · voda: ${doc.water.length} · cesty: ${doc.roads.length} · hory: ${doc.mountains.length} · hradby: ${doc.walls.length}`;
   }
 
   /* ---------- server a soubory ---------- */
@@ -1048,27 +1066,6 @@
 
     replaceDoc(clean, fromServer ? clean.id : "");
     say(`Otevřeno: ${clean.name}.`, "ok");
-  }
-
-  // Vestavěné mapy nejsou soubory; z jejich dat se sestaví přibližná upravitelná kopie.
-  function docFromBuiltin(m) {
-    const water = m.terrain.rivers.map(r => {
-      if (!r.legacy) return { pts: r.pts, hw: r.hw };
-      const pts = [];
-      for (let y = 0; y <= m.size[1]; y += 10) pts.push([MAPS.brookX(y), y]);
-      return { pts, hw: 6 };
-    });
-
-    return {
-      format: DOC.FORMAT, version: DOC.VERSION,
-      id: slug(`${m.id}-kopie`), name: `${m.name} (kopie)`.slice(0, 32), description: m.description,
-      size: m.size, seed: 1, autoRoads: false,
-      bases: m.slots.map(s => ({ x: s.hq.x, y: s.hq.y })),
-      gold: m.gold.map(gm => gm.slice(0, 3)),
-      trees: m.trees,
-      water,
-      roads: m.terrain.roads.filter(r => r.pts && r.pts.length > 1).map(r => ({ pts: r.pts, w: r.w, main: !!r.main }))
-    };
   }
 
   async function save() {
@@ -1200,18 +1197,6 @@
       }, canEdit ? async () => { await deleteMap(m.id); renderOpenList(); } : null));
     }
 
-    parts.push(head("Vestavěné mapy (otevřou se jako kopie)"));
-
-    for (const m of MAPS.list.filter(x => MAPS.isBuiltIn(x.id))) {
-      parts.push(mapRow(m.name, `${m.size[0] * 2}×${m.size[1] * 2} · hráčů: ${m.players}`, () => {
-        if (!confirmDiscard()) return;
-        adopt(docFromBuiltin(m), false);
-        dirty = true;
-        renderTitle();
-        $("d-open").close();
-      }));
-    }
-
     box.replaceChildren(...parts);
   }
 
@@ -1269,7 +1254,6 @@
 
     if (!name) return fail("Vyplň název mapy.");
     if (!ID_RE.test(id)) return fail("Identifikátor: 1 až 31 znaků a–z, 0–9 a pomlčka.");
-    if (MAPS.isBuiltIn(id)) return fail("Tento identifikátor patří vestavěné mapě.");
     if (!Number.isFinite(w) || !Number.isFinite(h)) return fail("Zadej rozměry mapy.");
 
     const saving = propsMode === "save" || propsMode === "saveas";
@@ -1354,7 +1338,7 @@
   $("e-my").addEventListener("change", scheduleDraw);
 
   /* ---------- klávesy ---------- */
-  const KEYS = { v: "move", w: "water", r: "road", t: "tree", g: "gold", b: "base", e: "erase" };
+  const KEYS = { v: "move", w: "water", m: "mountain", h: "wall", r: "road", t: "tree", g: "gold", b: "base", e: "erase" };
 
   document.addEventListener("keydown", ev => {
     if (ev.target.matches("input, textarea, select") || document.querySelector("dialog[open]")) return;
@@ -1439,12 +1423,7 @@
     const mine = serverMaps.find(m => m.id === id);
     if (mine) return adopt(mine, true);
 
-    const built = MAPS.get(id);
-    if (built && MAPS.isBuiltIn(id)) {
-      adopt(docFromBuiltin(built), false);
-      dirty = true;
-      renderTitle();
-    } else {
+    {
       say(`Mapa „${id}“ nebyla nalezena.`, "error");
     }
   }

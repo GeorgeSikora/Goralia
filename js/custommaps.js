@@ -30,7 +30,7 @@
 
     for (const raw of Array.isArray(data.maps) ? data.maps : []) {
       const { doc } = PK.maps.normalizeDoc(raw);
-      if (!doc || PK.maps.isBuiltIn(doc.id)) continue;
+      if (!doc) continue;
 
       ids.add(doc.id);
       const key = JSON.stringify(doc);

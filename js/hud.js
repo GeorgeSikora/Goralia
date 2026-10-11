@@ -279,10 +279,22 @@
     }))];
 
     let y = 3;
+    const compact = rows.length > 9; // velké mapy: úsporný seznam bez rámečků
 
     for (const row of rows) {
       const w = 6 + (row.time ? 0 : 12) + PK.textWidth(row.label) + 3;
       const x = V.w - 3 - V.inset - w;
+
+      if (compact && !row.time) {
+        g.fillStyle = "rgba(16,12,28,0.72)";
+        g.fillRect(x, y, w, 9);
+        g.fillStyle = row.out ? "#4a4560" : teamCss(row.team);
+        g.fillRect(x + 3, y + 2, 5, 5);
+        T(g, row.label, x + 11, y + 1, row.out ? MUTED : row.me ? 0xffe08a : TEXT);
+        if (row.out) { g.fillStyle = BAD; g.fillRect(x + 10, y + 4, w - 12, 1); }
+        y += 10;
+        continue;
+      }
 
       g.drawImage(frame(w, 15, "plaque"), x, y);
 
@@ -327,7 +339,7 @@
     if (vm.placement) hint = "UMÍSTI STAVBU · KLIKNI NA MAPU";
     else if (vm.spellMode) hint = "OHNIVÁ KOULE · KLIKNI NA CÍL";
     else if (vm.commandMode) hint = "ROZKAZ · KLIKNI NA CÍL";
-    else if (vm.spectator) hint = vm.specTeam ? `DIVÁK · ${vm.specName.toUpperCase()}` : "DIVÁK · SLEDUJEŠ ZÁPAS";
+    else if (vm.spectator) hint = vm.specTeam ? `HRÁČ ${vm.specName.toUpperCase()}` : "DIVÁK · SLEDUJEŠ ZÁPAS";
     else if (vm.spectating) hint = "VYPADL JSI · SLEDUJEŠ HRU";
 
     if (hint) {

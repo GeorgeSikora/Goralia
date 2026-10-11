@@ -813,13 +813,16 @@ wss.on("connection", (ws, req) => {
 function flush(room) {
   const match = room.match;
 
+  // Suroviny (hlavně stromy) se skoro nemění, proto plný seznam jen jednou za sekundu, jinak jen změny.
+  const full = (room.tickNo = (room.tickNo || 0) + 1) % 20 === 1;
+
   room.slots.forEach((slot, i) => {
-    if (slot.kind === "human" && slot.client) send(slot.client, match.snapshot(R.TEAMS[i]));
+    if (slot.kind === "human" && slot.client) send(slot.client, match.snapshot(R.TEAMS[i], full));
   });
 
   // Diváci dostávají stejný snímek bez soukromých zpráv; jeden společný pro všechny.
   if (room.spectators.size) {
-    const spec = match.snapshot(R.TEAMS[room.roster[0].slot]);
+    const spec = match.snapshot(R.TEAMS[room.roster[0].slot], full);
     spec.n = [];
     // suroviny, limit jednotek a vylepšení každého týmu: [slot, zlato, dřevo, limit, zbroj, zbraně]
     spec.ec = room.roster.map(p => {

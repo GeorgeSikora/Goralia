@@ -17,7 +17,6 @@ const docs = new Map();
 function build(raw) {
   const { doc, errors } = MAPS.normalizeDoc(raw);
   if (!doc) return { errors };
-  if (MAPS.isBuiltIn(doc.id)) return { errors: ["Toto id patří vestavěné mapě."] };
 
   const map = MAPS.compileDoc(doc);
   const problems = CHECK.check(map);

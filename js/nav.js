@@ -22,7 +22,7 @@
       this.rasterize(map.terrain);
 
       const n = this.w * this.h;
-      this.maxExpand = Math.max(MAX_EXPAND, Math.floor(n / 3));
+      this.maxExpand = Math.max(MAX_EXPAND, n);
       this.seq = 0;
       this.stamp = new Uint32Array(n);
       this.gs = new Float32Array(n);
@@ -63,24 +63,23 @@
         }
       };
 
-      for (const r of rec.rivers) {
-        if (r.legacy) {
-          for (let cy = 0; cy < h; cy++) {
-            const ay = (cy + 0.5) * step;
-            const half = MAPS.brookHW(ay) - 1;
-            const bx = MAPS.brookX(ay);
+      for (const r of rec.rivers) paint(r.pts, r.hw - 1, blocked);
 
-            for (let cx = 0; cx < w; cx++) {
-              if (Math.abs((cx + 0.5) * step - bx) < half) blocked[cy * w + cx] = 1;
-            }
-          }
-        } else {
-          paint(r.pts, r.hw - 1, blocked);
-        }
+      // hradby: průchodné jen v místě cesty (brána)
+      const wall = new Uint8Array(w * h);
+      for (const wl of rec.walls || []) {
+        paint(wl.pts, MAPS.wallR(wl), wall);
+        paint(wl.pts.map(([x, y]) => [x, y + MAPS.WALL_FACE]), MAPS.wallR(wl), wall);
       }
 
       for (const road of rec.roads) paint(road.pts, road.w * (road.main ? 0.8 : 0.5), ford);
+      const gate = new Uint8Array(w * h);
+      for (const road of rec.roads) paint(road.pts, road.w * 1.1, gate);
       for (let i = 0; i < blocked.length; i++) if (ford[i]) blocked[i] = 0;
+      for (let i = 0; i < blocked.length; i++) if (wall[i] && !gate[i]) blocked[i] = 1;
+
+      // hory neprojdeš nikde
+      for (const m of rec.mountains || []) paint(m.pts, m.hw - 1, blocked);
     }
 
     index(x, y) {

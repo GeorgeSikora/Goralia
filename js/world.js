@@ -27,9 +27,8 @@
   const Z_FRAME = 4;
   const Z_TERRACE = 5;
   const Z_BANK = 6;
-
-  // The original brook (Valley map, rivers: [{ legacy: true }]) is shared with the walkability grid.
-  const { brookX, brookHW } = PK.maps;
+  const Z_ROCK = 7; // hory
+  const Z_WALL = 8; // hradby
 
   // 1 = bujná tráva, 0 = popel. Popel leží za hranicí ash.edge nebo uvnitř kruhů ash.circles.
   const lushAt = (rc, x, y) => {
@@ -212,7 +211,6 @@
     const { toneMap, ashMap, rivE } = b;
 
     // river raster: distance to the nearest river centre line and its half-width there
-    const legacyRiver = rec.rivers.some(r => r.legacy);
     const rd = new Float32Array(W * H).fill(1e6);
     const rhw = new Float32Array(W * H);
 
@@ -244,6 +242,40 @@
         }
       }
     }
+
+    // hory a hradby: nejbližší střed hřebene a jeho šířka, resp. maska korunou zdi
+    const mrd = new Float32Array(W * H).fill(1e6);
+    const mhw = new Float32Array(W * H);
+    const wallTop = new Uint8Array(W * H);
+
+    const nearStroke = (pts, pad, visit) => {
+      for (let i = 0; i < pts.length - 1; i++) {
+        const [ax, ay] = pts[i];
+        const [bx, by] = pts[i + 1];
+        const x0 = Math.max(0, Math.floor(Math.min(ax, bx) - pad));
+        const x1 = Math.min(W - 1, Math.ceil(Math.max(ax, bx) + pad));
+        const y0 = Math.max(0, Math.floor(Math.min(ay, by) - pad));
+        const y1 = Math.min(H - 1, Math.ceil(Math.max(ay, by) + pad));
+        const dx = bx - ax;
+        const dy = by - ay;
+        const len2 = dx * dx + dy * dy || 1;
+
+        for (let y = y0; y <= y1; y++) {
+          for (let x = x0; x <= x1; x++) {
+            const t = clamp(((x - ax) * dx + (y - ay) * dy) / len2, 0, 1);
+            visit(y * W + x, Math.hypot(x - (ax + dx * t), y - (ay + dy * t)));
+          }
+        }
+      }
+    };
+
+    for (const m of rec.mountains) {
+      nearStroke(m.pts, m.hw + 8, (i, d) => {
+        if (d < mrd[i]) { mrd[i] = d; mhw[i] = m.hw; }
+      });
+    }
+
+    for (const wl of rec.walls) nearStroke(wl.pts, wl.hw * 1.5 + 3, (i, d) => { if (d < wl.hw * 1.5 + 1) wallTop[i] = 1; });
 
     const paved = (x, y) =>
       rec.paveX.some(([a, c]) => x >= a && x < c) ||
@@ -283,11 +315,6 @@
         /* ---- river + banks ---- */
         let hw = 0;
         let bdx = 1e6;
-
-        if (legacyRiver) {
-          hw = brookHW(y);
-          bdx = Math.abs(x - brookX(y) + (vnoise(y / 7, 2.2, 6) - 0.5) * 2.4);
-        }
 
         if (rd[i] < 1e5) {
           const pd = rd[i] + (vnoise(y / 7, x / 9, 6) - 0.5) * 2.4;
@@ -404,6 +431,86 @@
           }
         }
 
+        /* ---- hory: skalní masiv, hrana s dlaždicí suti kolem ---- */
+        if (mrd[i] < 1e5 && z !== Z_FRAME) {
+          const r = mhw[i];
+          const pd = mrd[i] + (vnoise(x / 5, y / 5, 33) - 0.5) * 3.4;
+
+          if (pd < r) {
+            z = Z_ROCK;
+            const depth = clamp((r - pd) / r, 0, 1);
+            const n1 = fbm(x / 5, y / 5, 35, 3);
+            const n2 = fbm((x + 1.8) / 5, (y + 2.2) / 5, 35, 3);
+            let t = 1.4 + depth * 2.1 + (n1 - 0.5) * 3 + (n1 > n2 ? 0.9 : -0.5);
+            let idx = clamp(dither(t, x, y, 0.5), 0, 5);
+            if ((y + ((x >> 3) & 3)) % 6 === 0 && hash(x, y, 36) > 0.35) idx = Math.max(0, idx - 1);
+            col = S[idx];
+            if (pd > r - 1.3) col = S[0];
+            if (depth < 0.35 && hash(x, y, 37) > 0.93) col = G[2];
+          } else if (pd < r + 5.5 && z === Z_GRASS) {
+            // podhůří: suť a kameny na trávě
+            const k = 1 - (pd - r) / 5.5;
+            if (hash(x, y, 38) < 0.5 * k + 0.1) col = hash(x, y, 39) > 0.55 ? S[2] : S[1];
+            else col = mix(col, S[1], 0.32 * k);
+            if (hash(x, y, 41) > 0.965) col = S[4];
+          }
+        }
+
+        /* ---- hradby: široká koruna zdi s cimbuřím, vysoký líc o šest pixelů níž, stín na zemi; v místě cesty je brána ---- */
+        if (z !== Z_FRAME && z !== Z_WATER && nd[i] >= 1.12) {
+          const FACE = 6;
+          let below = 0;
+          for (let k = 1; k <= FACE && !below; k++) if (y >= k && wallTop[i - k * W]) below = k;
+
+          // nepravidelné kvádry: šířka i posun se mění po řádcích, každý kámen má vlastní odstín
+          const stone = (rowH, base, spread) => {
+            const row = Math.floor(y / rowH);
+            const w = 5 + Math.floor(hash(row, 3, 47) * 4);
+            const off = Math.floor(hash(row, 5, 48) * 9);
+            const bx = Math.floor((x + off) / w);
+            const mortar = (x + off) % w === 0 || y % rowH === rowH - 1;
+            const tone = hash(bx, row, 49);
+            let idx = base + (tone > 0.78 ? spread : tone < 0.22 ? -spread : 0);
+            if ((x + off) % w === 1 && y % rowH === 0) idx += 1; // světlý roh kvádru
+            return { idx: clamp(idx, 0, 5), mortar };
+          };
+          const moss = fbm(x / 3.5, y / 3.5, 52, 2) > 0.66 && hash(x, y, 53) > 0.35;
+
+          if (wallTop[i]) {
+            z = Z_WALL;
+            const north = !wallTop[i - W];
+            const south = !wallTop[i + W];
+            const merlon = (x >> 2) % 2 === 0;
+            const st = stone(3, 4, 1);
+            col = st.mortar ? S[2] : S[st.idx];
+            if (hash(x, y, 54) > 0.97) col = S[st.idx > 3 ? 3 : 5];
+            if (moss) col = hash(x, y, 55) > 0.5 ? G[2] : G[1];
+            if (north) col = merlon ? S[5] : S[2];
+            else if (!wallTop[i - 2 * W] && !merlon) col = S[3];
+            if (south) col = S[1];
+            if (!wallTop[i - 1]) col = S[5];
+            else if (!wallTop[i + 1]) col = S[0];
+            else if (!wallTop[i + 2]) col = S[2];
+          } else if (below) {
+            z = Z_WALL;
+            const st = stone(3, 2, 1);
+            col = st.mortar ? S[0] : S[st.idx];
+            if (below <= 1) col = S[3];
+            // světlejší horní hrana kamene, tmavší spodní
+            if (!st.mortar && y % 3 === 0) col = S[Math.min(5, st.idx + 1)];
+            if (below >= FACE - 1) col = S[0];
+            // praskliny a mech ve spodní části zdi
+            if (hash(x >> 1, y, 56) > 0.975 && below > 1) col = S[0];
+            if (moss && below >= 3) col = hash(x, y, 57) > 0.45 ? G[1] : G[0];
+            else if (below === FACE - 1 && hash(x, 0, 58) > 0.5) col = G[0];
+          } else if (z === Z_GRASS || z === Z_PATH) {
+            let sh = 0;
+            for (let k = FACE + 1; k <= FACE + 6 && !sh; k++) if (y >= k && wallTop[i - k * W]) sh = k - FACE;
+            if (!sh) for (let k = 1; k <= 5 && !sh; k++) if (wallTop[i - k]) sh = k; // stín vpravo od zdi
+            if (sh) col = mix(col, S[0], [0.7, 0.55, 0.42, 0.3, 0.2, 0.1][sh - 1]);
+          }
+        }
+
         zone[i] = z;
         T.set(x, y, col);
       }
@@ -478,26 +585,6 @@
           T.set(x, y, c);
           zone[y * W + x] = Z_TERRACE;
         }
-      }
-    }
-
-    /* ---- stepping stones & reeds along the brook ---- */
-    for (let y = 8; legacyRiver && y < H - 8; y += 3) {
-      const bx = brookX(y);
-      const hw = brookHW(y);
-
-      for (const side of [-1, 1]) {
-        if (hash(y, side, 61) > 0.42) continue;
-        const x = Math.round(bx + side * (hw + 3 + hash(y, side, 62) * 2));
-        const i = y * W + x;
-        if (zone[i] === Z_PATH || zone[i] === Z_FRAME) continue;
-
-        // reed: three leaning blades
-        const c = hash(y, side, 63) > 0.5 ? G[4] : G[3];
-        T.set(x, y, c);
-        T.set(x, y - 1, c);
-        T.set(x + side, y - 2, G[5]);
-        T.set(x - side, y - 1, G[2]);
       }
     }
 
@@ -669,6 +756,100 @@
     };
 
     for (const [name, x, y, force, r] of rec.doodads.landmarks) add(name, x, y, force, r);
+
+    // hory: vrcholy podél hřebene (u širokých horských pásů ve dvou řadách) a podhůří na okraji
+    for (const m of rec.mountains) {
+      const pts = m.pts;
+      const wide = m.hw >= 14;
+      const kind = m.hw < 9 ? "S" : m.hw < 17 ? "M" : "L";
+      let carry = 0;
+
+      for (let i = 0; i < pts.length - 1; i++) {
+        const [ax, ay] = pts[i];
+        const [bx, by] = pts[i + 1];
+        const len = Math.hypot(bx - ax, by - ay) || 1;
+        const nx = -(by - ay) / len;
+        const ny = (bx - ax) / len;
+        const step = Math.max(6, m.hw * (wide ? 0.62 : 0.85));
+
+        for (let d = carry; d < len; d += step) {
+          const t = d / len;
+          const px = ax + (bx - ax) * t;
+          const py = ay + (by - ay) * t;
+          const rows = wide ? [-0.5, 0.5] : [0];
+
+          for (const row of rows) {
+            const off = (row + (R() - 0.5) * 0.35) * m.hw;
+            const x = px + nx * off;
+            const y = py + ny * off + (wide ? m.hw * 0.25 : 0);
+            const size = kind === "L" && R() < 0.35 ? "M" : kind === "M" && R() < 0.25 ? "S" : kind;
+            const variant = Math.floor(R() * 3);
+            const sprite = dd[`peak${size}${variant}`];
+            if (!sprite || x < 6 || x > W - 6 || y < 14 || y > H - 4) continue;
+            list.push({ name: `peak${size}${variant}`, spr: sprite, x: Math.round(x), y: Math.round(y), r: 6, ph: R() * 6.28 });
+          }
+
+          carry = d + step - len;
+        }
+
+        carry = Math.max(0, carry);
+      }
+
+      // podhůří kolem hřebene
+      for (let i = 0; i < pts.length - 1; i++) {
+        const [ax, ay] = pts[i];
+        const [bx, by] = pts[i + 1];
+        const len = Math.hypot(bx - ax, by - ay) || 1;
+        const nx = -(by - ay) / len;
+        const ny = (bx - ax) / len;
+
+        for (let d = 4; d < len; d += 15 + R() * 20) {
+          const side = R() < 0.5 ? -1 : 1;
+          const off = side * (m.hw + 3 + R() * 4);
+          const x = ax + (bx - ax) * (d / len) + nx * off;
+          const y = ay + (by - ay) * (d / len) + ny * off;
+          if (x > 10 && x < W - 10 && y > 24 && y < H - 8 && zone[Math.round(y) * W + Math.round(x)] === Z_GRASS) add("foothill", x, y, true, 6);
+        }
+      }
+    }
+
+    // hradby: věže na koncích, v lomech a po ~70 px; u cesty (brány) dvojice věží po stranách
+    for (const wl of rec.walls) {
+      const pts = wl.pts;
+      const tower = (x, y) => {
+        if (x < 8 || x > W - 8 || y < 18 || y > H - 4) return;
+        if (list.some(d => d.name === "wallTower" && Math.hypot(d.x - x, d.y - y) < 12)) return;
+        list.push({ name: "wallTower", spr: dd.wallTower, x: Math.round(x), y: Math.round(y + 2), r: 6, ph: 0 });
+      };
+
+      for (const road of rec.roads) {
+        for (let i = 0; i < pts.length - 1; i++) {
+          const [ax, ay] = pts[i];
+          const [bx, by] = pts[i + 1];
+          const dx = bx - ax;
+          const dy = by - ay;
+          const len = Math.hypot(dx, dy) || 1;
+
+          for (let j = 0; j < road.pts.length - 1; j++) {
+            const [cx, cy] = road.pts[j];
+            const [ex, ey] = road.pts[j + 1];
+            const rx = ex - cx;
+            const ry = ey - cy;
+            const den = dx * ry - dy * rx;
+            if (Math.abs(den) < 1e-6) continue;
+            const u = ((cx - ax) * ry - (cy - ay) * rx) / den;
+            const v = ((cx - ax) * dy - (cy - ay) * dx) / den;
+            if (u < 0 || u > 1 || v < 0 || v > 1) continue;
+
+            const gx = ax + dx * u;
+            const gy = ay + dy * u;
+            const gap = road.w * 0.8 + 5;
+            tower(gx - dx / len * gap, gy - dy / len * gap);
+            tower(gx + dx / len * gap, gy + dy / len * gap);
+          }
+        }
+      }
+    }
     for (const entry of rec.doodads.scatter) scatter(...entry);
 
     list.sort((a, b) => a.y - b.y);
@@ -959,9 +1140,8 @@
 
   Object.assign(world, {
     build, preview, forget, drawGround, drawClouds, drawMist, drawGrade, light, glow, shadow,
-    brookX, brookHW,
     zoneAt: (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? Z_FRAME : zone[(y | 0) * W + (x | 0)]),
-    Z: { GRASS: Z_GRASS, PATH: Z_PATH, PLAZA: Z_PLAZA, WATER: Z_WATER, FRAME: Z_FRAME, TERRACE: Z_TERRACE, BANK: Z_BANK }
+    Z: { GRASS: Z_GRASS, PATH: Z_PATH, PLAZA: Z_PLAZA, WATER: Z_WATER, FRAME: Z_FRAME, TERRACE: Z_TERRACE, BANK: Z_BANK, ROCK: Z_ROCK, WALL: Z_WALL }
   });
 
   PK.world = world;

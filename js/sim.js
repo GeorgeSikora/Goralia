@@ -42,6 +42,7 @@ class Match {
     this.units = [];
     this.buildings = [];
     this.resources = [];
+    this.resChanged = new Map(); // suroviny, jejichž množství se změnilo od posledního endTick (pro rozdílové snímky)
     this.active = [];
     this.out = new Set();
     this.econ = {};
@@ -720,6 +721,7 @@ class Match {
         unit.harvestTimer = 0;
         unit.carry = resource.type;
         resource.amount = Math.max(0, resource.amount - 10);
+        this.resChanged.set(resource.id, resource);
       }
     }
 
@@ -866,7 +868,8 @@ class Match {
 
   /* ---------- state sent to clients ---------- */
   // Jednotka: [id, typ, tým, x, y, hp, maxHp, facing, nese, úroveň, xp, rozkaz, oheň, léčení, práce, poškození]
-  snapshot(team) {
+  // full = false: suroviny jen ty, které se v tomto kroku změnily (stromy se kácejí, ale jinak jsou stále stejné).
+  snapshot(team, full = true) {
     const eco = this.econ[team] || { gold: 0, wood: 0 };
 
     return {
@@ -910,7 +913,8 @@ class Match {
         b.research ? Math.round((1 - b.research.left / b.research.total) * 100) / 100 : 0
       ]),
       // Surovina: [id, typ (0 zlato, 1 dřevo), x, y, množství]
-      r: this.resources.map(r => [
+      rf: full ? 1 : 0,
+      r: (full ? this.resources : [...this.resChanged.values()]).map(r => [
         r.id,
         r.type === "gold" ? 0 : 1,
         r.x,
@@ -924,6 +928,7 @@ class Match {
 
   endTick() {
     this.events = [];
+    this.resChanged.clear();
     for (const team of this.active) this.notes[team] = [];
   }
 }

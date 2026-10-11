@@ -213,6 +213,12 @@ function createAccounts(store, options = {}) {
     loginName.clear(key);
     if (user.banned) return { error: bannedText(user) };
 
+    // účet bez e-mailu (dřívější přihlášení přes Facebook) si e-mail doplní, pokud je volný
+    if (!user.email && email && !byEmail.has(email) && email !== adminEmail) {
+      user.email = email;
+      byEmail.set(email, user);
+    }
+
     user.lastLogin = Date.now();
     store.save();
     return { user };

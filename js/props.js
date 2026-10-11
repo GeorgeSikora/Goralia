@@ -10,6 +10,7 @@
   const { C, Pix, mix, hash } = PK;
 
   const G = C.g;
+  const S = C.s;
 
   /* ---------- trees ("Lanternwood") ---------- */
   function puff(P, cx, cy, rx, ry, seed, ramp) {
@@ -463,6 +464,97 @@
       P.rect(30, 38, 3, 2, C.s[2]);
       P.rect(9, 40, 6, 1, G[3]);
     }, { glow: { x: 21, y: 21, r: 20, a: 0.3, color: C.y[1], pulse: true }, sparkle: [[10, 12], [31, 24], [21, 6]] });
+
+    /* ---------- hory: vrcholy ve třech velikostech a několika tvarech ---------- */
+    // Osvětlení zleva shora: levá stěna světlá, pravá tmavá, na hřebeni sníh, u paty suť a mech.
+    const peak = (name, w, h, seed, snow) => sprite(name, w, h, w >> 1, h - 1, P => {
+      const ax = Math.round(w * (0.38 + hash(seed, 1, 5) * 0.24));
+      const apexY = Math.round(h * 0.04);
+      const base = h - 1;
+      const pts = [[0, base - 2]];
+      const left = 3 + Math.floor(w / 9);
+      const right = 3 + Math.floor(w / 9);
+
+      for (let i = 1; i <= left; i++) {
+        const t = i / (left + 1);
+        const jag = (hash(seed, i, 7) - 0.5) * (h * 0.16);
+        pts.push([ax * t + (hash(seed, i, 8) - 0.5) * 3, base - 2 - (base - 2 - apexY) * Math.pow(t, 0.8) + jag]);
+      }
+
+      pts.push([ax, apexY]);
+
+      for (let i = right; i >= 1; i--) {
+        const t = i / (right + 1);
+        const jag = (hash(seed, i + 20, 7) - 0.5) * (h * 0.16);
+        pts.push([ax + (w - 1 - ax) * (1 - t) + (hash(seed, i + 20, 8) - 0.5) * 3, base - 2 - (base - 2 - apexY) * Math.pow(t, 0.8) + jag]);
+      }
+
+      pts.push([w - 1, base - 2], [w - 3, base], [2, base]);
+
+      P.poly(pts, (x, y) => {
+        const side = (x - ax) / (w * 0.5);
+        const n = hash(x >> 1, y >> 1, seed + 3) - 0.5;
+        const rise = 1 - y / h; // 0 u paty, 1 na vrcholu
+        let l = -side * 0.9 + n * 0.55 + (hash(x, y, seed + 9) - 0.5) * 0.18;
+        // svislé žebro od vrcholu dolů dělí světlou a tmavou stěnu
+        if (Math.abs(x - (ax + (y - apexY) * 0.12)) < 1) l += 0.25;
+        let c = l > 0.55 ? S[5] : l > 0.2 ? S[4] : l > -0.2 ? S[3] : l > -0.55 ? S[2] : S[1];
+        // sněhová čepice s rozedraným okrajem
+        const capEdge = h * (snow ? 0.34 : 0.0) + (hash(x, seed, 6) - 0.5) * 5 + Math.abs(x - ax) * 0.35;
+        if (snow && y - apexY < capEdge) c = l > 0.1 ? C.white : 0xc9d8ee;
+        // suť a mech u paty
+        if (y > base - 4) c = hash(x, y, seed + 4) > 0.55 ? S[1] : S[0];
+        else if (rise < 0.22 && hash(x, y, seed + 5) > 0.84) c = G[1 + (hash(x, y, seed + 12) > 0.5 ? 1 : 0)];
+        return c;
+      });
+
+      // praskliny
+      for (let i = 0; i < 3; i++) {
+        const x0 = Math.round(w * (0.25 + 0.2 * i + hash(seed, i, 15) * 0.12));
+        const y0 = Math.round(h * (0.45 + hash(seed, i, 16) * 0.25));
+        P.line(x0, y0, x0 + (i % 2 ? 2 : -2), y0 + Math.round(h * 0.16), S[0]);
+      }
+    });
+
+    for (let i = 0; i < 3; i++) {
+      peak(`peakS${i}`, 22 + i * 2, 22 + i * 3, 11 + i * 17, false);
+      peak(`peakM${i}`, 34 + i * 4, 36 + i * 4, 31 + i * 13, i !== 1);
+      peak(`peakL${i}`, 50 + i * 6, 52 + i * 6, 51 + i * 11, true);
+    }
+
+    // podhůří: nízké balvany a kamenné hromady na okraji hor
+    sprite("foothill", 16, 9, 8, 8, P => {
+      P.poly([[0, 8], [2, 3], [6, 1], [10, 2], [14, 4], [15, 8]], (x, y) => {
+        const l = -((x - 7) / 8) * 0.7 + (hash(x, y, 71) - 0.5) * 0.5 - (y - 4) * 0.04;
+        return S[l > 0.35 ? 4 : l > -0.05 ? 3 : 2];
+      });
+      P.rect(2, 7, 11, 1, S[1]);
+      P.set(4, 3, G[3]);
+      P.set(5, 2, G[2]);
+    });
+
+    /* ---------- hradby: věž s cimbuřím ---------- */
+    sprite("wallTower", 16, 28, 8, 27, P => {
+      P.rect(2, 8, 12, 19, S[3]);
+      P.rect(2, 8, 4, 19, S[4]);
+      P.rect(11, 8, 3, 19, S[1]);
+      for (let y = 10; y < 26; y += 4) {
+        P.rect(2, y, 12, 1, S[2]);
+        for (let x = (y / 4) % 2 ? 3 : 5; x < 13; x += 4) P.rect(x, y + 1, 1, 3, S[2]);
+      }
+      // cimbuří
+      P.rect(1, 5, 14, 4, S[4]);
+      P.rect(1, 5, 14, 1, S[5]);
+      for (const x of [1, 6, 11]) P.rect(x, 2, 4, 3, S[4]);
+      for (const x of [1, 6, 11]) P.rect(x, 2, 4, 1, S[5]);
+      P.rect(1, 8, 14, 1, S[1]);
+      // střílna a patka
+      P.rect(7, 13, 2, 5, C.ink);
+      P.rect(7, 13, 2, 1, S[0]);
+      P.rect(1, 25, 14, 2, S[2]);
+      P.set(3, 24, G[3]);
+      P.set(4, 25, G[2]);
+    });
   }
 
   /* ---------- flames ---------- */

@@ -57,6 +57,10 @@
 
     const nav = NAV.forMap(map);
 
+    for (const [x, y] of map.gold) {
+      if (nav.isBlocked(x, y)) add("Některý důl leží ve vodě, na horách nebo na hradbě.");
+    }
+
     try {
       // Souvislé oblasti průchozích buněk (stejné propojení jako u hledání cesty), takže stačí jeden průchod mapou.
       const comp = new Int32Array(nav.w * nav.h);

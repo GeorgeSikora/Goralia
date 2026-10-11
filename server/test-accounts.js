@@ -368,7 +368,7 @@ async function testServerApi() {
       ...process.env,
       PORT: String(PORT),
       GORALIA_DATA_DIR: dataDir,
-      GORALIA_MAPS_DIR: tmp("goralia-maps-"),
+      GORALIA_MAPS_DIR: (() => { const d = tmp("goralia-maps-"); fs.copyFileSync(path.join(__dirname, "..", "maps", "valley.json"), path.join(d, "valley.json")); return d; })(),
       GORALIA_ADMIN_PASSWORD: ADMIN_PASSWORD,
       PUBLIC_URL: `http://localhost:${PORT}`,
       GOOGLE_CLIENT_ID: "gid",
@@ -410,7 +410,7 @@ async function testServerApi() {
     assert.strictEqual((await request("GET", "/")).headers["x-frame-options"], "DENY");
 
     const anon = await request("GET", "/api/me");
-    assert.deepStrictEqual(anon.json, { user: null, providers: { google: true, facebook: true } });
+    assert.deepStrictEqual(anon.json, { user: null, canEditMaps: true, providers: { google: true, facebook: true } });
     assert.strictEqual((await request("GET", "/api/neexistuje")).status, 404);
     assert.strictEqual((await request("PUT", "/api/me")).status, 405);
 

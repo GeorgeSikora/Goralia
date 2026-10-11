@@ -20,27 +20,7 @@
     };
   };
 
-  /* ---------- voda (společné pro vykreslení i průchodnost) ---------- */
-  // Původní potok z Údolí potoka: [y, x] v art px.
-  const BROOK = [
-    [0, 372], [25, 369], [48, 364], [75, 368], [105, 368], [128, 369],
-    [160, 368], [190, 376], [215, 388], [240, 384]
-  ];
-
-  const brookX = y => {
-    for (let i = 0; i < BROOK.length - 1; i++) {
-      if (y <= BROOK[i + 1][0]) {
-        const [y0, x0] = BROOK[i];
-        const [y1, x1] = BROOK[i + 1];
-        const t = (y - y0) / (y1 - y0);
-        return x0 + (x1 - x0) * (t * t * (3 - 2 * t));
-      }
-    }
-    return BROOK[BROOK.length - 1][1];
-  };
-
-  const brookHW = y => 6.2 + 1.5 * Math.sin(y * 0.11) + 1.1 * Math.sin(y * 0.31 + 1);
-
+  /* ---------- voda a skály (společné pro vykreslení i průchodnost) ---------- */
   function distToPolyline(x, y, pts) {
     let best = Infinity;
 
@@ -61,20 +41,34 @@
     let water = false;
 
     for (const r of rec.rivers) {
-      if (r.legacy) {
-        if (Math.abs(ax - brookX(ay)) < brookHW(ay) - 1) water = true;
-      } else if (distToPolyline(ax, ay, r.pts) < r.hw - 1) {
-        water = true;
-      }
+      if (distToPolyline(ax, ay, r.pts) < r.hw - 1) water = true;
     }
 
-    if (!water) return false;
+    return water && !onRoad(rec, ax, ay);
+  }
 
-    for (const road of rec.roads) {
-      if (distToPolyline(ax, ay, road.pts) < road.w * (road.main ? 0.8 : 0.5)) return false;
+  const onRoad = (rec, ax, ay) => rec.roads.some(road => distToPolyline(ax, ay, road.pts) < road.w * (road.main ? 0.8 : 0.5));
+
+  // Hradba je tenká zeď (půl šířky hw), k poloměru se přidává rezerva, aby mezi buňkami mřížky nezůstala škvíra.
+  const WALL_PAD = 1.5;
+  // Poloměr zdi shodný s vykreslením koruny; líc zdi (zhruba 3 px pod korunou) je taky neprůchodný.
+  const wallR = w => w.hw * 1.5 + 1 + WALL_PAD * 0.5;
+  const WALL_FACE = 3;
+  // Brána: průchod přes hradbu je o něco širší než samotná cesta (stejně jako vykreslená mezera).
+  const onGate = (rec, ax, ay) => rec.roads.some(road => distToPolyline(ax, ay, road.pts) < road.w * 1.1);
+
+  // Neprůchodná skála: hory (hřeben se šířkou) a hradby; cesta přes hradbu tvoří bránu, přes hory ne.
+  function isRock(rec, ax, ay) {
+    for (const m of rec.mountains || []) {
+      if (distToPolyline(ax, ay, m.pts) < m.hw - 1) return true;
     }
 
-    return true;
+    for (const w of rec.walls || []) {
+      const r = wallR(w);
+      if ((distToPolyline(ax, ay, w.pts) < r || distToPolyline(ax, ay - WALL_FACE, w.pts) < r) && !onGate(rec, ax, ay)) return true;
+    }
+
+    return false;
   }
 
   // Logické souřadnice, s malým odstupem (stromy a budovy nestojí na břehu).
@@ -105,61 +99,6 @@
     [s.hq.x + fx * 200, s.hq.y - fy * 126],
     [s.hq.x + fx * 270, s.hq.y + fy * 130]
   ];
-
-  // Stromy se generují v jedné čtvrtině/polovině a zrcadlí se, aby si byly strany rovné.
-  function genTrees(seed, LW, LH, slots, mines, clusters, perCluster, blocked = () => false, mirror = {}) {
-    const r = mulberry(seed);
-    const out = [];
-
-    const orbit = (x, y) => {
-      const pts = [[x, y]];
-      if (mirror.x) pts.push([LW - x, y]);
-      if (mirror.y) pts.push([x, LH - y]);
-      if (mirror.x && mirror.y) pts.push([LW - x, LH - y]);
-      return pts;
-    };
-
-    const ok = (x, y) =>
-      x >= 30 && x <= LW - 30 && y >= 64 && y <= LH - 30 &&
-      !blocked(x, y) &&
-      slots.every(s =>
-        Math.hypot(x - s.hq.x, y - s.hq.y) > 150 &&
-        Math.hypot(x - s.buildings[0].x, y - s.buildings[0].y) > 110) &&
-      mines.every(m => Math.hypot(x - m[0], y - m[1]) > 70) &&
-      out.every(t => Math.hypot(x - t[0], y - t[1]) > 30);
-
-    const centers = [];
-
-    for (const s of slots) {
-      const fx = s.facing;
-      const fy = s.buildings[0].y > s.hq.y ? 1 : -1;
-      centers.push([s.hq.x + fx * 30, s.hq.y - fy * 200], [s.hq.x + fx * 30, s.hq.y + fy * 230]);
-    }
-
-    for (let i = 0; i < clusters; i++) centers.push([60 + r() * (LW - 120), 90 + r() * (LH - 150)]);
-
-    for (const [cx, cy] of centers) {
-      for (let k = 0, placed = 0; k < 60 && placed < perCluster; k++) {
-        const a = r() * Math.PI * 2;
-        const d = 20 + r() * 120;
-        const x = Math.round(Math.min(LW - 30, Math.max(30, cx + Math.cos(a) * d)));
-        const y = Math.round(Math.min(LH - 30, Math.max(64, cy + Math.sin(a) * d)));
-
-        if (mirror.x && x > LW / 2) continue;
-        if (mirror.y && y > LH / 2) continue;
-
-        const pts = orbit(x, y);
-        const apart = pts.every((p, i) => pts.every((q, j) => j <= i || Math.hypot(p[0] - q[0], p[1] - q[1]) > 40));
-
-        if (apart && pts.every(([px, py]) => ok(px, py))) {
-          out.push(...pts);
-          placed++;
-        }
-      }
-    }
-
-    return out;
-  }
 
   /* ---------- recept terénu (art px) ---------- */
   const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
@@ -237,6 +176,7 @@
 
     return {
       rivers, roads, plazas, terraces, pave, paveX: [],
+      mountains: opts.mountains || [], walls: opts.walls || [],
       ash: { circles: ashCircles }, cracks,
       doodads: { landmarks, scatter },
       tufts: { x: 12, y: 22, w: W - 24, h: H - 35, n: Math.round(240 * area * 1.4), tries: Math.round(900 * area * 1.4) },
@@ -244,234 +184,9 @@
     };
   }
 
-  /* ---------- mapa 1: Údolí potoka (původní 1v1) ---------- */
-  const valleySlots = [
-    {
-      hq: { type: "hall", x: 120, y: 238 },
-      buildings: [{ type: "barracks", x: 191, y: 354 }],
-      units: [
-        { type: "worker", x: 173, y: 194 }, { type: "worker", x: 164, y: 266 },
-        { type: "soldier", x: 259, y: 234 }, { type: "soldier", x: 280, y: 255 }
-      ],
-      zone: { x0: 45, y0: 85, x1: 480, y1: 435 },
-      facing: 1,
-      spawn: [58, 29]
-    },
-    {
-      hq: { type: "hall", x: 840, y: 238 },
-      buildings: [{ type: "barracks", x: 769, y: 354 }],
-      units: [
-        { type: "worker", x: 787, y: 194 }, { type: "worker", x: 796, y: 266 },
-        { type: "soldier", x: 701, y: 234 }, { type: "soldier", x: 680, y: 255 }
-      ],
-      zone: { x0: 480, y0: 85, x1: 915, y1: 435 },
-      facing: -1,
-      spawn: [-58, 29]
-    }
-  ];
-
-  const valley = {
-    id: "valley",
-    name: "Údolí potoka",
-    players: 2,
-    size: [480, 240],
-    tag: "1v1",
-    description:
-      "Klidné údolí rozdělené potokem. Obě království sídlí na zelených březích. " +
-      "Každý má dva doly a hustý les za zády. " +
-      "Rychlá mapa pro souboj dvou hráčů, celá se vejde na obrazovku.",
-    slots: valleySlots,
-    gold: [[320, 112], [390, 394], [640, 112], [570, 394]],
-    trees: [
-      [29, 69], [64, 53], [102, 70], [143, 48], [192, 78], [232, 54],
-      [32, 382], [66, 427], [113, 404], [164, 430], [249, 416],
-      [434, 69], [466, 98], [502, 55],
-      [520, 397], [560, 425], [599, 394], [631, 423],
-      [706, 67], [754, 88], [919, 80], [920, 373], [890, 421], [737, 414],
-      [812, 58], [868, 96], [828, 428], [864, 392], [935, 410]
-    ],
-    terrain: {
-      rivers: [{ legacy: true }],
-      roads: [
-        { w: 9, main: true, pts: [[40, 148], [80, 138], [115, 132], [170, 128], [230, 127], [290, 129], [340, 129], [366, 129], [376, 138], [384, 152], [400, 160], [425, 161]] },
-        { w: 4.5, pts: [[95, 200], [98, 172], [106, 150], [114, 135]] },
-        { w: 4, pts: [[160, 74], [163, 96], [168, 116], [172, 128]] },
-        { w: 4, pts: [[195, 208], [196, 182], [198, 152], [200, 130]] },
-        { w: 4.5, pts: [[385, 200], [382, 172], [374, 150], [366, 135]] }
-      ],
-      plazas: [
-        { x: 60, y: 136, rx: 34, ry: 17, kind: "hall" },
-        { x: 95, y: 196, rx: 23, ry: 11, kind: "yard" },
-        { x: 420, y: 136, rx: 34, ry: 17, kind: "hall" },
-        { x: 385, y: 196, rx: 23, ry: 11, kind: "yard" }
-      ],
-      terraces: [],
-      pave: [],
-      paveX: [[0, 105], [375, 480]],
-      ash: { circles: [] },
-      cracks: [],
-      doodads: {
-        landmarks: [
-          ["ringstone", 292, 80, true, 22],
-          ["column", 340, 111, true, 5],
-          ["column", 340, 149, true, 5],
-          ["columnFallen", 322, 153, true, 9],
-          ["stoneA", 349, 146, true, 6],
-          ["campfire", 32, 168, true, 9],
-          ["stump", 18, 172, true, 6],
-          ["stump", 47, 174, true, 6],
-          ["crates", 18, 150, true, 9],
-          ["campfire", 448, 168, true, 9],
-          ["stump", 462, 172, true, 6],
-          ["stump", 433, 174, true, 6],
-          ["crates", 462, 150, true, 9],
-          ["signpost", 246, 112, true, 5],
-          ...[[100, 118], [158, 142], [214, 113], [270, 143], [326, 115], [66, 160], [134, 150]].map(([x, y]) => ["lanternPost", x, y, true, 5]),
-        ],
-        scatter: [
-          ["crystalCyan", 3, 14, 340, 40, 220, 14],
-          ["crystalViolet", 3, 14, 340, 40, 220, 14],
-          ["monolith", 4, 180, 340, 40, 220, 7],
-          ["shroomGlow", 9, 14, 345, 30, 228, 7],
-          ["shroomRed", 7, 14, 345, 30, 228, 6],
-          ["stoneA", 5, 14, 345, 30, 228, 8],
-          ["stoneB", 9, 14, 470, 30, 228, 5],
-          ["fern", 16, 14, 345, 30, 228, 6],
-          ["stump", 2, 100, 345, 40, 220, 6],
-          ["columnFallen", 1, 200, 345, 40, 220, 9]
-        ]
-      },
-      tufts: { x: 12, y: 22, w: 340, h: 205, n: 240, tries: 900 },
-      mist: [[372, 60, 6], [380, 160, 5], [150, 205, 3.5], [250, 22, 4]],
-      seed: 2024
-    }
-  };
-
-  // Stromy údolí: levá polovina se zrcadlí napravo, jen kde to nevadí vodě, základnám a dolům.
-  {
-    const mirrored = ([x, y]) => [960 - x, y];
-    const fits = ([x, y]) =>
-      !waterNear(valley.terrain, x, y) &&
-      valleySlots.every(s => Math.hypot(x - s.hq.x, y - s.hq.y) > 150 && Math.hypot(x - s.buildings[0].x, y - s.buildings[0].y) > 110) &&
-      valley.gold.every(m => Math.hypot(x - m[0], y - m[1]) > 70);
-    const left = valley.trees.filter(t => t[0] < 480 && fits(t) && fits(mirrored(t)));
-    valley.trees = [...left, ...left.map(mirrored)];
-  }
-
-  /* ---------- mapa 2: Čtyři koruny (4 hráči) ---------- */
-  const crownsSlots = [
-    base(0, 220, 260, 1, 1, { x0: 45, y0: 85, x1: 705, y1: 545 }),
-    base(1, 1220, 260, -1, 1, { x0: 735, y0: 85, x1: 1395, y1: 545 }),
-    base(2, 220, 860, 1, -1, { x0: 45, y0: 575, x1: 705, y1: 1075 }),
-    base(3, 1220, 860, -1, -1, { x0: 735, y0: 575, x1: 1395, y1: 1075 })
-  ];
-
-  const crownsMines = [
-    ...crownsSlots.flatMap(s => baseMines(s, s.facing, s.buildings[0].y > s.hq.y ? 1 : -1)),
-    [640, 560, 4000], [800, 560, 4000]
-  ];
-
-  const crownsTerrain = autoTerrain(
-    301, 720, 560, crownsSlots,
-    [{ pts: [[360, 0], [372, 90], [350, 190], [362, 280], [350, 370], [372, 470], [360, 560]], hw: 5.5 }],
-    null, { mirror: { x: true, y: true } }
-  );
-
-  const crowns = {
-    id: "crowns",
-    name: "Čtyři koruny",
-    players: 4,
-    size: [720, 560],
-    tag: "4 hráči",
-    description:
-      "Čtyři království v rozích mapy a široká řeka uprostřed. Přes brody se dá projít jen po cestách, " +
-      "o dva neutrální doly u středu se pere každý. Každá základna má dva vlastní doly a les za zády. " +
-      "Střední mapa, na menších obrazovkách se kamera posouvá.",
-    slots: crownsSlots,
-    gold: crownsMines,
-    trees: genTrees(501, 1440, 1120, crownsSlots, crownsMines, 8, 7, (x, y) => waterNear(crownsTerrain, x, y), { x: true, y: true }),
-    terrain: crownsTerrain
-  };
-
-  /* ---------- mapa 3: Pustá vysočina (3 hráči, velká) ---------- */
-  const highlandSlots = [
-    base(0, 300, 360, 1, 1, { x0: 45, y0: 85, x1: 900, y1: 640 }),
-    base(1, 1620, 360, -1, 1, { x0: 1020, y0: 85, x1: 1875, y1: 640 }),
-    base(2, 960, 860, 1, -1, { x0: 400, y0: 700, x1: 1520, y1: 1075 })
-  ];
-
-  const highlandMines = [
-    ...highlandSlots.flatMap(s => baseMines(s, s.facing, s.buildings[0].y > s.hq.y ? 1 : -1)),
-    [960, 330, 4000], [620, 800, 4000], [1300, 800, 4000], [960, 560, 4000]
-  ];
-
-  const highlandTerrain = autoTerrain(
-    611, 960, 560, highlandSlots,
-    [{ pts: [[0, 320], [160, 326], [320, 312], [480, 318], [640, 312], [800, 326], [960, 320]], hw: 6 }],
-    null, { mirror: { x: true }, stone: [480, 250] }
-  );
-
-  const highland = {
-    id: "highland",
-    name: "Pustá vysočina",
-    players: 3,
-    size: [960, 560],
-    tag: "3 hráči · velká",
-    description:
-      "Rozlehlá vysočina pro tři soupeře. Dvě základny na severu, třetí uprostřed jihu, " +
-      "mezi nimi vede kamenitý brod přes dlouhý potok. Mnoho neutrálních dolů láká k expanzi, " +
-      "ale armády mají daleko. Velká mapa: kameru posouvej šipkami, myší u okraje nebo minimapou.",
-    slots: highlandSlots,
-    gold: highlandMines,
-    trees: genTrees(907, 1920, 1120, highlandSlots, highlandMines, 14, 8, (x, y) => waterNear(highlandTerrain, x, y), { x: true }),
-    terrain: highlandTerrain
-  };
-
-  /* ---------- mapa 4: Šest říší (6 hráčů, velká) ---------- */
-  const sixSlots = [
-    base(0, 300, 260, 1, 1, { x0: 45, y0: 85, x1: 640, y1: 590 }),
-    base(1, 1700, 260, -1, 1, { x0: 1360, y0: 85, x1: 1955, y1: 590 }),
-    base(2, 300, 940, 1, -1, { x0: 45, y0: 610, x1: 640, y1: 1135 }),
-    base(3, 1700, 940, -1, -1, { x0: 1360, y0: 610, x1: 1955, y1: 1135 }),
-    base(4, 1000, 260, 1, 1, { x0: 690, y0: 85, x1: 1310, y1: 590 }),
-    base(5, 1000, 940, 1, -1, { x0: 690, y0: 610, x1: 1310, y1: 1135 })
-  ];
-
-  const sixMines = [
-    ...sixSlots.slice(0, 4).flatMap(s => baseMines(s, s.facing, s.buildings[0].y > s.hq.y ? 1 : -1)),
-    [810, 390], [1190, 390], [810, 810], [1190, 810],
-    [1000, 600, 4000], [340, 600, 4000], [1660, 600, 4000]
-  ];
-
-  const sixTerrain = autoTerrain(
-    777, 1000, 600, sixSlots,
-    [
-      { pts: [[330, 0], [338, 100], [322, 200], [334, 300], [322, 400], [338, 500], [330, 600]], hw: 5.5 },
-      { pts: [[670, 0], [662, 100], [678, 200], [666, 300], [678, 400], [662, 500], [670, 600]], hw: 5.5 }
-    ],
-    [[500, 300, 70]],
-    { mirror: { x: true, y: true }, stone: [500, 300] }
-  );
-
-  const six = {
-    id: "six",
-    name: "Šest říší",
-    players: 6,
-    size: [1000, 600],
-    tag: "6 hráčů · velká",
-    description:
-      "Šest království na rozlehlé pláni, rozdělené dvěma řekami. Čtyři základny leží v rozích, " +
-      "dvě v klidném středním pásu mezi řekami. Přes brody vedou jen cesty ke spálenému středu, " +
-      "kde stojí Prstencový kámen. Každý má dva doly a les za zády. " +
-      "Velká mapa: kameru posouvej šipkami, myší u okraje nebo minimapou.",
-    slots: sixSlots,
-    gold: sixMines,
-    trees: genTrees(1301, 2000, 1200, sixSlots, sixMines, 10, 7, (x, y) => waterNear(sixTerrain, x, y), { x: true, y: true }),
-    terrain: sixTerrain
-  };
-
-  const list = [valley, crowns, highland, six];
-  const byId = new Map(list.map(m => [m.id, m]));
+  // Žádné mapy nejsou vestavěné: všechny se načítají ze souborů maps/*.json (server) a registrují se.
+  const list = [];
+  const byId = new Map();
 
   /* ---------- soubor mapy (goralia-map, verze 1) ---------- */
   // Z editoru se mapa ukládá jako JSON: základny, doly a stromy v logických souřadnicích,
@@ -479,7 +194,7 @@
   const DOC = {
     FORMAT: "goralia-map", VERSION: 1,
     MIN_W: 320, MAX_W: 5000, MIN_H: 200, MAX_H: 5000,
-    MAX_BASES: 16, MAX_TREES: 3000, MAX_GOLD: 60, MAX_WATER: 300, MAX_ROADS: 80, MAX_PTS: 600, MAX_TOTAL_PTS: 20000
+    MAX_BASES: 16, MAX_TREES: 3000, MAX_GOLD: 60, MAX_WATER: 300, MAX_ROADS: 80, MAX_MOUNTAINS: 300, MAX_WALLS: 300, MAX_PTS: 600, MAX_TOTAL_PTS: 20000
   };
 
   const isNum = v => typeof v === "number" && Number.isFinite(v);
@@ -530,14 +245,16 @@
       (isNum(g[2]) ? [Math.round(g[0]), Math.round(g[1]), Math.min(20000, Math.max(500, Math.round(g[2])))] : [Math.round(g[0]), Math.round(g[1])]));
     const trees = take(raw.trees, DOC.MAX_TREES, "Stromy").filter(t => point(t, LW, LH)).map(t => [Math.round(t[0]), Math.round(t[1])]);
     const water = take(raw.water, DOC.MAX_WATER, "Voda").map(s => stroke(s, w, h, "hw", 2, 20)).filter(Boolean);
+    const mountains = take(raw.mountains, DOC.MAX_MOUNTAINS, "Hory").map(s => stroke(s, w, h, "hw", 4, 40)).filter(Boolean);
+    const walls = take(raw.walls, DOC.MAX_WALLS, "Hradby").map(s => stroke(s, w, h, "hw", 2, 5)).filter(Boolean);
     const roads = take(raw.roads, DOC.MAX_ROADS, "Cesty").map(s => {
       const r = stroke(s, w, h, "w", 2, 12);
       return r && { pts: r.pts, w: r.w, main: !!s.main };
     }).filter(Boolean);
 
     if (bases.length < 2) errors.push("Mapa potřebuje aspoň dvě základny.");
-    if (water.reduce((n, s) => n + s.pts.length, 0) + roads.reduce((n, s) => n + s.pts.length, 0) > DOC.MAX_TOTAL_PTS) {
-      errors.push("Voda a cesty jsou moc podrobné.");
+    if ([water, roads, mountains, walls].reduce((n, list) => n + list.reduce((m, s) => m + s.pts.length, 0), 0) > DOC.MAX_TOTAL_PTS) {
+      errors.push("Voda, cesty, hory a hradby jsou moc podrobné.");
     }
 
     if (errors.length) return { doc: null, errors };
@@ -547,7 +264,7 @@
       description: cleanText(raw.description, 400) || "Vlastní mapa.",
       size: [w, h], seed: isNum(raw.seed) ? Math.abs(Math.round(raw.seed)) % 1000000 : 1,
       autoRoads: raw.autoRoads !== false,
-      bases, gold, trees, water, roads
+      bases, gold, trees, water, roads, mountains, walls
     };
 
     return { doc, errors };
@@ -595,7 +312,8 @@
     const slots = d.bases.map((b, i) => baseAt(b.x, b.y, LW, LH, zones[i]));
     const n = slots.length;
     const terrain = autoTerrain(d.seed, w, h, slots, d.water.map(s => ({ pts: s.pts, hw: s.hw })), [], {
-      straight: true, autoRoads: d.autoRoads, roads: d.roads.map(s => ({ w: s.w, main: s.main, pts: s.pts }))
+      straight: true, autoRoads: d.autoRoads, roads: d.roads.map(s => ({ w: s.w, main: s.main, pts: s.pts })),
+      mountains: d.mountains.map(s => ({ pts: s.pts, hw: s.hw })), walls: d.walls.map(s => ({ pts: s.pts, hw: s.hw }))
     });
 
     return {
@@ -606,21 +324,19 @@
     };
   }
 
-  const builtIn = new Set(list.map(m => m.id));
-
-  // Vlastní mapy se přidávají za vestavěné; stejné id přepíše jen dřívější vlastní mapu.
+  // Mapa se stejným id přepíše dřívější; seznam drží pořadí, v jakém mapy přibyly.
   function register(map) {
-    if (builtIn.has(map.id)) throw new Error("Vestavěné mapy nelze přepsat.");
-
     const old = byId.get(map.id);
     if (old) list[list.indexOf(old)] = map;
     else list.push(map);
     byId.set(map.id, map);
+    // pořadí: podle počtu hráčů, pak podle názvu
+    list.sort((a, b) => a.players - b.players || String(a.name).localeCompare(String(b.name), "cs"));
   }
 
   function unregister(id) {
     const old = byId.get(id);
-    if (!old || builtIn.has(id)) return false;
+    if (!old) return false;
     list.splice(list.indexOf(old), 1);
     byId.delete(id);
     return true;
@@ -629,8 +345,9 @@
   return {
     list,
     get: id => byId.get(id) || null,
-    isWater, waterNear, brookX, brookHW,
-    DOC, normalizeDoc, compileDoc, zonesFor, baseAt, baseMinesFor, register, unregister, isBuiltIn: id => builtIn.has(id),
-    DEFAULT: "valley"
+    isWater, isRock, WALL_PAD, wallR, WALL_FACE, waterNear,
+    DOC, normalizeDoc, compileDoc, zonesFor, baseAt, baseMinesFor, register, unregister,
+    // první dostupná mapa (mapy se načítají ze serveru, napevno žádná není)
+    get DEFAULT() { return list.length ? list[0].id : ""; }
   };
 });

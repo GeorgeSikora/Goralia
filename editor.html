@@ -26,6 +26,8 @@
       <div class="palette" id="e-tools">
         <button type="button" data-tool="move" title="Přesun objektů a posun mapy (V)"><b>V</b> Přesun</button>
         <button type="button" data-tool="water" title="Voda (W)"><b>W</b> Voda</button>
+        <button type="button" data-tool="mountain" title="Hory (M)"><b>M</b> Hory</button>
+        <button type="button" data-tool="wall" title="Hradby (H)"><b>H</b> Hradby</button>
         <button type="button" data-tool="road" title="Cesta (R)"><b>R</b> Cesta</button>
         <button type="button" data-tool="tree" title="Stromy (T)"><b>T</b> Stromy</button>
         <button type="button" data-tool="gold" title="Zlatý důl (G)"><b>G</b> Důl</button>
@@ -52,6 +54,8 @@
             <option value="tree">stromy</option>
             <option value="water">vodu</option>
             <option value="road">cesty</option>
+            <option value="mountain">hory</option>
+            <option value="wall">hradby</option>
             <option value="gold">doly</option>
             <option value="base">základny</option>
           </select></label>
@@ -77,7 +81,8 @@
           <li>Levé tlačítko kreslí. Pravé otevře nabídku (smazat, zásoba dolu…).</li>
           <li>Mapu posouvej prostředním tlačítkem, mezerníkem nebo šipkami, kolečko přibližuje.</li>
           <li>Základny se číslují podle pořadí. Čárkovaně je území, kde hráč smí stavět.</li>
-          <li>Přes vodu se chodí jen po cestách. Každá základna potřebuje aspoň dva doly poblíž.</li>
+          <li>Přes vodu se chodí jen po cestách. Hory jsou neprůchodné, hradbami vede průchod jen tam, kde je cesta (brána).</li>
+          <li>Každá základna potřebuje aspoň dva doly poblíž.</li>
         </ul>
       </details>
     </aside>

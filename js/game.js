@@ -66,7 +66,12 @@
 
   // "ai": hra proti počítačům, simulace běží tady. "online": o všem rozhoduje server.
   let mode = "ai";
-  let map = MAPS.get(MAPS.DEFAULT);
+  // Mapy se načítají ze serveru; než dorazí, drží se prázdná zástupná mapa (není v seznamu map).
+  const STUB_MAP = MAPS.compileDoc(MAPS.normalizeDoc({
+    format: "goralia-map", version: 1, id: "stub", name: "Bez map", size: [800, 500],
+    bases: [{ x: 300, y: 500 }, { x: 1300, y: 500 }], gold: [], trees: [], water: [], roads: []
+  }).doc);
+  let map = MAPS.get(MAPS.DEFAULT) || STUB_MAP;
   let spectator = false; // divák: vidí celý zápas, nic neovládá
   let specEcon = new Map(); // slot -> [slot, zlato, dřevo, limit, zbroj, zbraně] (jen pro diváka)
   let endWinner = -1;
@@ -1519,6 +1524,7 @@
   // Vlastní mapy z editoru; změněné mapy ztratí starý náhled.
   function refreshCustomMaps() {
     return PK.customMaps.load().then(changed => {
+      if (map === STUB_MAP && MAPS.list.length && !started) loadMap(MAPS.list[0], 0);
       for (const id of changed) previews.delete(id);
       return changed;
     });
@@ -1700,7 +1706,7 @@
   }
 
   /* ======================= lobby: obrazovka výběru mapy ======================= */
-  const lobbyMap = () => MAPS.get(lobby.mapId) || MAPS.get(MAPS.DEFAULT);
+  const lobbyMap = () => MAPS.get(lobby.mapId) || MAPS.get(MAPS.DEFAULT) || STUB_MAP;
   const isHost = () => !lobby.online || lobby.host === lobby.you;
 
   const sizeLabel = m => {
@@ -1784,7 +1790,7 @@
     }));
 
     lobbyEl.name.textContent = map.name;
-    lobbyEl.desc.textContent = map.description;
+    lobbyEl.desc.textContent = map === STUB_MAP ? "Na serveru zatím nejsou žádné mapy. Vytvoř je v editoru." : map.description;
     lobbyEl.meta.textContent = `Hráči: ${map.players} · Velikost: ${sizeLabel(map)} (${map.size[0] * 2}×${map.size[1] * 2}) · Zlaté doly: ${map.gold.length}`;
 
     lobbyEl.slots.replaceChildren(...lobby.slots.map((slot, i) => {
@@ -1835,7 +1841,7 @@
 
     const active = lobby.slots.filter(s => s.kind === "human" || s.kind === "ai").length;
     lobbyEl.start.hidden = !host;
-    lobbyEl.start.disabled = active < 2;
+    lobbyEl.start.disabled = active < 2 || map === STUB_MAP;
     lobbyEl.status.textContent = !host
       ? "Čeká se, až hostitel spustí hru."
       : active < 2 ? "Přidej aspoň jednoho soupeře." : "Vše připraveno.";
@@ -1867,8 +1873,10 @@
       c.stroke();
     };
 
-    for (const r of map.terrain.rivers) if (r.pts) draw(r.pts, r.hw, "#2f6fb0");
+    for (const r of map.terrain.rivers) draw(r.pts, r.hw, "#2f6fb0");
     for (const r of map.terrain.roads) draw(r.pts, r.w, "#b09060");
+    for (const r of map.terrain.mountains || []) draw(r.pts, r.hw, "#74708a");
+    for (const r of map.terrain.walls || []) draw(r.pts, r.hw, "#c4c1d2");
     return cv;
   }
   function drawPreview() {
@@ -2218,7 +2226,13 @@
       r.amount = amount;
     }
 
-    if (seenResources.size !== resources.length) {
+    if (s.rf === 0) {
+      // rozdílový snímek: jen změněné suroviny; vykácený strom zmizí hned
+      if (s.r.some(d => d[1] === 1 && d[4] <= 0)) {
+        for (const d of s.r) if (d[1] === 1 && d[4] <= 0) resourceMap.delete(d[0]);
+        resources = resources.filter(r => resourceMap.has(r.id));
+      }
+    } else if (seenResources.size !== resources.length) {
       for (const r of resources) if (!seenResources.has(r.id)) resourceMap.delete(r.id);
       resources = resources.filter(r => seenResources.has(r.id));
     }
