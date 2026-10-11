@@ -356,6 +356,7 @@ class Bot {
       if (m.t === "hello" || m.t === "rooms") this.list = m.list;
       if (m.t === "room") this.room = m;
       if (m.t === "error") this.errors.push(m.text);
+      if (m.t === "maps") this.maps = m;
       if (m.t === "match") this.match = m;
       if (m.t === "s") {
         this.snap = m;
@@ -473,10 +474,82 @@ async function testServer() {
     assert.strictEqual(room.room.map, "test-arena");
     room.send({ t: "leave" });
 
+    await sleep(150);
     assert.strictEqual((await api("DELETE", "/api/maps/valley")).status, 404, "vestavěnou mapu nelze smazat");
     assert.strictEqual((await api("DELETE", "/api/maps/test-arena")).status, 200);
     assert(!fs.existsSync(path.join(mapsDir, "test-arena.json")), "soubor je pryč");
     assert.deepStrictEqual((await api("GET", "/api/maps")).json, { maps: [] });
+
+    // správa map pro admina: ukládání a mazání odkudkoli (i za proxy), jen pro přihlášeného admina
+    const proxied = { "X-Forwarded-For": "8.8.8.8" };
+    const adminLogin = await api("POST", "/api/auth/login", { identifier: "Jurek", password: ADMIN_PASSWORD });
+    assert.strictEqual(adminLogin.status, 200, "admin se přihlásí");
+    const adminCookie = adminLogin.headers["set-cookie"][0].split(";")[0];
+    const asAdmin = { ...proxied, Cookie: adminCookie };
+    const asUser = { ...proxied, Cookie: cookies.Alice };
+
+    assert.strictEqual((await api("PUT", "/api/maps/test-arena", doc, asUser)).status, 403, "hráč bez práv mapu neuloží");
+    assert.strictEqual((await api("PUT", "/api/maps/test-arena", doc, proxied)).status, 403, "nepřihlášený za proxy mapu neuloží");
+    assert.strictEqual((await api("PUT", "/api/maps/test-arena", doc, { ...asAdmin, Origin: "http://evil.example" })).status, 403, "admin z cizí stránky (CSRF)");
+    assert.strictEqual((await api("PUT", "/api/maps/test-arena", doc, asAdmin)).status, 200, "admin uloží mapu i za proxy");
+    assert.strictEqual((await api("GET", "/api/me", undefined, asAdmin)).json.canEditMaps, true, "admin smí upravovat mapy");
+    assert.strictEqual((await api("GET", "/api/me", undefined, asUser)).json.canEditMaps, false, "hráč nesmí");
+
+    // výběr map pro multiplayer
+    assert.deepStrictEqual((await api("GET", "/api/mapconfig")).json, { off: [] }, "všechny mapy jsou ve výchozím stavu povolené");
+    assert.strictEqual((await api("GET", "/api/admin/maps", undefined, asUser)).status, 403);
+    const listed = (await api("GET", "/api/admin/maps", undefined, asAdmin)).json.maps;
+    assert(listed.some(m => m.id === "valley" && !m.custom && m.multiplayer), "vestavěná mapa je v přehledu");
+    assert(listed.some(m => m.id === "test-arena" && m.custom && m.updated > 0), "vlastní mapa je v přehledu");
+    assert.strictEqual((await api("POST", "/api/admin/maps/test-arena/multiplayer", { enabled: false }, asUser)).status, 403);
+    assert.strictEqual((await api("POST", "/api/admin/maps/neexistuje/multiplayer", { enabled: false }, asAdmin)).status, 404);
+
+    const watcher = bot("Dee");
+    await watcher.opened;
+    await watcher.until(() => watcher.hello, 2000, "hello");
+    assert.strictEqual((await api("POST", "/api/admin/maps/test-arena/multiplayer", { enabled: false }, asAdmin)).status, 200);
+    assert.deepStrictEqual((await api("GET", "/api/mapconfig")).json, { off: ["test-arena"] });
+    await watcher.until(() => watcher.maps && watcher.maps.off.includes("test-arena"), 2000, "hráči přijde nový seznam map");
+
+    watcher.send({ t: "create", map: "test-arena" });
+    await watcher.until(() => watcher.errors.length, 2000, "vypnutá mapa se nedá vybrat");
+    assert(/nen[ií] pro multiplayer/.test(watcher.errors[0]), "srozumitelná chyba");
+    assert(!watcher.room, "místnost nevznikla");
+
+    watcher.send({ t: "create", map: "valley" });
+    await watcher.until(() => watcher.room, 2000, "povolená mapa funguje");
+    watcher.send({ t: "map", map: "test-arena" });
+    await watcher.until(() => watcher.errors.length > 1, 2000, "host nepřepne na vypnutou mapu");
+    assert.strictEqual(watcher.room.map, "valley");
+
+    // mapu používanou místností nejde smazat
+    assert.strictEqual((await api("POST", "/api/admin/maps/test-arena/multiplayer", { enabled: true }, asAdmin)).status, 200);
+    watcher.send({ t: "map", map: "test-arena" });
+    await watcher.until(() => watcher.room && watcher.room.map === "test-arena", 2000, "po povolení jde mapa zvolit");
+    const busy = await api("DELETE", "/api/maps/test-arena", undefined, asAdmin);
+    assert.strictEqual(busy.status, 409, "mapa v místnosti se nesmaže");
+    assert(/m[ií]stnost/.test(busy.json.errors[0]));
+    watcher.send({ t: "leave" });
+    await sleep(150);
+
+    // aspoň jedna mapa musí zůstat povolená
+    const all = (await api("GET", "/api/admin/maps", undefined, asAdmin)).json.maps.map(m => m.id);
+    let refused = 0;
+    for (const id of all) {
+      const res = await api("POST", `/api/admin/maps/${id}/multiplayer`, { enabled: false }, asAdmin);
+      if (res.status === 400) refused++;
+    }
+    assert.strictEqual(refused, 1, "poslední povolenou mapu nejde vypnout");
+    for (const id of all) await api("POST", `/api/admin/maps/${id}/multiplayer`, { enabled: true }, asAdmin);
+
+    // smazání vypnuté mapy zruší i její nastavení; admin ji smaže bez místního počítače
+    await api("POST", "/api/admin/maps/test-arena/multiplayer", { enabled: false }, asAdmin);
+    assert.strictEqual((await api("DELETE", "/api/maps/test-arena", undefined, asUser)).status, 403);
+    assert.strictEqual((await api("DELETE", "/api/maps/test-arena", undefined, asAdmin)).status, 200, "admin smaže mapu za proxy");
+    assert.deepStrictEqual((await api("GET", "/api/mapconfig")).json, { off: [] }, "nastavení smazané mapy zmizelo");
+    assert.deepStrictEqual((await api("GET", "/api/maps")).json, { maps: [] });
+    const audit = (await api("GET", "/api/admin/audit", undefined, asAdmin)).json.audit.map(a => a.action);
+    assert(["map-save", "map-delete", "map-mp-off", "map-mp-on"].every(a => audit.includes(a)), "akce nad mapami jsou v záznamu");
 
     const a = bot("Alice");
     const b = bot("Bob");

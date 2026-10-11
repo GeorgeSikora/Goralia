@@ -16,6 +16,7 @@ const { createStore } = require("./store.js");
 const { createAccounts } = require("./accounts.js");
 const { createStats } = require("./stats.js");
 const { createTraffic } = require("./traffic.js");
+const { createMapConfig } = require("./mapconfig.js");
 const { createApi, SID } = require("./api.js");
 const { SECURITY_HEADERS, parseCookies, sameOrigin, clientIp } = require("./httputil.js");
 
@@ -43,6 +44,7 @@ const accounts = createAccounts(store, {
   onCreate: user => { if (user.role !== "admin") traffic.bump("registrations"); }
 });
 const stats = createStats(store);
+const mapConfig = createMapConfig(store, MAPS);
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -60,7 +62,7 @@ const MIME = {
 /* ---------- vlastní mapy (editor) ---------- */
 const LOCAL_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
 
-// Ukládání a mazání map jen z místního počítače: přímé spojení z loopbacku, bez proxy a s odpovídajícím Hostem i Originem.
+// „Místní počítač“: přímé spojení z loopbacku, bez proxy a s odpovídajícím Hostem i Originem (vývoj bez přihlášení).
 function isLocalRequest(req) {
   const addr = req.socket.remoteAddress;
   const loopback = addr === "127.0.0.1" || addr === "::1" || addr === "::ffff:127.0.0.1";
@@ -79,6 +81,18 @@ function sendJson(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
+// Kdo smí mapy ukládat a mazat: přihlášený administrátor (odkudkoli), nebo místní počítač.
+function mapEditor(req) {
+  const user = api.userOf(req);
+
+  if (user && user.role === "admin") {
+    return sameOrigin(req, PUBLIC_URL) ? { admin: user } : { error: "Požadavek z cizí stránky." };
+  }
+
+  if (isLocalRequest(req)) return { local: true };
+  return { error: "Mapy může ukládat a mazat jen přihlášený administrátor." };
+}
+
 function handleMapApi(req, res, pathname) {
   const parts = pathname.split("/").filter(Boolean);
   const id = parts[2];
@@ -87,10 +101,24 @@ function handleMapApi(req, res, pathname) {
   if (req.method === "GET" && !id) return sendJson(res, 200, { maps: mapstore.list() });
 
   if (!id || (req.method !== "PUT" && req.method !== "DELETE")) return sendJson(res, 405, { errors: ["Nepodporovaná metoda."] });
-  if (!isLocalRequest(req)) return sendJson(res, 403, { errors: ["Mapy lze upravovat jen z místního počítače."] });
+
+  const editor = mapEditor(req);
+  if (editor.error) return sendJson(res, 403, { errors: [editor.error] });
+  const audit = (action, detail) => { if (editor.admin) accounts.audit(editor.admin, action, detail); };
 
   if (req.method === "DELETE") {
-    return mapstore.remove(id) ? sendJson(res, 200, { ok: true }) : sendJson(res, 404, { errors: ["Taková vlastní mapa neexistuje."] });
+    // Mapa v místnosti (v lobby i při hře) se nemaže; admin nejdřív zavře místnost.
+    const used = [...rooms.values()].find(r => r.map.id === id);
+    if (used) {
+      return sendJson(res, 409, { errors: [`Mapu právě používá místnost ${used.id} (${used.match ? "hraje se" : "lobby"}). Nejdřív ji zavři v sekci Online.`] });
+    }
+
+    if (!mapstore.remove(id)) return sendJson(res, 404, { errors: ["Taková vlastní mapa neexistuje."] });
+
+    mapConfig.forget(id);
+    audit("map-delete", id);
+    live.mapsChanged();
+    return sendJson(res, 200, { ok: true });
   }
 
   if (!/^application\/json/.test(req.headers["content-type"] || "")) return sendJson(res, 415, { errors: ["Ocekává se JSON."] });
@@ -117,13 +145,33 @@ function handleMapApi(req, res, pathname) {
 
     const result = mapstore.save(raw);
     if (result.errors.length) return sendJson(res, 400, { errors: result.errors });
+
+    audit("map-save", id);
+    live.mapsChanged();
     sendJson(res, 200, { ok: true });
   });
 }
 
 /* ---------- static files ---------- */
 const live = {};
-const api = createApi({ accounts, stats, store, live, traffic, publicUrl: PUBLIC_URL });
+/* ---------- správa map pro admin panel ---------- */
+const adminMaps = {
+  list: () => MAPS.list.map(m => ({
+    id: m.id, name: m.name, players: m.players, width: m.size[0] * 2, height: m.size[1] * 2, tag: m.tag, gold: m.gold.length,
+    description: m.description || "", custom: !!m.custom, multiplayer: mapConfig.multiplayer(m.id), updated: m.custom ? mapstore.mtime(m.id) : 0
+  })),
+
+  setMultiplayer(admin, id, on) {
+    const result = mapConfig.setMultiplayer(id, on);
+    if (result.error) return result;
+
+    accounts.audit(admin, on ? "map-mp-on" : "map-mp-off", id);
+    live.mapsChanged();
+    return result;
+  }
+};
+
+const api = createApi({ accounts, stats, store, live, traffic, adminMaps, isLocalRequest, publicUrl: PUBLIC_URL });
 
 const server = http.createServer((req, res) => {
   let pathname;
@@ -232,7 +280,7 @@ function roomList() {
 
 function broadcastRooms() {
   const playing = [...matches].reduce((n, room) => n + humansOf(room).length, 0);
-  const text = JSON.stringify({ t: "rooms", list: roomList(), playing, online: clients.size });
+  const text = JSON.stringify({ t: "rooms", list: roomList(), playing, online: clients.size, off: mapConfig.off() });
   if (text === lastRooms) return;
   lastRooms = text;
 
@@ -495,6 +543,14 @@ function disconnect(client, text) {
 Object.assign(live, {
   isOnline: userId => byUser.has(userId),
 
+  // Po změně map nebo jejich nastavení: hráči v lobby dostanou nový seznam povolených map.
+  mapsChanged() {
+    const text = JSON.stringify({ t: "maps", off: mapConfig.off() });
+    for (const client of clients) send(client, text);
+    lastRooms = "";
+    broadcastRooms();
+  },
+
   counts: () => ({
     online: clients.size,
     authed: byUser.size,
@@ -589,6 +645,7 @@ wss.on("connection", (ws, req) => {
     list: roomList(),
     playing: [...matches].reduce((n, r) => n + humansOf(r).length, 0),
     online: clients.size,
+    off: mapConfig.off(),
     me: user ? { id: user.id, name: user.name, role: user.role } : null
   });
   broadcastRooms();
@@ -636,6 +693,7 @@ wss.on("connection", (ws, req) => {
       if (!client.user) return fail(client, "Pro multiplayer se přihlas.");
       const map = MAPS.get(String(msg.map));
       if (!map) return fail(client, "Neznámá mapa.");
+      if (!mapConfig.multiplayer(map.id)) return fail(client, "Tato mapa není pro multiplayer povolená.");
       if (rooms.size >= MAX_ROOMS) return fail(client, "Server je plný, zkus to později.");
 
       sendRoom(createRoom(client, map));
@@ -660,6 +718,7 @@ wss.on("connection", (ws, req) => {
       if (msg.t === "map") {
         const map = MAPS.get(String(msg.map));
         if (!map) return fail(client, "Neznámá mapa.");
+        if (!mapConfig.multiplayer(map.id)) return fail(client, "Tato mapa není pro multiplayer povolená.");
         if (humansOf(room).length > map.slots.length) return fail(client, "Na té mapě je méně míst, než je v místnosti hráčů.");
 
         changeMap(room, map);

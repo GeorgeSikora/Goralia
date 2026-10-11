@@ -11,7 +11,7 @@ const { cookie, parseCookies, clientIp, sameOrigin, sendJson, readJson } = requi
 const SID = "goralia_sid";
 const PLAYER_LIMIT = 1000;
 
-function createApi({ accounts, stats, store, live, traffic, publicUrl }) {
+function createApi({ accounts, stats, store, live, traffic, adminMaps, isLocalRequest, publicUrl }) {
   const passwordFails = new Limiter(10, 10 * 60 * 1000);
   const beaconIp = new Limiter(120, 10 * 60 * 1000);
 
@@ -38,7 +38,8 @@ function createApi({ accounts, stats, store, live, traffic, publicUrl }) {
   /* ---------- účet ---------- */
   const handlers = {
     me(ctx) {
-      sendJson(ctx.res, 200, { user: ctx.user ? accounts.selfView(ctx.user) : null, providers: oauth.available() });
+      const canEditMaps = !!(ctx.user && ctx.user.role === "admin") || (!!isLocalRequest && isLocalRequest(ctx.req));
+      sendJson(ctx.res, 200, { user: ctx.user ? accounts.selfView(ctx.user) : null, providers: oauth.available(), canEditMaps });
     },
 
     async register(ctx) {
@@ -197,6 +198,21 @@ function createApi({ accounts, stats, store, live, traffic, publicUrl }) {
       sendJson(ctx.res, 200, { total: all.length, matches: list });
     },
 
+    maps(ctx) {
+      sendJson(ctx.res, 200, { maps: adminMaps.list() });
+    },
+
+    mapMultiplayer(ctx) {
+      const result = adminMaps.setMultiplayer(ctx.user, ctx.params[0], ctx.body.enabled !== false);
+      if (result.error) return fail(ctx, result.status || 400, result.error);
+      sendJson(ctx.res, 200, { maps: adminMaps.list() });
+    },
+
+    // Které mapy jsou vypnuté pro multiplayer (veřejné: hra podle toho filtruje výběr).
+    mapConfig(ctx) {
+      sendJson(ctx.res, 200, { off: adminMaps.list().filter(m => !m.multiplayer).map(m => m.id) });
+    },
+
     traffic(ctx) {
       sendJson(ctx.res, 200, traffic.report(clamp(ctx.query.get("days"), 1, 400, 30)));
     },
@@ -217,6 +233,7 @@ function createApi({ accounts, stats, store, live, traffic, publicUrl }) {
     ["GET", /^\/api\/players\/(\d{1,9})$/, "none", handlers.player],
     ["GET", /^\/api\/matches\/(\d{1,9})$/, "none", handlers.match],
     ["POST", /^\/api\/beacon$/, "none", handlers.beacon],
+    ["GET", /^\/api\/mapconfig$/, "none", handlers.mapConfig],
     ["GET", /^\/api\/admin\/overview$/, "admin", handlers.overview],
     ["GET", /^\/api\/admin\/users$/, "admin", handlers.users],
     ["POST", /^\/api\/admin\/users\/(\d{1,9})\/ban$/, "admin", handlers.ban],
@@ -228,6 +245,8 @@ function createApi({ accounts, stats, store, live, traffic, publicUrl }) {
     ["GET", /^\/api\/admin\/clients$/, "admin", handlers.clients],
     ["POST", /^\/api\/admin\/clients\/(\d{1,9})\/kick$/, "admin", handlers.kick],
     ["GET", /^\/api\/admin\/matches$/, "admin", handlers.matches],
+    ["GET", /^\/api\/admin\/maps$/, "admin", handlers.maps],
+    ["POST", /^\/api\/admin\/maps\/([a-z0-9-]{1,31})\/multiplayer$/, "admin", handlers.mapMultiplayer],
     ["GET", /^\/api\/admin\/traffic$/, "admin", handlers.traffic],
     ["GET", /^\/api\/admin\/audit$/, "admin", handlers.audit]
   ];

@@ -64,6 +64,8 @@
   let dirty = false;
   let serverMaps = [];
   let serverUp = false;
+  let canEdit = false;      // smí tento návštěvník ukládat a mazat mapy na serveru?
+  let mpOff = new Set();    // mapy vypnuté pro multiplayer
   let savedId = "";
   let problems = [];
   let scene = null;
@@ -655,7 +657,7 @@
       "-",
       { label: "Stáhnout JSON", run: download },
       { label: "Importovat ze souboru…", run: () => $("e-file").click() },
-      { label: "Smazat ze serveru…", disabled: !serverMaps.some(m => m.id === savedId), run: () => deleteMap(savedId) }
+      { label: "Smazat ze serveru…", disabled: !canEdit || !serverMaps.some(m => m.id === savedId), run: () => deleteMap(savedId) }
     ],
     edit: () => [
       { label: "Zpět", hint: "Ctrl+Z", disabled: !undo.length, run: () => stepHistory(undo, redo) },
@@ -1015,7 +1017,29 @@
       serverUp = false;
     }
 
+    try {
+      const me = await (await fetch("/api/me", { cache: "no-store" })).json();
+      canEdit = !!me.canEditMaps;
+      const cfg = await (await fetch("/api/mapconfig", { cache: "no-store" })).json();
+      mpOff = new Set((cfg.off || []).map(String));
+    } catch (e) {
+      canEdit = false;
+    }
+
+    renderPerm();
     renderTitle();
+  }
+
+  function renderPerm() {
+    const el = $("e-perm");
+    if (!el) return;
+    el.hidden = !serverUp;
+    el.className = `perm ${canEdit ? "ok" : "no"}`;
+    el.textContent = canEdit ? "Můžeš ukládat na server" : "Jen prohlížení (ukládat smí admin)";
+    el.title = canEdit
+      ? "Jsi přihlášen jako administrátor (nebo editor běží lokálně)."
+      : "Pro ukládání a mazání map na serveru se přihlas jako administrátor. Mapu můžeš stáhnout jako JSON.";
+    $("e-save").classList.toggle("locked", !canEdit && serverUp);
   }
 
   function adopt(raw, fromServer) {
@@ -1060,6 +1084,7 @@
       });
       const data = await res.json().catch(() => ({}));
 
+      if (res.status === 403) return say("Ukládat mapy na server smí jen přihlášený administrátor. Použij Soubor › Stáhnout JSON.", "error");
       if (!res.ok) return say((data.errors && data.errors[0]) || "Server mapu nepřijal.", "error");
 
       dirty = false;
@@ -1081,6 +1106,7 @@
   }
 
   async function deleteMap(id) {
+    if (!canEdit) return say("Mazat mapy smí jen přihlášený administrátor.", "error");
     if (!id || !confirm(`Opravdu smazat mapu „${id}“ ze serveru?`)) return;
 
     try {
@@ -1088,7 +1114,7 @@
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         const why = (data.errors && data.errors[0]) || `Chyba serveru (${res.status}).`;
-        say(why, "error");
+        say(res.status === 403 ? "Mazat mapy smí jen přihlášený administrátor." : why, "error");
         alert(`Mapu se nepodařilo smazat.\n${why}`);
         return;
       }
@@ -1167,11 +1193,11 @@
     }
 
     for (const m of serverMaps) {
-      parts.push(mapRow(m.name, `${m.id} · ${m.size[0] * 2}×${m.size[1] * 2} · hráčů: ${m.bases.length}`, () => {
+      parts.push(mapRow(m.name, `${m.id} · ${m.size[0] * 2}×${m.size[1] * 2} · hráčů: ${m.bases.length}${mpOff.has(m.id) ? " · multiplayer vypnut" : ""}`, () => {
         if (!confirmDiscard()) return;
         adopt(m, true);
         $("d-open").close();
-      }, async () => { await deleteMap(m.id); renderOpenList(); }));
+      }, canEdit ? async () => { await deleteMap(m.id); renderOpenList(); } : null));
     }
 
     parts.push(head("Vestavěné mapy (otevřou se jako kopie)"));
@@ -1401,7 +1427,26 @@
     setTool("water");
     resizeCanvas();
     changed(false);
-    refreshServerList();
+    refreshServerList().then(openFromQuery);
+  }
+
+  // /editor.html?map=id otevře mapu ze serveru; vestavěná se otevře jako kopie.
+  function openFromQuery() {
+    let id = "";
+    try { id = new URLSearchParams(location.search).get("map") || ""; } catch (e) { return; }
+    if (!id) return;
+
+    const mine = serverMaps.find(m => m.id === id);
+    if (mine) return adopt(mine, true);
+
+    const built = MAPS.get(id);
+    if (built && MAPS.isBuiltIn(id)) {
+      adopt(docFromBuiltin(built), false);
+      dirty = true;
+      renderTitle();
+    } else {
+      say(`Mapa „${id}“ nebyla nalezena.`, "error");
+    }
   }
 
   boot();

@@ -7,7 +7,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const EMPTY = () => ({ version: 1, nextUserId: 1, nextMatchId: 1, users: {}, sessions: {}, matches: [], audit: [] });
+const EMPTY = () => ({ version: 1, nextUserId: 1, nextMatchId: 1, users: {}, sessions: {}, matches: [], audit: [], mapSettings: {} });
 const SAVE_DELAY = 1000;
 const BACKUP_EVERY = 3600 * 1000;
 

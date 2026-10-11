@@ -182,3 +182,9 @@ dialog menu .primary { margin-left: auto; }
 .list .map-row .name small { display: block; color: var(--muted); }
 
 #e-canvas { touch-action: none; }
+
+.perm { font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line, #444); white-space: nowrap; }
+.perm.ok { color: #7ddc8c; border-color: #3f7a4a; }
+.perm.no { color: #e0b060; border-color: #7a6030; }
+button.locked { opacity: .6; }
+@media (max-width: 720px) { .perm { display: none; } }

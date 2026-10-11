@@ -1,5 +1,5 @@
 /*
- * Panel serveru: přehled, správa hráčů, živé místnosti a připojení, zápasy a záznam akcí admina.
+ * Panel serveru: přehled, návštěvnost, správa hráčů, živé místnosti, zápasy, mapy a záznam akcí admina.
  * Stránku i API dostane jen přihlášený admin; veškerý obsah z databáze se vkládá jako textContent.
  */
 (() => {
@@ -468,8 +468,141 @@
     $("audit").replaceChildren(table(["Kdy", "Admin", "Akce", "Detail"], data.audit.map(a => [when(a.at), a.admin, a.action, a.detail]), "Zatím žádné akce."));
   }
 
+  /* ---------- mapy ---------- */
+  const fmtDate = ms => (ms ? new Date(ms).toLocaleString("cs-CZ", { day: "numeric", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "–");
+
+  // Mapové API vrací { errors: [...] }, ne { error }.
+  async function mapRequest(method, url, body) {
+    const res = await fetch(url, {
+      method,
+      credentials: "same-origin",
+      headers: body === undefined ? {} : { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body)
+    });
+    let json = null;
+    try { json = await res.json(); } catch (e) { /* prázdná odpověď */ }
+    if (!res.ok) throw new Error((json && json.errors && json.errors.join(" ")) || (json && json.error) || `Chyba ${res.status}`);
+    return json;
+  }
+
+  function mapLink(label, href, newTab = true) {
+    const a = el("a", "mini", label);
+    a.href = href;
+    if (newTab) { a.target = "_blank"; a.rel = "noopener"; }
+    return a;
+  }
+
+  async function downloadMap(id) {
+    const data = await mapRequest("GET", "/api/maps");
+    const doc = (data.maps || []).find(m => m.id === id);
+    if (!doc) throw new Error("Mapa už neexistuje.");
+
+    const a = el("a");
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(doc, null, 1)], { type: "application/json" }));
+    a.download = `${id}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  async function loadMapsTab() {
+    const data = await api("GET", "/api/admin/maps");
+    renderMaps(data.maps);
+  }
+
+  function renderMaps(maps) {
+    const on = maps.filter(m => m.multiplayer).length;
+    $("map-summary").textContent = `V multiplayeru: ${on} z ${maps.length} map`;
+
+    const t = el("table");
+    const head = el("tr");
+    for (const h of ["Mapa", "Typ", "Hráči", "Velikost", "Doly", "Upraveno", "Multiplayer", "Akce"]) head.append(el("th", "", h));
+    const thead = el("thead");
+    thead.append(head);
+    const body = el("tbody");
+
+    for (const m of maps) {
+      const tr = el("tr", m.multiplayer ? "" : "map-off");
+
+      const name = el("td");
+      name.append(el("b", "", m.name), el("span", "sub", `${m.id}${m.description ? ` · ${m.description.slice(0, 70)}${m.description.length > 70 ? "…" : ""}` : ""}`));
+
+      const type = el("td");
+      type.append(el("span", `badge ${m.custom ? "custom" : "builtin"}`, m.custom ? "vlastní" : "vestavěná"));
+
+      const toggle = el("label", `mp-toggle${m.multiplayer ? "" : " off"}`);
+      const box = el("input");
+      box.type = "checkbox";
+      box.checked = m.multiplayer;
+      box.setAttribute("aria-label", `Multiplayer: ${m.name}`);
+      box.addEventListener("change", async () => {
+        box.disabled = true;
+
+        try {
+          const result = await api("POST", `/api/admin/maps/${m.id}/multiplayer`, { enabled: box.checked });
+          renderMaps(result.maps);
+        } catch (e) {
+          box.checked = !box.checked;
+          fail(e);
+        } finally {
+          box.disabled = false;
+        }
+      });
+      toggle.append(box, document.createTextNode(m.multiplayer ? "povoleno" : "vypnuto"));
+      const mp = el("td");
+      mp.append(toggle);
+
+      const actions = el("td", "actions-cell");
+      const box2 = el("div", "actions");
+      box2.append(
+        mapLink(m.custom ? "Upravit" : "Upravit kopii", `/editor.html?map=${encodeURIComponent(m.id)}`),
+        mapLink("Hrát", `/index.html?map=${encodeURIComponent(m.id)}`)
+      );
+
+      if (m.custom) {
+        box2.append(
+          button("Stáhnout", () => downloadMap(m.id)),
+          button("Smazat", async () => {
+            if (!window.confirm(`Opravdu smazat mapu „${m.name}“ (${m.id})? Nelze vrátit.`)) return;
+            await mapRequest("DELETE", `/api/maps/${encodeURIComponent(m.id)}`);
+            await loadMapsTab();
+          }, true)
+        );
+      }
+
+      actions.append(box2);
+      tr.append(name, type, el("td", "", String(m.players)), el("td", "", `${m.width}×${m.height}`), el("td", "", String(m.gold)), el("td", "", fmtDate(m.updated)), mp, actions);
+      body.append(tr);
+    }
+
+    t.append(thead, body);
+    $("maps").replaceChildren(t);
+  }
+
+  $("map-upload").addEventListener("click", () => $("map-file").click());
+
+  $("map-file").addEventListener("change", async event => {
+    const file = event.target.files[0];
+    event.target.value = "";
+    if (!file) return;
+
+    try {
+      const raw = JSON.parse(await file.text());
+      const id = raw && typeof raw.id === "string" ? raw.id : "";
+      if (!/^[a-z0-9-]{1,31}$/.test(id)) throw new Error("Soubor není mapa Goralie nebo má neplatný identifikátor.");
+
+      const existing = [...$("maps").querySelectorAll("tbody tr")].some(tr => tr.querySelector(".sub") && tr.querySelector(".sub").textContent.startsWith(id));
+      if (existing && !window.confirm(`Mapa „${id}“ už existuje. Přepsat?`)) return;
+
+      await mapRequest("PUT", `/api/maps/${encodeURIComponent(id)}`, raw);
+      notice(`Mapa „${id}“ je nahraná a k dispozici ve hře.`);
+      await loadMapsTab();
+    } catch (e) {
+      fail(e);
+    }
+  });
+
   /* ---------- záložky ---------- */
-  const loaders = { overview: loadOverview, traffic: loadTraffic, users: loadUsers, live: loadLive, matches: loadMatches, audit: loadAudit };
+  const loaders = { overview: loadOverview, traffic: loadTraffic, users: loadUsers, live: loadLive, matches: loadMatches, maps: loadMapsTab, audit: loadAudit };
 
   function refresh() {
     return loaders[tab]().catch(fail);

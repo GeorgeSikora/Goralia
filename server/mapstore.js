@@ -70,4 +70,9 @@ function remove(id) {
   return true;
 }
 
-module.exports = { load, save, remove, list: () => [...docs.values()], DIR };
+// Čas poslední úpravy souboru mapy (ms), nebo 0.
+function mtime(id) {
+  try { return Math.round(fs.statSync(path.join(DIR, `${id}.json`)).mtimeMs); } catch (e) { return 0; }
+}
+
+module.exports = { load, save, remove, mtime, list: () => [...docs.values()], DIR };

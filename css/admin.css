@@ -137,6 +137,27 @@ details.days summary { cursor: pointer; color: var(--brass); margin-bottom: 8px;
   .modal-box { padding: 12px 10px 16px; }
 }
 
+/* ---------- mapy ---------- */
+a.button {
+  display: inline-block;
+  padding: 6px 11px;
+  background: #2f2a50;
+  color: #ffe9a8;
+  text-decoration: none;
+  box-shadow: inset 0 0 0 1px #4a4474;
+}
+a.button:hover { background: #3d3768; }
+td .sub { display: block; color: var(--muted); font-size: 11px; }
+.mp-toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.mp-toggle input { width: 16px; height: 16px; accent-color: #6fcf7f; cursor: pointer; }
+.mp-toggle.off { color: var(--bad); }
+.badge.builtin { color: var(--muted); }
+.badge.custom { color: var(--amber); }
+tr.map-off td:first-child { opacity: 0.7; }
+td.actions-cell .actions { flex-wrap: wrap; min-width: 190px; }
+a.mini { padding: 6px 11px; background: #2f2a50; color: #ffe9a8; text-decoration: none; box-shadow: inset 0 0 0 1px #4a4474; }
+a.mini:hover { background: #3d3768; }
+
 /* ---------- zápasy ---------- */
 tr.clickable { cursor: pointer; }
 tr.clickable:hover td, tr.clickable:focus-visible td { background: #2a2547; }

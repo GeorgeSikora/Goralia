@@ -1454,6 +1454,14 @@
   const previews = new Map();
   const previewBusy = new Set();
   let lastOffline = null;
+  let mpOff = new Set(); // mapy, které admin vypnul pro multiplayer
+
+  const setMpOff = list => {
+    if (!Array.isArray(list)) return;
+    mpOff = new Set(list.map(String));
+    if (lobbyVisible()) renderLobby();
+  };
+  const mpMaps = () => MAPS.list.filter(m => !mpOff.has(m.id));
 
   // Vlastní mapy z editoru; změněné mapy ztratí starý náhled.
   function refreshCustomMaps() {
@@ -1558,7 +1566,8 @@
 
     if (online.phase === "idle") {
       online.error = "";
-      net.send({ t: "create", map: lobby.mapId });
+      const pick = mpOff.has(lobby.mapId) ? (mpMaps()[0] || MAPS.get(MAPS.DEFAULT)).id : lobby.mapId;
+      net.send({ t: "create", map: pick });
     } else if (online.phase === "offline") {
       connectLobby();
     }
@@ -1656,7 +1665,9 @@
 
     lobbyEl.title.textContent = lobby.online ? "Multiplayer místnost" : "Hra proti AI";
 
-    lobbyEl.maps.replaceChildren(...MAPS.list.map(m => {
+    const shown = lobby.online ? MAPS.list.filter(m => !mpOff.has(m.id) || m.id === lobby.mapId) : MAPS.list;
+
+    lobbyEl.maps.replaceChildren(...shown.map(m => {
       const item = document.createElement("button");
       item.type = "button";
       item.className = `map-item${m.id === lobby.mapId ? " selected" : ""}`;
@@ -2211,6 +2222,7 @@
           break;
         }
 
+        if (m.off) mpOff = new Set(m.off.map(String));
         online.rooms = Array.isArray(m.list) ? m.list : [];
         online.playing = m.playing | 0;
         online.total = m.online | 0;
@@ -2218,6 +2230,10 @@
         if (m.t === "hello" && online.phase === "connecting") online.phase = "idle";
 
         syncLobby();
+        break;
+
+      case "maps":
+        setMpOff(m.off);
         break;
 
       case "room":
