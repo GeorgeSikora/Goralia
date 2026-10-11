@@ -91,6 +91,46 @@
     silver: {
       d: 0x3c4252, m: 0xa8b0c4, s: 0x6e7690, l: 0xd0d8ea, h: 0xffffff,
       accent: C.r[3], accentL: C.r[4], light: C.a[2], ui: 0xc4ccdc
+    },
+    orange: {
+      d: 0x6a2c0c, m: 0xf07820, s: 0xb4501a, l: 0xffa850, h: 0xffd8a0,
+      accent: C.white, accentL: C.white, light: 0xffa850, ui: 0xf58a2c
+    },
+    teal: {
+      d: 0x0c3a3c, m: 0x20b0a8, s: 0x147c7c, l: 0x58dcd0, h: 0xb4fff0,
+      accent: C.a[2], accentL: C.a[3], light: C.a[2], ui: 0x30d0c0
+    },
+    pink: {
+      d: 0x6a1c46, m: 0xf070b0, s: 0xb04880, l: 0xff9cd0, h: 0xffd4ec,
+      accent: C.white, accentL: C.white, light: 0xff9cd0, ui: 0xff82c0
+    },
+    brown: {
+      d: 0x2c1a10, m: 0x8a5a34, s: 0x5e3a20, l: 0xb8844c, h: 0xe0b888,
+      accent: C.a[2], accentL: C.a[3], light: C.a[2], ui: 0xb07a48
+    },
+    lime: {
+      d: 0x3a4c08, m: 0xa8d820, s: 0x70982a, l: 0xd4f458, h: 0xf0ffa8,
+      accent: C.ink, accentL: C.shade, light: 0xd4f458, ui: 0xb8e830
+    },
+    black: {
+      d: 0x08060c, m: 0x38343e, s: 0x1c1822, l: 0x5a5464, h: 0x8a8494,
+      accent: C.r[3], accentL: C.r[4], light: C.r[4], ui: 0x6a6478
+    },
+    maroon: {
+      d: 0x2a0810, m: 0x8c1c34, s: 0x5a1020, l: 0xc04058, h: 0xf08098,
+      accent: C.a[2], accentL: C.a[3], light: C.a[2], ui: 0xb02c48
+    },
+    sand: {
+      d: 0x5a4a2c, m: 0xdcc48c, s: 0xa8905a, l: 0xf4e4b4, h: 0xfffadc,
+      accent: C.u[2], accentL: C.u[3], light: 0xf4e4b4, ui: 0xe8d49c
+    },
+    magenta: {
+      d: 0x40104c, m: 0xc02cc8, s: 0x841c90, l: 0xe468ec, h: 0xf8b4ff,
+      accent: C.a[2], accentL: C.a[3], light: 0xe468ec, ui: 0xd040e0
+    },
+    olive: {
+      d: 0x2a2c0c, m: 0x7c8020, s: 0x545818, l: 0xa8ae44, h: 0xd8de88,
+      accent: C.a[2], accentL: C.a[3], light: C.a[2], ui: 0x9aa030
     }
   };
 

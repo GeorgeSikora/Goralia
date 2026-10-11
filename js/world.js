@@ -830,9 +830,67 @@
     if (world.map && world.map.id === id) world.ready = false;
   }
 
+  /* ---------- forest beyond the map border ---------- */
+  let forestPattern = null;
+
+  function buildForest() {
+    const TW = 192;
+    const TH = 144;
+    const P = new Pix(TW, TH);
+
+    for (let y = 0; y < TH; y++) {
+      for (let x = 0; x < TW; x++) {
+        const h = hash(x >> 1, y >> 1, 77);
+        P.set(x, y, h > 0.9 ? G[3] : h > 0.45 ? G[2] : G[1]);
+      }
+    }
+
+    const { c, g } = makeCanvas(TW, TH);
+    g.imageSmoothingEnabled = false;
+    g.drawImage(P.toCanvas(), 0, 0);
+
+    const R = rng(4242);
+    const spots = [];
+    for (let i = 0; i < 26; i++) spots.push([R() * TW, R() * TH, Math.floor(R() * 3)]);
+    spots.sort((a, b) => a[1] - b[1]);
+
+    // stromy přesahující okraj dlaždice se kreslí i na protější straně, aby na sebe navazovaly
+    for (const [x, y, k] of spots) {
+      const t = PK.props.trees[k];
+      for (let ox = -TW; ox <= TW; ox += TW) {
+        for (let oy = -TH; oy <= TH; oy += TH) {
+          const fx = Math.round(x + ox) - t.ax;
+          const fy = Math.round(y + oy) - t.ay;
+          if (fx > TW || fy > TH || fx + 80 < 0 || fy + 90 < 0) continue;
+          g.drawImage(t.trunk, fx, fy);
+          g.drawImage(t.crown[0], fx, fy);
+        }
+      }
+    }
+
+    g.fillStyle = "rgba(21,18,31,0.42)";
+    g.fillRect(0, 0, TW, TH);
+    return g.createPattern(c, "repeat");
+  }
+
+  function drawForest(g, v) {
+    if (!forestPattern) forestPattern = buildForest();
+    g.fillStyle = forestPattern;
+    const x1 = v.x + v.w;
+    const y1 = v.y + v.h;
+    if (v.y < 0) g.fillRect(v.x, v.y, v.w, -v.y);
+    if (y1 > H) g.fillRect(v.x, H, v.w, y1 - H);
+    const top = Math.max(0, v.y);
+    const bot = Math.min(H, y1);
+    if (v.x < 0) g.fillRect(v.x, top, -v.x, bot - top);
+    if (x1 > W) g.fillRect(W, top, x1 - W, bot - top);
+  }
+
   /* ---------- per-frame drawing ---------- */
   // v = vydělý obdelník světa v art px: { x, y, w, h }; kreslí se ve světových souřadnicích.
   function drawGround(g, T, v) {
+    if (v.x < 0 || v.y < 0 || v.x + v.w > W || v.y + v.h > H) drawForest(g, v);
+
     const sx = Math.max(0, v.x);
     const sy = Math.max(0, v.y);
     const ex = Math.min(W, v.x + v.w);

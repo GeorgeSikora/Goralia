@@ -295,7 +295,7 @@
     setStatus(listStatus, "Načítám…");
 
     try {
-      const data = await api("GET", `/api/players?limit=50&q=${encodeURIComponent(q)}`);
+      const data = await api("GET", `/api/players?limit=1000&q=${encodeURIComponent(q)}`);
       if (token !== listToken) return;
 
       list.replaceChildren(...data.players.map((player, i) => {
@@ -310,7 +310,7 @@
         return row;
       }));
 
-      setStatus(listStatus, data.players.length ? (q ? "" : "Řazeno podle výher proti lidem.") : q ? "Nikdo takový tu není." : "Zatím nikdo neodehrál zápas.");
+      setStatus(listStatus, data.players.length ? (q ? "" : `${data.players.length} hráčů, řazeno podle výher proti lidem.`) : q ? "Nikdo takový tu není." : "Zatím nikdo není zaregistrovaný.");
     } catch (e) {
       if (token === listToken) setStatus(listStatus, e.message, true);
     }

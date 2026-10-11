@@ -515,7 +515,7 @@ a.btn { display: block; text-align: center; text-decoration: none; }
 .stat-value { color: #ffe9a8; text-align: right; }
 
 .matches, .players { display: grid; gap: 6px; max-height: 220px; overflow: auto; padding: 2px; }
-.players { max-height: 320px; }
+.players { max-height: min(60vh, 520px); }
 
 .match {
   display: grid;

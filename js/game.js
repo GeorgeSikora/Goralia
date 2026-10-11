@@ -640,7 +640,7 @@
 
   // Změní zoom tak, aby bod (ax, ay) na obrazovce (art px) zůstal na stejném místě světa.
   function setZoom(next, ax, ay) {
-    const z = clamp(next, ZOOMS[0], ZOOMS[ZOOMS.length - 1]);
+    const z = clamp(next, zoomMin(), ZOOMS[ZOOMS.length - 1]);
     if (z === zoom) return;
     const wx = camF.x + ax / zoom;
     const wy = camF.y + ay / zoom;
@@ -648,7 +648,18 @@
     setCam(wx - ax / zoom, wy - ay / zoom);
   }
 
-  const nearestZoom = z => ZOOMS.reduce((best, s) => (Math.abs(Math.log(s / z)) < Math.abs(Math.log(best / z)) ? s : best), ZOOMS[0]);
+  // nejmenší zoom = celá mapa se vejde na obrazovku, dál se neodzoomuje
+  function zoomMin() {
+    const fitZoom = Math.min(view.w / map.size[0], view.mapH / map.size[1]);
+    return clamp(fitZoom, 0.1, ZOOMS[ZOOMS.length - 1]);
+  }
+
+  function zoomLevels() {
+    const lo = zoomMin();
+    return [lo, ...ZOOMS.filter(z => z > lo * 1.05)];
+  }
+
+  const nearestZoom = z => zoomLevels().reduce((best, s) => (Math.abs(Math.log(s / z)) < Math.abs(Math.log(best / z)) ? s : best));
 
   // Plynule dojede na cílový stupeň; bod (ax, ay) zůstává na místě.
   function animateZoom(target, ax, ay) {
@@ -656,8 +667,9 @@
   }
 
   function stepZoom(dir, ax, ay) {
-    const i = ZOOMS.indexOf(nearestZoom(zoomAnim ? zoomAnim.to : zoom));
-    animateZoom(ZOOMS[clamp(i + dir, 0, ZOOMS.length - 1)], ax, ay);
+    const levels = zoomLevels();
+    const i = levels.indexOf(nearestZoom(zoomAnim ? zoomAnim.to : zoom));
+    animateZoom(levels[clamp(i + dir, 0, levels.length - 1)], ax, ay);
   }
 
   function updateCamera(dt) {
@@ -1121,7 +1133,7 @@
     const mid = clientToArt((a.cx + b.cx) / 2, (a.cy + b.cy) / 2);
     pinch.mx = mid.x;
     pinch.my = mid.y;
-    zoom = clamp(pinch.z0 * Math.max(24, d) / pinch.d0, ZOOMS[0] * 0.85, ZOOMS[ZOOMS.length - 1] * 1.15);
+    zoom = clamp(pinch.z0 * Math.max(24, d) / pinch.d0, zoomMin(), ZOOMS[ZOOMS.length - 1] * 1.15);
     setCam(pinch.wx - mid.x / zoom, pinch.wy - mid.y / zoom);
   }
 
@@ -3330,6 +3342,7 @@
     display.imageSmoothingEnabled = false;
 
     PK.hud.relayout();
+    if (map) zoom = Math.max(zoom, zoomMin());
     setCam(camF.x, camF.y);
   }
 

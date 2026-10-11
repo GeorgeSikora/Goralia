@@ -464,7 +464,8 @@ async function testServerApi() {
     // profily a hledání
     const found = await request("GET", "/api/players?q=eve");
     assert.deepStrictEqual(found.json.players.map(p => p.name), ["Eve2"]);
-    assert.strictEqual((await request("GET", "/api/players")).json.players.length, 0, "žebříček je prázdný, dokud nikdo nehrál");
+    const everyone = (await request("GET", "/api/players")).json.players;
+    assert(everyone.some(p => p.name === "Eve2"), "výpis obsahuje i hráče bez odehraných her");
     const profile = await request("GET", `/api/players/${eve.id}`);
     assert.strictEqual(profile.json.player.stats.games, 0);
     assert(!profile.text.includes("@") && profile.json.player.banned === undefined);

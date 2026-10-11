@@ -42,7 +42,7 @@
     road: { size: ["Šířka cesty", 2, 12], main: true },
     tree: { size: ["Poloměr štětce", 4, 200] },
     gold: { amount: true, hint: "Klikni pro nový důl, táhni pro přesun." },
-    base: { hint: "Klikni pro novou základnu (2–6), táhni pro přesun." },
+    base: { hint: "Klikni pro novou základnu (2–16), táhni pro přesun." },
     erase: { size: ["Poloměr gumy", 4, 200], erase: true }
   };
 

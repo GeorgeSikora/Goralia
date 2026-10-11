@@ -28,7 +28,7 @@ const MAX_ROOMS = 100;
 const MAX_MSG_PER_SEC = 80;
 const BUFFER_LIMIT = 2 * 1024 * 1024;
 const MAX_MAP_BYTES = 1024 * 1024;
-const PAGES = ["index.html", "editor.html"];
+const PAGES = ["index.html", "editor.html", "robots.txt", "sitemap.xml"];
 const ADMIN_PAGE = "admin.html";
 const STARTED = Date.now();
 
@@ -43,7 +43,9 @@ const MIME = {
   ".png": "image/png",
   ".mp3": "audio/mpeg",
   ".json": "application/json; charset=utf-8",
-  ".ico": "image/x-icon"
+  ".ico": "image/x-icon",
+  ".txt": "text/plain; charset=utf-8",
+  ".xml": "application/xml; charset=utf-8"
 };
 
 /* ---------- vlastní mapy (editor) ---------- */

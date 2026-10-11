@@ -6,6 +6,8 @@ npm.cmd start
 Zjisti heslo admina v logu: 
     pm2 logs goralia --lines 100 --nostream.
 
+PORT=3100 pm2 start server/server.js --name goralia
+
 Pro Google 
     vytvoř v Google Cloud Console „OAuth client ID“ typu Web a jako redirect URI zadej https://goralia.cz/auth/google/callback.
 Pro Facebook 

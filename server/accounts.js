@@ -479,10 +479,10 @@ function createAccounts(store, options = {}) {
     return data.users[Number(id)] || null;
   }
 
-  function leaderboard({ q = "", limit = 50 } = {}) {
+  function leaderboard({ q = "", limit = 1000 } = {}) {
     const needle = String(q).trim().toLowerCase();
     let users = Object.values(data.users).filter(u => !u.banned);
-    users = needle ? users.filter(u => u.name.toLowerCase().includes(needle)) : users.filter(u => u.stats.games > 0);
+    users = needle ? users.filter(u => u.name.toLowerCase().includes(needle)) : users;
 
     users.sort((a, b) => b.stats.pvpWins - a.stats.pvpWins || b.stats.wins - a.stats.wins || b.stats.games - a.stats.games || a.name.localeCompare(b.name));
 

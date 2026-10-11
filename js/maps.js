@@ -479,7 +479,7 @@
   const DOC = {
     FORMAT: "goralia-map", VERSION: 1,
     MIN_W: 320, MAX_W: 5000, MIN_H: 200, MAX_H: 5000,
-    MAX_TREES: 3000, MAX_GOLD: 60, MAX_WATER: 300, MAX_ROADS: 80, MAX_PTS: 600, MAX_TOTAL_PTS: 20000
+    MAX_BASES: 16, MAX_TREES: 3000, MAX_GOLD: 60, MAX_WATER: 300, MAX_ROADS: 80, MAX_PTS: 600, MAX_TOTAL_PTS: 20000
   };
 
   const isNum = v => typeof v === "number" && Number.isFinite(v);
@@ -525,7 +525,7 @@
       return { pts: pts.map(p => [Math.round(p[0] * 10) / 10, Math.round(p[1] * 10) / 10]), [key]: Math.min(hi, Math.max(lo, s[key])) };
     };
 
-    const bases = take(raw.bases, 6, "Základny").filter(b => b && point([b.x, b.y], LW, LH)).map(b => ({ x: Math.round(b.x), y: Math.round(b.y) }));
+    const bases = take(raw.bases, DOC.MAX_BASES, "Základny").filter(b => b && point([b.x, b.y], LW, LH)).map(b => ({ x: Math.round(b.x), y: Math.round(b.y) }));
     const gold = take(raw.gold, DOC.MAX_GOLD, "Doly").filter(g => point(g, LW, LH)).map(g =>
       (isNum(g[2]) ? [Math.round(g[0]), Math.round(g[1]), Math.min(20000, Math.max(500, Math.round(g[2])))] : [Math.round(g[0]), Math.round(g[1])]));
     const trees = take(raw.trees, DOC.MAX_TREES, "Stromy").filter(t => point(t, LW, LH)).map(t => [Math.round(t[0]), Math.round(t[1])]);

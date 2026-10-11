@@ -9,7 +9,7 @@ const { createOAuth } = require("./oauth.js");
 const { cookie, parseCookies, clientIp, sameOrigin, sendJson, readJson } = require("./httputil.js");
 
 const SID = "goralia_sid";
-const PLAYER_LIMIT = 100;
+const PLAYER_LIMIT = 1000;
 
 function createApi({ accounts, stats, store, live, publicUrl }) {
   const passwordFails = new Limiter(10, 10 * 60 * 1000);
@@ -83,7 +83,7 @@ function createApi({ accounts, stats, store, live, publicUrl }) {
 
     /* ---------- profily ---------- */
     players(ctx) {
-      const list = accounts.leaderboard({ q: ctx.query.get("q") || "", limit: clamp(ctx.query.get("limit"), 1, PLAYER_LIMIT, 50) });
+      const list = accounts.leaderboard({ q: ctx.query.get("q") || "", limit: clamp(ctx.query.get("limit"), 1, PLAYER_LIMIT, PLAYER_LIMIT) });
       sendJson(ctx.res, 200, { players: list.map(p => ({ ...p, online: live.isOnline(p.id) })) });
     },
 

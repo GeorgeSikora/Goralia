@@ -44,9 +44,16 @@
   const BUILD_TIME = { tower: 10, barracks: 12, hut: 8, smithy: 14 };
 
   // Index slotu na mapě = index týmu.
-  const TEAMS = ["blue", "red", "gold", "violet", "green", "silver"];
-  const HQ = { blue: "hall", red: "hall", gold: "hall", violet: "hall", green: "hall", silver: "hall" };
-  const TEAM_NAMES = { blue: "Modrá", red: "Rudá", gold: "Zlatá", violet: "Fialová", green: "Zelená", silver: "Stříbrná" };
+  const TEAMS = [
+    "blue", "red", "gold", "violet", "green", "silver", "orange", "teal",
+    "pink", "brown", "lime", "black", "maroon", "sand", "magenta", "olive"
+  ];
+  const HQ = Object.fromEntries(TEAMS.map(t => [t, "hall"]));
+  const TEAM_NAMES = {
+    blue: "Modrá", red: "Rudá", gold: "Zlatá", violet: "Fialová", green: "Zelená", silver: "Stříbrná",
+    orange: "Oranžová", teal: "Tyrkysová", pink: "Růžová", brown: "Hnědá", lime: "Limetková", black: "Černá",
+    maroon: "Vínová", sand: "Písková", magenta: "Purpurová", olive: "Olivová"
+  };
   const MAX_PLAYERS = TEAMS.length;
   const BASE_GOLD = 260;
   const BASE_WOOD = 120;
