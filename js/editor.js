@@ -1085,13 +1085,20 @@
 
     try {
       const res = await fetch(`/api/maps/${encodeURIComponent(id)}`, { method: "DELETE" });
-      if (!res.ok) return say("Mapu se nepodařilo smazat.", "error");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const why = (data.errors && data.errors[0]) || `Chyba serveru (${res.status}).`;
+        say(why, "error");
+        alert(`Mapu se nepodařilo smazat.\n${why}`);
+        return;
+      }
 
       if (savedId === id) { savedId = ""; dirty = true; }
       await refreshServerList();
       say(`Smazáno: ${id}.`, "ok");
     } catch (e) {
       say("Server není dostupný.", "error");
+      alert("Server není dostupný.");
     }
   }
 
