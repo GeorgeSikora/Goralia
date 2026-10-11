@@ -19,6 +19,7 @@
   let GY = 0;
   let sky = null;
   let layers = null;
+  let vignette = null;
 
   const STATS = {
     soldier: { hp: 46, dmg: 9, rng: 15, cd: 0.8, sp: 24 },
@@ -139,6 +140,30 @@
     }
   }
 
+  // Stejná vinjeta jako ve hře: od okrajů tma, která se po pixelech (ordered dithering) ztrácí do středu.
+  function buildVignette() {
+    const { bayer, smooth, makeCanvas } = PK;
+    const { c, g } = makeCanvas(W, H);
+    const img = g.createImageData(W, H);
+
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const dx = (x - W / 2) / (W / 2);
+        const dy = (y - H / 2) / (H / 2);
+        const d = Math.pow(Math.abs(dx), 2.2) * 1.0 + Math.pow(Math.abs(dy), 2.4) * 0.8;
+        const v = smooth(0.18, 1.1, d) * 5;
+        const lv = Math.floor(v + bayer(x, y) - 0.5 + 0.5);
+        if (lv <= 0) continue;
+        const i = (y * W + x) * 4;
+        img.data[i] = 0x0a; img.data[i + 1] = 0x08; img.data[i + 2] = 0x16;
+        img.data[i + 3] = Math.min(235, lv * 50);
+      }
+    }
+
+    g.putImageData(img, 0, 0);
+    return c;
+  }
+
   function resize() {
     const cw = Math.max(1, canvas.clientWidth);
     const ch = Math.max(1, canvas.clientHeight);
@@ -147,6 +172,7 @@
     canvas.height = H;
     GY = Math.round(H * 0.56);
     ctx.imageSmoothingEnabled = false;
+    vignette = buildVignette();
     build();
     clouds = [];
     for (let i = 0; i < 7; i++) clouds.push({ x: Math.random() * W, y: rnd(10, GY * 0.55), w: rnd(30, 70), v: rnd(3, 8) });
@@ -530,6 +556,7 @@
     }
 
     ctx.restore();
+    if (vignette) ctx.drawImage(vignette, 0, 0);
   }
 
   function frame(now) {
