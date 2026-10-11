@@ -277,6 +277,57 @@
 
     for (const wl of rec.walls) nearStroke(wl.pts, wl.hw * 1.5 + 3, (i, d) => { if (d < wl.hw * 1.5 + 1) wallTop[i] = 1; });
 
+    // Pilíře brány: po obou stranách průchodu se zeď zakončí širším čtyřhranným pilířem s vyšší hlavicí.
+    const pier = new Uint8Array(W * H);
+
+    for (const wl of rec.walls) {
+      for (let i = 0; i < wl.pts.length - 1; i++) {
+        const [ax, ay] = wl.pts[i];
+        const [bx, by] = wl.pts[i + 1];
+        const dx = bx - ax;
+        const dy = by - ay;
+        const len = Math.hypot(dx, dy) || 1;
+        const ux = dx / len;
+        const uy = dy / len;
+
+        for (const road of rec.roads) {
+          for (let j = 0; j < road.pts.length - 1; j++) {
+            const [cx, cy] = road.pts[j];
+            const [ex, ey] = road.pts[j + 1];
+            const rx = ex - cx;
+            const ry = ey - cy;
+            const den = dx * ry - dy * rx;
+            if (Math.abs(den) < 1e-6) continue;
+            const u = ((cx - ax) * ry - (cy - ay) * rx) / den;
+            const v = ((cx - ax) * dy - (cy - ay) * dx) / den;
+            if (u < 0 || u > 1 || v < 0 || v > 1) continue;
+
+            const gx = ax + dx * u;
+            const gy = ay + dy * u;
+            const gap = road.w * 1.12;
+            const half = wl.hw * 1.5 + 3;
+            const reach = gap + 7;
+            const x0 = Math.max(0, Math.floor(gx - reach - half)), x1 = Math.min(W - 1, Math.ceil(gx + reach + half));
+            const y0 = Math.max(0, Math.floor(gy - reach - half)), y1 = Math.min(H - 1, Math.ceil(gy + reach + half));
+
+            for (let y = y0; y <= y1; y++) {
+              for (let x = x0; x <= x1; x++) {
+                const sAlong = (x - gx) * ux + (y - gy) * uy;
+                const tAcross = -(x - gx) * uy + (y - gy) * ux;
+                if (Math.abs(sAlong) >= gap && Math.abs(sAlong) < reach && Math.abs(tAcross) < half) {
+                  wallTop[y * W + x] = 1;
+                  pier[y * W + x] = 1;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // v průchodu (brána) zeď nestojí
+    for (let i = 0; i < W * H; i++) if (wallTop[i] && !pier[i] && nd[i] < 1.12) wallTop[i] = 0;
+
     const paved = (x, y) =>
       rec.paveX.some(([a, c]) => x >= a && x < c) ||
       rec.pave.some(([px, py, pr]) => Math.hypot(x - px, y - py) < pr);
@@ -457,10 +508,12 @@
         }
 
         /* ---- hradby: široká koruna zdi s cimbuřím, vysoký líc o šest pixelů níž, stín na zemi; v místě cesty je brána ---- */
-        if (z !== Z_FRAME && z !== Z_WATER && nd[i] >= 1.12) {
+        if (z !== Z_FRAME && z !== Z_WATER) {
           const FACE = 6;
           let below = 0;
           for (let k = 1; k <= FACE && !below; k++) if (y >= k && wallTop[i - k * W]) below = k;
+          const gateOpen = nd[i] < 1.12 && !(below && pier[i - below * W]);
+          if (!gateOpen) {
 
           // nepravidelné kvádry: šířka i posun se mění po řádcích, každý kámen má vlastní odstín
           const stone = (rowH, base, spread) => {
@@ -488,17 +541,22 @@
             if (north) col = merlon ? S[5] : S[2];
             else if (!wallTop[i - 2 * W] && !merlon) col = S[3];
             if (south) col = S[1];
-            if (!wallTop[i - 1]) col = S[5];
+            if (pier[i]) {
+              col = st.mortar ? S[4] : S[5];
+              if (north || south || !wallTop[i - 1] || !wallTop[i + 1] || !pier[i - 1] || !pier[i + 1] || !pier[i - W] || !pier[i + W]) col = S[3];
+              else if ((x + y) % 5 === 0) col = S[4];
+              if (!wallTop[i + 1] || !pier[i + 1]) col = S[1];
+            } else if (!wallTop[i - 1]) col = S[5];
             else if (!wallTop[i + 1]) col = S[0];
             else if (!wallTop[i + 2]) col = S[2];
           } else if (below) {
             z = Z_WALL;
-            const st = stone(3, 2, 1);
-            col = st.mortar ? S[0] : S[st.idx];
+            const st = stone(3, 3, 1);
+            col = st.mortar ? S[1] : S[st.idx];
             if (below <= 1) col = S[3];
             // světlejší horní hrana kamene, tmavší spodní
             if (!st.mortar && y % 3 === 0) col = S[Math.min(5, st.idx + 1)];
-            if (below >= FACE - 1) col = S[0];
+            if (below >= FACE - 1) col = S[1];
             // praskliny a mech ve spodní části zdi
             if (hash(x >> 1, y, 56) > 0.975 && below > 1) col = S[0];
             if (moss && below >= 3) col = hash(x, y, 57) > 0.45 ? G[1] : G[0];
@@ -508,6 +566,7 @@
             for (let k = FACE + 1; k <= FACE + 6 && !sh; k++) if (y >= k && wallTop[i - k * W]) sh = k - FACE;
             if (!sh) for (let k = 1; k <= 5 && !sh; k++) if (wallTop[i - k]) sh = k; // stín vpravo od zdi
             if (sh) col = mix(col, S[0], [0.7, 0.55, 0.42, 0.3, 0.2, 0.1][sh - 1]);
+          }
           }
         }
 
@@ -822,33 +881,6 @@
         list.push({ name: "wallTower", spr: dd.wallTower, x: Math.round(x), y: Math.round(y + 2), r: 6, ph: 0 });
       };
 
-      for (const road of rec.roads) {
-        for (let i = 0; i < pts.length - 1; i++) {
-          const [ax, ay] = pts[i];
-          const [bx, by] = pts[i + 1];
-          const dx = bx - ax;
-          const dy = by - ay;
-          const len = Math.hypot(dx, dy) || 1;
-
-          for (let j = 0; j < road.pts.length - 1; j++) {
-            const [cx, cy] = road.pts[j];
-            const [ex, ey] = road.pts[j + 1];
-            const rx = ex - cx;
-            const ry = ey - cy;
-            const den = dx * ry - dy * rx;
-            if (Math.abs(den) < 1e-6) continue;
-            const u = ((cx - ax) * ry - (cy - ay) * rx) / den;
-            const v = ((cx - ax) * dy - (cy - ay) * dx) / den;
-            if (u < 0 || u > 1 || v < 0 || v > 1) continue;
-
-            const gx = ax + dx * u;
-            const gy = ay + dy * u;
-            const gap = road.w * 0.8 + 5;
-            tower(gx - dx / len * gap, gy - dy / len * gap);
-            tower(gx + dx / len * gap, gy + dy / len * gap);
-          }
-        }
-      }
     }
     for (const entry of rec.doodads.scatter) scatter(...entry);
 
