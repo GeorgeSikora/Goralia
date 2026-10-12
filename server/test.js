@@ -159,6 +159,7 @@ function testSimulation() {
   testBuilding();
   testSmithy();
   testRepair();
+  testFireball();
 }
 
 function testSmithy() {
@@ -197,6 +198,42 @@ function testSmithy() {
 }
 
 // oprava: dělník přidává životy hotové budově po krocích, každý krok stojí 1 zlato a 1 dřevo
+// Ohnivá koule ubere životy až při dopadu, ne už při výstřelu.
+function testFireball() {
+  const m = new Match(MAPS.get("valley"), [{ name: "A" }, { name: "B" }], { countdown: 0 });
+  const hero = m.createUnit("hero", "blue", 400, 400);
+  const foe = m.createUnit("soldier", "red", 480, 400);
+  const hp0 = foe.hp;
+
+  m.command("blue", { c: "fire", x: foe.x, y: foe.y });
+  assert.strictEqual(hero.fireCooldown, 10, "koule vyletěla");
+  assert.strictEqual(foe.hp, hp0, "při výstřelu se ještě nic neubere");
+  assert(!m.events.some(e => e.e === "hit"), "zásah ještě nepřišel");
+
+  m.step(TICK);
+  m.endTick();
+  assert.strictEqual(foe.hp, hp0, "za letu se ještě nic neubere");
+
+  let landed = false;
+  for (let t = TICK; t < 0.31 + 1e-9 && !landed; t += TICK) {
+    foe.x = 480; foe.y = 400; foe.order = null;
+    m.step(TICK);
+    landed = m.events.some(e => e.e === "hit" && e.t === foe.id);
+    m.endTick();
+  }
+  assert(landed, "po dopadu přijde zásah");
+  assert(foe.hp < hp0, "po dopadu se životy uberou");
+
+  // kdo z místa dopadu stihne utéct, nedostane nic
+  const m2 = new Match(MAPS.get("valley"), [{ name: "A" }, { name: "B" }], { countdown: 0 });
+  m2.createUnit("hero", "blue", 400, 400);
+  const runner = m2.createUnit("soldier", "red", 480, 400);
+  m2.command("blue", { c: "fire", x: runner.x, y: runner.y });
+  runner.x = 700;
+  for (let t = 0; t < 0.5; t += TICK) { runner.order = null; m2.step(TICK); m2.endTick(); }
+  assert.strictEqual(runner.hp, runner.maxHp, "uteklý cíl zůstane bez zranění");
+}
+
 function testRepair() {
   const notes = [];
   const run = (m, seconds) => {
