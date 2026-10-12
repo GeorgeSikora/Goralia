@@ -15,3 +15,9 @@ Pro Facebook
 
 
 npm run voices
+
+Hlasový chat (push-to-talk, výchozí klávesa V)
+    Zvuk jde přímo mezi prohlížeči (WebRTC), server jen předává signalizaci. Mikrofon vyžaduje HTTPS (nebo localhost).
+    Výchozí STUN: stun:stun.l.google.com:19302 (jiný: GORALIA_STUN_URLS="stun:...,stun:...").
+    Hráčům za přísným NATem (mobilní data, firemní síť) pomůže vlastní TURN server, např. coturn na VPS:
+    GORALIA_TURN_URL="turn:goralia.cz:3478" GORALIA_TURN_USER=goralia GORALIA_TURN_PASS=... pm2 restart goralia --update-env

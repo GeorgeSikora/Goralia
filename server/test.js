@@ -653,6 +653,43 @@ async function testServer() {
     await sleep(200);
     assert(!said(a, "Cyril").length && !said(b, "Cyril").length, "chat jde jen členům místnosti");
 
+    // hlasový chat: seznam členů, předávání signalizace WebRTC jen v místnosti, oznámení „mluví“
+    const voiceOf = bot => bot.msgs.filter(m => m.t === "voice").pop();
+    await Promise.all([a, b].map(p => p.until(() => voiceOf(p) && voiceOf(p).peers.length === 2, 2000, "seznam pro hlasový chat")));
+    assert(Array.isArray(a.hello.ice) && a.hello.ice.length, "hello nese servery pro WebRTC");
+    const aId = voiceOf(a).me;
+    const bId = voiceOf(b).me;
+    assert.notStrictEqual(aId, bId);
+    assert.deepStrictEqual(voiceOf(b).peers.map(p => [p.id, p.name, p.slot]), [[aId, "Alice", 0], [bId, "Bob", 1]]);
+
+    const rtc = bot => bot.msgs.filter(m => m.t === "rtc");
+    a.send({ t: "rtc", to: bId, kind: "offer", sdp: { type: "offer", sdp: "v=0 test" } });
+    a.send({ t: "rtc", to: bId, kind: "ice", ice: { candidate: "candidate:1", sdpMid: "0" } });
+    await b.until(() => rtc(b).length === 2, 2000, "signalizace dorazí");
+    assert.deepStrictEqual(rtc(b)[0], { t: "rtc", from: aId, kind: "offer", sdp: { type: "offer", sdp: "v=0 test" } });
+    assert.deepStrictEqual(rtc(b)[1].ice, { candidate: "candidate:1", sdpMid: "0" });
+    a.send({ t: "rtc", to: bId, kind: "bogus", sdp: {} });
+    a.send({ t: "rtc", to: bId, kind: "offer", sdp: "text" });
+    a.send({ t: "rtc", to: aId, kind: "offer", sdp: {} });
+    a.send({ t: "rtc", to: bId, kind: "offer", sdp: { sdp: "x".repeat(13000) } });
+    c.send({ t: "rtc", to: bId, kind: "offer", sdp: { type: "offer", sdp: "cizí" } });
+    await sleep(200);
+    assert.strictEqual(rtc(b).length, 2, "neplatná nebo cizí signalizace se nepředá");
+    assert(!rtc(a).length, "nikdo neposílá sám sobě");
+
+    const talks = bot => bot.msgs.filter(m => m.t === "talk");
+    b.send({ t: "talk", on: true });
+    b.send({ t: "talk", on: true });
+    await a.until(() => talks(a).length, 2000, "Bob mluví");
+    assert.deepStrictEqual(talks(a)[0], { t: "talk", id: bId, name: "Bob", slot: 1, on: true });
+    b.send({ t: "talk", on: false });
+    await a.until(() => talks(a).length === 2, 2000, "Bob domluvil");
+    assert.strictEqual(talks(a)[1].on, false);
+    assert(!talks(b).length, "mluvčí nedostává vlastní oznámení");
+    c.send({ t: "talk", on: true });
+    await sleep(150);
+    assert.strictEqual(talks(a).length, 2, "mimo místnost se nemluví");
+
     // plná místnost, host zahájí hru, ne-host nemůže nic
     c.send({ t: "join", room: a.room.id, name: "Cyril" });
     await c.until(() => c.errors.length, 2000, "plná místnost");
@@ -821,8 +858,14 @@ async function testServer() {
     assert.strictEqual((await profile("Alice")).stats.games, 1, "krátký zápas se nezapisuje");
 
     /* ----- čtyři hráči: tři lidé a zavřený slot, odchody a předání hostitele ----- */
+    // kdo odejde s drženou klávesou, přestane „mluvit“ a zmizí ze seznamu hlasového chatu
+    const aTalkId = voiceOf(a).me;
+    const talkOf = (bot, on) => bot.msgs.some(m => m.t === "talk" && m.id === aTalkId && m.on === on);
+    a.send({ t: "talk", on: true });
+    await b.until(() => talkOf(b, true), 2000, "A mluví");
     a.send({ t: "leave" });
     await a.until(() => a.msgs.some(m => m.t === "left"), 2000, "A odešel");
+    await b.until(() => talkOf(b, false) && !voiceOf(b).peers.some(p => p.id === aTalkId), 2000, "A zmizel z hlasového chatu");
     await b.until(() => b.room && b.room.host === b.room.you, 2000, "B je nový hostitel");
     b.send({ t: "leave" });
     await b.until(() => b.msgs.some(m => m.t === "left"), 2000, "B odešel");

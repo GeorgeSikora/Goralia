@@ -31,10 +31,21 @@ const MAX_SPECTATORS = 100; // diváků u jednoho zápasu
 const MAX_MSG_PER_SEC = 80;
 const BUFFER_LIMIT = 2 * 1024 * 1024;
 const MAX_MAP_BYTES = 1024 * 1024;
+const MAX_WS_PAYLOAD = 16 * 1024; // zprávy hráčů; nejdelší je popis spojení hlasového chatu (SDP)
 const PAGES = ["index.html", "editor.html", "privacy.html", "terms.html", "manifest.webmanifest", "robots.txt", "sitemap.xml"];
 // Hezké adresy bez přípony (např. https://goralia.cz/privacy).
 const PRETTY = { "/privacy": "/privacy.html", "/terms": "/terms.html" };
 const ADMIN_PAGE = "admin.html";
+// Servery pro navázání hlasového spojení mezi prohlížeči. STUN stačí většině domácích sítí;
+// pro hráče za přísným NATem (mobilní data, firemní sítě) lze přidat vlastní TURN (např. coturn na VPS).
+const ICE_SERVERS = [{ urls: (process.env.GORALIA_STUN_URLS || "stun:stun.l.google.com:19302").split(",").map(u => u.trim()).filter(Boolean) }];
+if (process.env.GORALIA_TURN_URL) {
+  ICE_SERVERS.push({
+    urls: process.env.GORALIA_TURN_URL.split(",").map(u => u.trim()).filter(Boolean),
+    username: process.env.GORALIA_TURN_USER || "",
+    credential: process.env.GORALIA_TURN_PASS || ""
+  });
+}
 const STARTED = Date.now();
 
 const store = createStore(DATA_DIR);
@@ -239,7 +250,7 @@ const server = http.createServer((req, res) => {
 });
 
 /* ---------- lobby ---------- */
-const wss = new WebSocketServer({ server, maxPayload: 4096 });
+const wss = new WebSocketServer({ server, maxPayload: MAX_WS_PAYLOAD });
 const clients = new Set();
 const rooms = new Map();
 const matches = new Set();
@@ -374,6 +385,42 @@ function chatSay(client, room, raw) {
   for (const human of humansOf(room)) send(human, payload);
 }
 
+/* ---------- hlasový chat místnosti ---------- */
+// Zvuk teče přímo mezi prohlížeči (WebRTC). Server jen předává popisy spojení mezi členy jedné místnosti
+// a oznamuje, kdo právě drží klávesu push-to-talk. Diváci a lidé mimo místnost nic nedostanou.
+const RTC_KINDS = new Set(["offer", "answer", "ice"]);
+const RTC_MAX = 12 * 1024; // znaků jednoho popisu (SDP nebo ICE kandidát)
+
+// Seznam členů místnosti pro hlasový chat; posílá se při každé změně obsazení (v lobby i během zápasu).
+function sendVoice(room) {
+  const humans = room.slots.map((s, slot) => ({ s, slot })).filter(({ s }) => s.kind === "human" && s.client);
+  const peers = humans.map(({ s, slot }) => ({ id: s.client.id, name: s.client.name, slot }));
+  for (const { s } of humans) send(s.client, { t: "voice", me: s.client.id, peers });
+}
+
+function voiceTalk(client, room, on) {
+  on = !!on;
+  if (client.talking === on) return;
+  client.talking = on;
+
+  const payload = JSON.stringify({ t: "talk", id: client.id, name: client.name, slot: slotIndex(room, client), on });
+  for (const human of humansOf(room)) if (human !== client) send(human, payload);
+}
+
+function voiceRelay(client, room, msg) {
+  if (!RTC_KINDS.has(msg.kind)) return;
+  const target = humansOf(room).find(human => human.id === msg.to);
+  if (!target || target === client) return;
+
+  const data = msg.kind === "ice" ? msg.ice : msg.sdp;
+  if (data == null || typeof data !== "object") return;
+
+  const text = JSON.stringify(data);
+  if (text.length > RTC_MAX) return;
+
+  send(target, `{"t":"rtc","from":${client.id},"kind":"${msg.kind}","${msg.kind === "ice" ? "ice" : "sdp"}":${text}}`);
+}
+
 /* ---------- diváci ---------- */
 function unwatch(client) {
   const room = client.watching;
@@ -406,6 +453,8 @@ function sendRoom(room) {
       slots: room.slots.map(s => ({ kind: s.kind, name: s.kind === "human" && s.client ? s.client.name : "" }))
     });
   }
+
+  sendVoice(room);
 }
 
 function createRoom(host, map) {
@@ -608,6 +657,7 @@ function leaveRoom(client) {
   if (!room) return;
 
   const i = slotIndex(room, client);
+  if (client.talking) voiceTalk(client, room, false);
   client.room = null;
   client.team = null;
   if (i >= 0) room.slots[i] = { kind: "open", client: null };
@@ -632,6 +682,7 @@ function leaveRoom(client) {
   }
 
   if (rooms.has(room.id) && !room.match) sendRoom(room);
+  else if (rooms.has(room.id)) sendVoice(room);
   broadcastRooms();
 }
 
@@ -768,6 +819,7 @@ wss.on("connection", (ws, req) => {
     live: liveList(),
     online: clients.size,
     off: mapConfig.off(),
+    ice: ICE_SERVERS,
     me: user ? { id: user.id, name: user.name, role: user.role } : null
   });
   broadcastRooms();
@@ -812,6 +864,16 @@ wss.on("connection", (ws, req) => {
 
     if (msg.t === "chat") {
       if (room) chatSay(client, room, msg.text);
+      return;
+    }
+
+    if (msg.t === "talk") {
+      if (room) voiceTalk(client, room, msg.on === true);
+      return;
+    }
+
+    if (msg.t === "rtc") {
+      if (room) voiceRelay(client, room, msg);
       return;
     }
 
