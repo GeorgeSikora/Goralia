@@ -430,6 +430,52 @@
     ]
   };
 
+  /* ---------- mezisnímky ----------
+   * Mezi každé dvě klíčové pózy chůze, útoku a kouzla se vkládá jedna
+   * mezipóza: číselné hodnoty se prolnou, tabulky zbraní/rukou se čtou přes
+   * posed() a prolnou také (úhel, úchop, délka). Rychlé mezisnímky (máchnutí)
+   * dostanou rozmazání pohybu: dithered stopa předchozí pózy (blur). */
+  const LERP = ["dy", "lx", "swing"];
+
+  function between(a, b, blur = 0, t = 0.5) {
+    const o = { ...a, sw2: b.sw, t, blur, from: a, to: b };
+    const l = (x, y) => (x || 0) + ((y || 0) - (x || 0)) * t;
+    for (const key of LERP) o[key] = key === "swing" ? l(a[key], b[key]) : Math.round(l(a[key], b[key]));
+    o.ff = [Math.round(l(a.ff[0], b.ff[0])), Math.round(l(a.ff[1], b.ff[1]))];
+    o.fb = [Math.round(l(a.fb[0], b.fb[0])), Math.round(l(a.fb[1], b.fb[1]))];
+    return o;
+  }
+
+  /* Hodnota z tabulky póz (kotvy zbraní, rukou) s prolnutím mezipózy. */
+  function posed(T, p, alias, fb) {
+    const nm = s => (alias && alias[s]) || s;
+    const get = s => T[nm(s)] || (fb !== undefined ? fb : T.idle);
+    const A = get(p.sw);
+    if (!p.sw2 || !p.t) return A;
+    const B = get(p.sw2);
+    if (!A || !B) return A || B;
+    return A.map((v, i) => (typeof v === "number" && typeof B[i] === "number" ? v + (B[i] - v) * p.t : p.t < 0.5 ? v : B[i]));
+  }
+
+  const LICH_SW = { back: "up", strike: "flare", low: "fwd" };
+
+  // walk: 6 klíčových + 6 mezipóz (smyčka), attack: nápřah, máchnutí s rozmazáním, dokmit
+  const KEY_WALK = POSES.walk;
+  POSES.walk = KEY_WALK.flatMap((w, i) => [w, { ...between(w, KEY_WALK[(i + 1) % KEY_WALK.length]), i: i + 0.5 }]);
+  {
+    const [back, strike, low] = POSES.attack;
+    POSES.attack = [
+      { ...between({ ...STAND, sw: "idle" }, back), i: -0.5 },
+      back,
+      { ...between(back, strike, 0.55), i: 0.5 },
+      strike,
+      { ...between(strike, low, 0.3), i: 1.5 },
+      low
+    ];
+    const [up, flare, fwd] = POSES.cast;
+    POSES.cast = [up, { ...between(up, flare, 0.25), i: 0.5 }, flare, { ...between(flare, fwd, 0.35), i: 1.5 }, fwd];
+  }
+
   const casting = p => p.sw === "up" || p.sw === "flare" || p.sw === "fwd";
 
   /* ================= DĚLNÍK ================= */
@@ -448,12 +494,12 @@
       strike: [lx + 11, -16 + dy, 0.3, 14, false],
       low: [lx + 11, -12 + dy, 0.75, 11, false]
     };
-    const [gx, gy0, ga, glen, behind] = PICK[p.sw] || PICK.idle;
+    const [gx, gy0, ga, glen, behind] = posed(PICK, p);
     const gy = gy0 + bob;
     const pdx = Math.cos(ga);
     const pdy = Math.sin(ga);
 
-    const pick = () => {
+    const pickaxe = () => {
       const butt = [gx - pdx * 3, gy - pdy * 3];
       const top = [gx + pdx * glen, gy + pdy * glen];
       k.L(butt[0], butt[1], top[0], top[1], C.w[3]);
@@ -472,7 +518,7 @@
       k.px(pb[0], pb[1], S[5]);
     };
 
-    if (behind) pick();
+    if (behind) pickaxe();
 
     // zadní paže: při práci drží násadu, jinak se kývá
     const bh = behind
@@ -543,7 +589,7 @@
     k.px(hx, hy - 12, C.d[5]);
 
     if (!behind) {
-      pick();
+      pickaxe();
       if (p.sw === "strike") smear(k, lx + 4, -16 + dy, 18, -2.2, -0.35, S[5], S[3]);
     }
 
@@ -633,7 +679,7 @@
       strike: [lx + 11, sh + 8, -0.05],
       low: [lx + 10, sh + 12, 0.75]
     };
-    const [gx, gy0, ga] = SW[p.sw] || SW.idle;
+    const [gx, gy0, ga] = posed(SW, p);
     const gy = gy0 + (p.step >= 0 ? (p.step % 3 === 1 ? 1 : 0) : 0);
     // čepel
     const tip = blade(k, gx + Math.cos(ga) * 2, gy + Math.sin(ga) * 2, ga, 14, { w: 2, taper: true });
@@ -797,14 +843,14 @@
       idle: [10, 12, -1.57], up: [10, 10, -1.57], flare: [10, 8, -1.57], fwd: [12, 10, -1.3],
       back: [6, 8, -2.05], strike: [10, 8, -1.0], low: [10, 11, -0.85]
     };
-    const st = ST[p.sw] || ST.idle;
+    const st = posed(ST, p);
     const sgx = lx + st[0];
     const sgy = sh + st[1];
     const sdx = Math.cos(st[2]);
     const sdy = Math.sin(st[2]);
     const sTop = [sgx + sdx * 19, sgy + sdy * 19];
     const sBot = [sgx - sdx * 13, Math.min(-1, sgy - sdy * 13)];
-    const free = cast ? { up: [lx + 8, sh - 7], flare: [lx + 6, sh - 11], fwd: [lx + 15, sh + 2] }[p.sw] : null;
+    const free = cast ? posed({ up: [lx + 8, sh - 7], flare: [lx + 6, sh - 11], fwd: [lx + 15, sh + 2] }, p) : null;
 
     // vzdálená paže (při kouzlu zvednutá s plamenem)
     if (free) arm(k, lx - 1, sh + 2, free[0], free[1], { ramp: R.tealD, r0: 1.9, r1: 1.6, cuff: R.gold });
@@ -988,7 +1034,7 @@
       strike: [lx + 12, sh + 11, 0.25],
       low: [lx + 11, sh + 13, 0.5]
     };
-    const [hx2, hy2, ang] = CL[p.sw] || CL.idle;
+    const [hx2, hy2, ang] = posed(CL, p);
     const dx = Math.cos(ang);
     const dyv = Math.sin(ang);
     let nx = -dyv;
@@ -1081,7 +1127,7 @@
 
     // přední paže s dlouhými drápy
     const HAND = { idle: [lx + 10, hipY - 1], back: [lx + 1, hipY - 21], strike: [lx + 17, hipY - 9], low: [lx + 14, hipY] };
-    const hp = reach(lx + 4, hipY - 12, ...(HAND[p.sw] || [lx + 10 + (p.swing || 0) * 2, hipY - 1]), 13);
+    const hp = reach(lx + 4, hipY - 12, ...posed(HAND, p, null, [lx + 10 + (p.swing || 0) * 2, hipY - 1]), 13);
     arm(k, lx + 4, hipY - 12, hp[0], hp[1], { ramp: R.rot, r0: 1.8, r1: 1.4, hand: R.rot, len: 6.6 });
     const cd = p.sw === "back" ? [-0.6, -0.8] : p.sw === "low" ? [0.8, 0.9] : [1, 0.5];
     for (const o of [-1.5, 0, 1.5]) {
@@ -1272,7 +1318,7 @@
 
     // přední paže se sekáčkem
     const HAND = { idle: [lx + 15, by + 4, -1.25], back: [lx + 9, by - 16, -2.4], strike: [lx + 19, by + 5, 0.1], low: [lx + 17, by + 12, 0.7] };
-    const [hx2, hy2, ang] = HAND[p.sw] || HAND.idle;
+    const [hx2, hy2, ang] = posed(HAND, p);
     const dx = Math.cos(ang);
     const dyv = Math.sin(ang);
     let nx = -dyv;
@@ -1333,7 +1379,7 @@
 
     // zadní paže
     const HAND = { idle: [lx + 9, sh + 7], back: [lx + 2, sh - 7], strike: [lx + 15, sh + 1], low: [lx + 14, sh + 5] };
-    const hp = reach(lx + 1, sh + 2, ...(HAND[p.sw] || [lx + 9 + (p.swing || 0), sh + 7]), 12);
+    const hp = reach(lx + 1, sh + 2, ...posed(HAND, p, null, [lx + 9 + (p.swing || 0), sh + 7]), 12);
     arm(k, lx - 1, sh + 2, hp[0] - 3, hp[1] + 1, { ramp: R.mistD, r0: 1.3, r1: 1.1, r2: 0.9, hand: R.mistD, len: 6.4 });
 
     // šat zúžený dolů, roztřepený lem
@@ -1386,7 +1432,7 @@
     const fl = p.cape;
     const sh = -29 + dy;
     // útok = vržená ohnivá koule: nápřah, hod, dohra
-    const sw = p.anim === "attack" ? { back: "up", strike: "flare", low: "fwd" }[p.sw] : p.sw;
+    const sw = p.anim === "attack" ? LICH_SW[p.sw] || p.sw : p.sw;
     const cast = sw === "up" || sw === "flare" || sw === "fwd";
     const step = p.step >= 0 ? p.step : -1;
 
@@ -1397,12 +1443,12 @@
 
     // hůl s žhnoucí lebkou
     const ST = { idle: [11, 0], up: [11, -2], flare: [11, -4], fwd: [14, -1], back: [7, -2], strike: [14, 1], low: [12, 0] };
-    const st = ST[sw] || ST.idle;
+    const st = posed(ST, p, LICH_SW);
     const sx = lx + st[0];
     const top = sh - 7 + st[1];
 
     // vzdálená paže (kouzlo)
-    const free = cast ? { up: [lx - 4, sh - 9], flare: [lx - 6, sh - 13], fwd: [lx + 6, sh - 4] }[sw] : [lx - 4 - (step >= 0 ? (p.swing || 0) * 2 : 0), sh + 13];
+    const free = cast ? posed({ up: [lx - 4, sh - 9], flare: [lx - 6, sh - 13], fwd: [lx + 6, sh - 4] }, p, LICH_SW) : [lx - 4 - (step >= 0 ? (p.swing || 0) * 2 : 0), sh + 13];
     arm(k, lx - 2, sh + 2, free[0], free[1], { ramp: R.robe, r0: 2.2, r1: 1.8, hand: R.bone, len: 6.4 });
 
     // dlouhá róba až k zemi
@@ -1510,11 +1556,21 @@
     for (const [anim, poses] of Object.entries(POSES)) {
       if (anim === "cast" && type !== "hero" && type !== "lich") continue;
 
-      out[anim] = poses.map(pose => {
+      const render = pose => {
         const P = new Pix(W, W);
         const k = kit(P, team, { ...pose, anim });
         RIGS[type](k);
         P.outline(C.ink, 0.7);
+        return { P, k };
+      };
+
+      out[anim] = poses.map((pose, n) => {
+        const { P, k } = render(pose);
+        if (pose.blur) {
+          // stopa zbraně a paží: dřívější fáze máchnutí (tělo stojí na místě mezisnímku), čím starší, tím řidší
+          const ghosts = [0.04, 0.14, 0.24, 0.34, 0.44].map((t, j) => [render({ ...between(pose.from, pose.to, 0, t), blur: 0, lx: pose.lx, dy: pose.dy, ff: pose.ff, fb: pose.fb }).P, Math.min(0.95, pose.blur * (0.5 + j * 0.22))]);
+          motionBlur(P, ghosts);
+        }
 
         const pf = P.flipX();
         const meta = { ...k.meta };
@@ -1532,6 +1588,30 @@
     }
 
     return out;
+  }
+
+  /* Rozmazání pohybu: kde předchozí póza měla tvar a nová už ne, zůstane
+   * zesvětlená, ditherovaná stopa (smear frame z klasické animace). */
+  function motionBlur(P, ghosts) {
+    const solid = P.clone();
+    // jen tam, kde se něco pohnulo daleko (zbraň, paže); tělo posunuté o pár px stopu nedělá
+    const near = (x, y) => {
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (solid.alpha(x + dx, y + dy)) return true;
+      return false;
+    };
+
+    for (let y = 0; y < P.h; y++) {
+      for (let x = 0; x < P.w; x++) {
+        if (near(x, y)) continue;
+        for (let j = ghosts.length - 1; j >= 0; j--) {
+          const [G, amount] = ghosts[j];
+          const c = G.get(x, y);
+          if (c < 0 || PK.bayer(x, y) > amount) continue;
+          P.set(x, y, mix(c, 0xfff6e0, 0.2 + (ghosts.length - 1 - j) * 0.08));
+          break;
+        }
+      }
+    }
   }
 
   function frame(type, team, anim, i) {

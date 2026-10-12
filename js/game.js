@@ -3017,18 +3017,14 @@
   const BIG = { hero: 16, abomination: 19, lich: 17 };
 
   function unitAnim(u) {
-    if (u.castT > 0 && (u.type === "hero" || u.type === "lich")) {
-      const p = 1 - u.castT / 0.5;
-      return ["cast", p < 0.3 ? 0 : p < 0.7 ? 1 : 2];
-    }
+    // snímky rovnoměrně přes průběh akce (animace mají mezisnímky, viz units.js)
+    const at = (anim, p) => [anim, Math.min(U.frameCount(anim) - 1, Math.floor(clamp(p, 0, 0.999) * U.frameCount(anim)))];
 
-    if (u.atk > 0) {
-      const p = 1 - u.atk / 0.3;
-      return ["attack", p < 0.35 ? 0 : p < 0.65 ? 1 : 2];
-    }
+    if (u.castT > 0 && (u.type === "hero" || u.type === "lich")) return at("cast", 1 - u.castT / 0.5);
+    if (u.atk > 0) return at("attack", 1 - u.atk / 0.3);
 
-    if (u.workT > 0) return ["attack", Math.floor(clock * 4.5 + u.id) % 3];
-    if (u.moveT > 0) return ["walk", Math.floor(u.wd / 28 * 6) % 6];
+    if (u.workT > 0) return ["attack", Math.floor(clock * 9 + u.id) % U.frameCount("attack")];
+    if (u.moveT > 0) return ["walk", Math.floor(u.wd / 28 * U.frameCount("walk")) % U.frameCount("walk")];
     return ["idle", Math.floor(clock * 1.4 + u.id * 0.37) & 1];
   }
 

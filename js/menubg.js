@@ -501,8 +501,8 @@
 
     let anim = "idle";
     let idx = Math.floor(clock * 1.4 + u.id) & 1;
-    if (u.atk > 0) { anim = "attack"; const p = 1 - u.atk / 0.3; idx = p < 0.35 ? 0 : p < 0.65 ? 1 : 2; }
-    else if (u.moving) { anim = "walk"; idx = Math.floor(u.wd / 3.7) % 6; }
+    if (u.atk > 0) { anim = "attack"; const n = U.frameCount("attack"); idx = Math.min(n - 1, Math.floor((1 - u.atk / 0.3) * n)); }
+    else if (u.moving) { anim = "walk"; const n = U.frameCount("walk"); idx = Math.floor(u.wd / 3.7 * n / 6) % n; }
 
     const rec = U.frame(u.type, u.team, anim, idx);
     const img = u.flash > 0 ? U.flash(rec, flip) : flip ? rec.cf : rec.c;
