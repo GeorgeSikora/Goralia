@@ -9,6 +9,8 @@
 
   const PK = window.PK;
   const { C, TEAM, Pix, mix, hash } = PK;
+  // jemnější HD verze budov: okrajové světlo + zrno v kameni a dřevě
+  const HDB = { rim: 0.16, grain: 0.3 };
 
   const dark = (c, t) => mix(c, C.shade, t);
   const light = (c, t) => mix(c, 0xffffff, t);
@@ -189,7 +191,7 @@
     P.outline(C.ink, 0.74);
 
     return {
-      c: P.toCanvas(), w: W, h: H, ax: 36, ay: 62,
+      c: P.toCanvas(HDB), w: W, h: H, ax: 36, ay: 62,
       banners: [[20, 42], [46, 42]],
       smoke: [[58, 18]],
       glows: [
@@ -278,7 +280,7 @@
     P.outline(C.ink, 0.74);
 
     return {
-      c: P.toCanvas(), w: W, h: H, ax: 32, ay: 52,
+      c: P.toCanvas(HDB), w: W, h: H, ax: 32, ay: 52,
       banners: [[8, 33]],
       smoke: [[48, 2]],
       glows: [
@@ -354,7 +356,7 @@
     P.outline(C.ink, 0.74);
 
     return {
-      c: P.toCanvas(), w: W, h: H, ax: 16, ay: 60,
+      c: P.toCanvas(HDB), w: W, h: H, ax: 16, ay: 60,
       banners: [],
       smoke: [],
       glows: [
@@ -415,7 +417,7 @@
     P.outline(C.ink, 0.74);
 
     return {
-      c: P.toCanvas(), w: W, h: H, ax: 16, ay: 31,
+      c: P.toCanvas(HDB), w: W, h: H, ax: 16, ay: 31,
       banners: [],
       smoke: [[22, 4]],
       glows: [{ x: 9, y: 23, r: 6, a: 0.35, color: C.a[2], pulse: true }]
@@ -477,7 +479,7 @@
     P.outline(C.ink, 0.74);
 
     return {
-      c: P.toCanvas(), w: W, h: H, ax: 20, ay: 34,
+      c: P.toCanvas(HDB), w: W, h: H, ax: 20, ay: 34,
       banners: [],
       smoke: [[27, 4]],
       glows: [
@@ -589,7 +591,7 @@
     P.outline(C.ink, 0.7);
 
     return {
-      c: P.toCanvas(), w: W, h: H, ax: 40, ay: 70,
+      c: P.toCanvas(HDB), w: W, h: H, ax: 40, ay: 70,
       banners: [[22, 34], [51, 34]],
       smoke: [[22, 2], [40, -1], [57, 2]],
       flames: [[27, 59], [52, 59]],
@@ -694,7 +696,7 @@
     P.outline(C.ink, 0.7);
 
     return {
-      c: P.toCanvas(), w: W, h: H, ax: 44, ay: 82, hell: true,
+      c: P.toCanvas(HDB), w: W, h: H, ax: 44, ay: 82, hell: true,
       banners: [],
       smoke: [[15, 4], [44, -2], [73, 4]],
       flames: [[26, 57], [62, 57]],
@@ -752,7 +754,7 @@
     P.outline(C.ink, 0.72);
 
     return {
-      c: P.toCanvas(), w: W, h: H, ax: 25, ay: 40, hell: true,
+      c: P.toCanvas(HDB), w: W, h: H, ax: 25, ay: 40, hell: true,
       banners: [],
       smoke: [],
       glows: [{ x: 25, y: 31, r: 11, a: 0.5, color: C.r[3], pulse: true }]
@@ -807,7 +809,7 @@
     P.outline(C.ink, 0.72);
 
     return {
-      c: P.toCanvas(), w: W, h: H, ax: 28, ay: 44, hell: true,
+      c: P.toCanvas(HDB), w: W, h: H, ax: 28, ay: 44, hell: true,
       banners: [],
       smoke: [[43, 3]],
       glows: [{ x: 27, y: 38, r: 12, a: 0.35, color: C.r[3] }]
@@ -854,7 +856,7 @@
     P.outline(C.ink, 0.72);
 
     return {
-      c: P.toCanvas(), w: W, h: H, ax: 18, ay: 52, hell: true,
+      c: P.toCanvas(HDB), w: W, h: H, ax: 18, ay: 52, hell: true,
       banners: [],
       smoke: [],
       glows: [
@@ -917,7 +919,7 @@
     P.outline(C.ink, 0.7);
 
     return {
-      c: P.toCanvas(), w: W, h: H, ax: 28, ay: 54, hell: true,
+      c: P.toCanvas(HDB), w: W, h: H, ax: 28, ay: 54, hell: true,
       banners: [],
       smoke: [],
       flames: [[6, 42], [50, 42]],
@@ -986,7 +988,7 @@
       }
 
       P.outline(C.ink, 0.72);
-      frames.push(P.toCanvas());
+      frames.push(P.toCanvas(true));
     }
 
     return (bannerCache[team] = frames);
@@ -1019,7 +1021,7 @@
 
     P.outline(C.ink, 0.7);
     void base;
-    return { c: P.toCanvas(), w, h };
+    return { c: P.toCanvas(HDB), w, h };
   }
 
   const cache = {};

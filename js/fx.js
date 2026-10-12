@@ -19,6 +19,9 @@
   const STEEL = [0xffffff, 0xe8e6e8, 0xc6c7d3, 0x9d9fb5].map(c => css(c));
   const HURT = [0xffffff, 0xffd27a, 0xff8f4a, 0xd65a3c].map(c => css(c));
 
+  // poloha na jemnou HD mřížku (půl art px): plynulejší pohyb částic a střel
+  const q = v => Math.round(v * PK.HD) / PK.HD;
+
   const R = rng(9001);
   const rnd = (a, b) => a + R() * (b - a);
 
@@ -292,18 +295,18 @@
 
         PK.world.light(g, x, y, 4, 0xffe08a, 0.4 + tw * 0.2);
         g.fillStyle = tw > 0.2 ? "#fff6cc" : "#ffe08a";
-        g.fillRect(Math.round(x), Math.round(y), 1, 1);
+        g.fillRect(q(x), q(y), 1, 1);
       } else if (a.kind === "ash") {
         const x = a.x + Math.sin(T * 0.6 + a.ph) * 6 + ((T * 2 + a.ph * 10) % 24) - 12;
         const y = a.y + ((T * a.sp + a.ph * 20) % 60) - 30;
         g.fillStyle = (Math.floor(T * 3 + a.ph * 4) & 3) === 0 ? "#ff8f4a" : "#8a8085";
-        g.fillRect(Math.round(x), Math.round(y), 1, 1);
+        g.fillRect(q(x), q(y), 1, 1);
       } else {
         const x = a.x + Math.sin(T * 0.7 + a.ph) * 12 + ((T * 3 * (a.sp / 8) + a.ph * 20) % 40) - 20;
         const y = a.y + ((T * a.sp * 0.7 + a.ph * 30) % 50) - 25;
         g.fillStyle = (Math.floor(a.ph * 3) & 1) ? "#6ba459" : "#98c76a";
-        g.fillRect(Math.round(x), Math.round(y), 2, 1);
-        g.fillRect(Math.round(x) + 1, Math.round(y) + 1, 1, 1);
+        g.fillRect(q(x), q(y), 2, 1);
+        g.fillRect(q(x) + 1, q(y) + 1, 1, 1);
       }
     }
   }
@@ -551,8 +554,8 @@
       const t = 1 - f.life / f.max;
 
       if (f.kind === "burst") {
-        const x = Math.round(f.x);
-        const y = Math.round(f.y);
+        const x = q(f.x);
+        const y = q(f.y);
         const big = f.big;
 
         if (t < 0.4) {
@@ -586,7 +589,7 @@
 
         for (let i = 0; i < 5; i++) {
           g.fillStyle = i === 0 ? "#ffffff" : i < 4 ? f.color : "#9d9fb5";
-          g.fillRect(Math.round(x - ux * i), Math.round(y - uy * i), 1, 1);
+          g.fillRect(q(x - ux * i), q(y - uy * i), 1, 1);
         }
       } else if (f.kind === "bolt") {
         const x = f.x1 + (f.x2 - f.x1) * t;
@@ -597,29 +600,37 @@
 
         for (let i = 0; i < 6; i++) {
           g.fillStyle = i < 2 ? "#fff6cc" : i < 4 ? "#ffbf45" : "#e0902a";
-          g.fillRect(Math.round(x - dx / len * i * 1.3), Math.round(y - dy / len * i * 1.3), 1, 1);
+          g.fillRect(q(x - dx / len * i * 1.3), q(y - dy / len * i * 1.3), 1, 1);
         }
       } else if (f.kind === "fireball") {
         const x = f.x1 + (f.x2 - f.x1) * t;
         const y = f.y1 + (f.y2 - f.y1) * t - Math.sin(t * Math.PI) * 14;
         PK.world.light(g, x, y, 12, 0xff8f4a, 0.55);
         g.fillStyle = "#d65a3c";
-        g.fillRect(Math.round(x) - 2, Math.round(y) - 1, 5, 3);
-        g.fillRect(Math.round(x) - 1, Math.round(y) - 2, 3, 5);
+        g.fillRect(q(x) - 2, q(y) - 1, 5, 3);
+        g.fillRect(q(x) - 1, q(y) - 2, 3, 5);
         g.fillStyle = "#ffbf45";
-        g.fillRect(Math.round(x) - 1, Math.round(y) - 1, 3, 3);
+        g.fillRect(q(x) - 1, q(y) - 1, 3, 3);
         g.fillStyle = "#fff6cc";
-        g.fillRect(Math.round(x), Math.round(y), 1, 1);
+        g.fillRect(q(x), q(y), 1, 1);
+
+        // jiskry kroužící kolem ohnivé koule v jemné mřížce
+        for (let s = 0; s < 6; s++) {
+          const a = f.life * 9 + s * Math.PI / 3;
+          const rr = 3.2 + Math.sin(f.life * 23 + s) * 0.8;
+          g.fillStyle = s & 1 ? "#ffbf45" : "#ff8f4a";
+          g.fillRect(q(x + Math.cos(a) * rr), q(y + Math.sin(a) * rr * 0.8), 0.5, 0.5);
+        }
       } else if (f.kind === "pillar") {
-        const h = Math.round(46 * Math.min(1, t * 3));
-        const w = Math.round(7 * (1 - t));
+        const h = q(46 * Math.min(1, t * 3));
+        const w = q(7 * (1 - t));
         g.globalAlpha = Math.min(1, f.life / f.max * 1.8);
 
         for (let y = 0; y < h; y++) {
-          const yy = Math.round(f.y) - y;
-          const ww = Math.max(1, Math.round(w * (1 - y / 60)));
+          const yy = q(f.y) - y;
+          const ww = Math.max(1, q(w * (1 - y / 60)));
           g.fillStyle = y % 3 === 0 ? "#fff6cc" : "#ffe08a";
-          g.fillRect(Math.round(f.x) - ww, yy, ww * 2, 1);
+          g.fillRect(q(f.x) - ww, yy, ww * 2, 1);
         }
 
         g.globalAlpha = 1;
@@ -635,9 +646,9 @@
       const p = parts[i];
       const t = 1 - p.life / p.max;
       const ci = Math.min(p.c.length - 1, Math.floor(t * p.c.length));
-      const size = Math.round(p.size + p.grow * t);
-      const px = Math.round(p.x);
-      const py = Math.round(p.y);
+      const size = q(p.size + p.grow * t);
+      const px = q(p.x);
+      const py = q(p.y);
 
       if (p.additive !== lastAdd) {
         g.globalCompositeOperation = p.additive ? "lighter" : "source-over";
@@ -659,6 +670,11 @@
         }
       } else {
         g.fillRect(px, py, size, size);
+        // svítící částice mají jemné jasné jádro
+        if (p.additive && ci > 0) {
+          g.fillStyle = p.c[ci - 1];
+          g.fillRect(px, py, size / 2, size / 2);
+        }
       }
 
       if (p.fade || p.kind === "mote") g.globalAlpha = 1;

@@ -18,6 +18,7 @@
   const net = PK.net;
   const account = PK.account;
   const view = PK.view;
+  const HD = PK.HD;
 
   const canvas = document.querySelector("#game");
   const display = canvas.getContext("2d");
@@ -3026,8 +3027,9 @@
   }
 
   function drawUnit(u) {
-    const footX = Math.round(u.x / 2);
-    const footY = Math.round(u.y / 2) + 6;
+    // jednotky se posouvají po půl art px (jemná HD mřížka), pohyb je plynulejší
+    const footX = Math.round(u.x / 2 * HD) / HD;
+    const footY = Math.round(u.y / 2 * HD) / HD + 6;
     const flip = u.facing < 0;
 
     const sh = world.shadow("ellipse", BIG[u.type] || 13, 5);
@@ -3793,10 +3795,13 @@
     view.h = vh;
     view.mapH = vh - view.hudH;
 
-    if (bufCanvas.width !== vw || bufCanvas.height !== vh) {
-      bufCanvas.width = vw;
-      bufCanvas.height = vh;
+    // buffer má PK.HD násobnou hustotu; kreslí se dál v art px přes měřítko kontextu
+    if (bufCanvas.width !== vw * HD || bufCanvas.height !== vh * HD) {
+      bufCanvas.width = vw * HD;
+      bufCanvas.height = vh * HD;
+      g.setTransform(HD, 0, 0, HD, 0, 0);
       g.imageSmoothingEnabled = false;
+      g.hdDraw = true;
     }
 
     canvas.width = cw;
@@ -3820,13 +3825,14 @@
     const k = scale;
     const mapH = view.mapH;
 
-    display.imageSmoothingEnabled = false;
+    // menší plátno než buffer (malé okno): jemné body se průměrují místo vypouštění
+    display.imageSmoothingEnabled = k < HD;
     display.fillStyle = "#15121f";
 
     if (sx || sy) {
       display.fillRect(0, 0, canvas.width, mapH * k);
-      display.drawImage(bufCanvas, 0, 0, view.w, mapH, sx * k, sy * k, view.w * k, mapH * k);
-      display.drawImage(bufCanvas, 0, mapH, view.w, view.h - mapH, 0, mapH * k, view.w * k, (view.h - mapH) * k);
+      display.drawImage(bufCanvas, 0, 0, view.w * HD, mapH * HD, sx * k, sy * k, view.w * k, mapH * k);
+      display.drawImage(bufCanvas, 0, mapH * HD, view.w * HD, (view.h - mapH) * HD, 0, mapH * k, view.w * k, (view.h - mapH) * k);
     } else {
       display.drawImage(bufCanvas, 0, 0, canvas.width, canvas.height);
     }

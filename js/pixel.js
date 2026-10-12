@@ -490,7 +490,17 @@
       return o;
     }
 
-    toCanvas() {
+    /* hd: true / options = k plátnu se líně dopočítá jemnější verze (viz upscale). */
+    toCanvas(hd) {
+      const c = this.rawCanvas();
+      if (hd) {
+        const snap = this.clone();
+        hdLater(c, () => upscale(snap, hd === true ? {} : hd).rawCanvas());
+      }
+      return c;
+    }
+
+    rawCanvas() {
       const { c, g } = makeCanvas(this.w, this.h);
       const img = g.createImageData(this.w, this.h);
       const u = new Uint32Array(img.data.buffer);
@@ -544,7 +554,195 @@
     }
   }
 
+  /* ---------- HD: art pixel rozdělený na 2x2 jemnější body ----------
+   * Herní buffer má dvojnásobnou hustotu. Sprity zůstávají v art px (stejné
+   * rozměry, kotvy i kolize), ale ke každému plátnu lze přiřadit jemnější
+   * dvojče, které kontext s hdDraw = true vykreslí místo něj. */
+  const HD = 2;
+  const hdTwins = new WeakMap();
+
+  function hdLater(canvas, build) {
+    hdTwins.set(canvas, build);
+  }
+
+  function hdOf(canvas) {
+    let t = hdTwins.get(canvas);
+    if (typeof t === "function") {
+      t = t();
+      hdTwins.set(canvas, t);
+    }
+    return t || null;
+  }
+
+  if (typeof CanvasRenderingContext2D !== "undefined") {
+    const proto = CanvasRenderingContext2D.prototype;
+    const raw = proto.drawImage;
+
+    proto.drawImage = function (img, a, b, c, d, e, f, h, i) {
+      const n = arguments.length;
+      const t = this.hdDraw && img && hdTwins.has(img) ? hdOf(img) : null;
+      if (!t) return n === 3 ? raw.call(this, img, a, b) : n === 5 ? raw.call(this, img, a, b, c, d) : raw.call(this, img, a, b, c, d, e, f, h, i);
+      const k = t.width / img.width;
+      if (n === 3) return raw.call(this, t, a, b, img.width, img.height);
+      if (n === 5) return raw.call(this, t, a, b, c, d);
+      return raw.call(this, t, a * k, b * k, c * k, d * k, e, f, h, i);
+    };
+  }
+
+  const luma = c => cr(c) * 0.3 + cg(c) * 0.59 + cb(c) * 0.11;
+  const RIM_L = 0xfff2c4;
+  const RIM_D = 0x241c38;
+
+  /*
+   * Pixel-art 2x zvětšení s doplněním detailu:
+   *  1. Scale2x (EPX) s tolerancí odstínu: zaoblí schody na diagonálách,
+   *     nevznikne žádná nová barva.
+   *  2. Obrys ztenčený na jeden jemný bod: vnitřní polovina tmavého okraje
+   *     přebírá barvu výplně, silueta zůstává stejná.
+   *  3. Okrajové světlo zleva shora a stín vpravo dole (o.rim, 0 = vypnuto).
+   *  4. Jemné zrno v plochách jedné barvy (o.grain = podíl bodů).
+   * Poloprůhledné povrchy (záře, stíny) se jen zdvojí.
+   */
+  function upscale(src, o = {}) {
+    const { w, h, d } = src;
+    const W2 = w * 2;
+    const H2 = h * 2;
+    const out = new Pix(W2, H2);
+    const od = out.d;
+    const kind = new Uint8Array(w * h); // 0 prázdno, 1 výplň, 2 obrys
+    const kind2 = new Uint8Array(W2 * H2);
+    const rim = o.rim == null ? 0.2 : o.rim;
+    const grain = o.grain || 0;
+    const seed = o.seed || 0;
+    const tol = o.tol == null ? 34 : o.tol;
+    const at = (x, y) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : d[y * w + x]);
+    let soft = false;
+
+    for (let i = 0; i < d.length; i++) {
+      const al = d[i] >>> 24;
+      if (al && al < 255) { soft = true; break; }
+    }
+
+    if (soft) {
+      for (let y = 0; y < H2; y++) for (let x = 0; x < W2; x++) od[y * W2 + x] = d[(y >> 1) * w + (x >> 1)];
+      return out;
+    }
+
+    const close = (a, b) => {
+      const ea = a >>> 24;
+      const eb = b >>> 24;
+      if (!ea || !eb) return !ea && !eb;
+      return Math.abs(cr(a) - cr(b)) + Math.abs(cg(a) - cg(b)) + Math.abs(cb(a) - cb(b)) <= tol;
+    };
+
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const v = d[y * w + x];
+        if (!(v >>> 24)) continue;
+        let k = 1;
+
+        if (o.outline !== false) {
+          const n0 = at(x, y - 1);
+          const n1 = at(x - 1, y);
+          const n2 = at(x + 1, y);
+          const n3 = at(x, y + 1);
+
+          if (!(n0 >>> 24) || !(n1 >>> 24) || !(n2 >>> 24) || !(n3 >>> 24)) {
+            const lv = luma(v & 0xffffff) + 18;
+            const lit = n => (n >>> 24) && luma(n & 0xffffff) > lv;
+            if (lit(n0) || lit(n1) || lit(n2) || lit(n3)) k = 2;
+          }
+        }
+
+        kind[y * w + x] = k;
+      }
+    }
+
+    // 1. Scale2x
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        const E = d[i];
+        const kE = kind[i];
+        const j = 2 * y * W2 + 2 * x;
+        let c0 = E, c1 = E, c2 = E, c3 = E;
+        let q0 = kE, q1 = kE, q2 = kE, q3 = kE;
+        const B = at(x, y - 1);
+        const D = at(x - 1, y);
+        const F = at(x + 1, y);
+        const H = at(x, y + 1);
+
+        if (!close(B, H) && !close(D, F)) {
+          if (close(D, B)) { c0 = D; q0 = kind[i - 1]; }
+          if (close(B, F)) { c1 = F; q1 = kind[i + 1]; }
+          if (close(D, H)) { c2 = D; q2 = kind[i - 1]; }
+          if (close(H, F)) { c3 = F; q3 = kind[i + 1]; }
+        }
+
+        od[j] = c0; kind2[j] = c0 >>> 24 ? q0 || 1 : 0;
+        od[j + 1] = c1; kind2[j + 1] = c1 >>> 24 ? q1 || 1 : 0;
+        od[j + W2] = c2; kind2[j + W2] = c2 >>> 24 ? q2 || 1 : 0;
+        od[j + W2 + 1] = c3; kind2[j + W2 + 1] = c3 >>> 24 ? q3 || 1 : 0;
+      }
+    }
+
+    const k2 = (x, y) => (x < 0 || y < 0 || x >= W2 || y >= H2 ? 0 : kind2[y * W2 + x]);
+
+    // 2. tenčí obrys
+    const fix = [];
+    for (let y = 0; y < H2; y++) {
+      for (let x = 0; x < W2; x++) {
+        const j = y * W2 + x;
+        if (kind2[j] !== 2) continue;
+        if (!k2(x, y - 1) || !k2(x - 1, y) || !k2(x + 1, y) || !k2(x, y + 1)) continue;
+        for (const [dx, dy] of [[0, -1], [-1, 0], [1, 0], [0, 1]]) {
+          if (k2(x + dx, y + dy) === 1) {
+            fix.push(j, od[(y + dy) * W2 + x + dx]);
+            break;
+          }
+        }
+      }
+    }
+    for (let n = 0; n < fix.length; n += 2) {
+      od[fix[n]] = fix[n + 1];
+      kind2[fix[n]] = 1;
+    }
+
+    // 3. okrajové světlo a 4. zrno
+    if (rim || grain) {
+      const src2 = od.slice();
+      for (let y = 0; y < H2; y++) {
+        for (let x = 0; x < W2; x++) {
+          const j = y * W2 + x;
+          if (kind2[j] !== 1) continue;
+          let c = src2[j] & 0xffffff;
+
+          if (rim) {
+            if (k2(x, y - 1) !== 1 || k2(x - 1, y) !== 1) c = mix(c, RIM_L, rim);
+            else if (k2(x, y + 1) !== 1 || k2(x + 1, y) !== 1) c = mix(c, RIM_D, rim * 0.8);
+          }
+
+          if (grain) {
+            const sx = x >> 1;
+            const sy = y >> 1;
+            const e = d[sy * w + sx];
+            if (at(sx, sy - 1) === e && at(sx, sy + 1) === e && at(sx - 1, sy) === e && at(sx + 1, sy) === e) {
+              const r = hash(x, y, seed + 41);
+              if (r < grain / 2) c = mix(c, RIM_D, 0.13);
+              else if (r > 1 - grain / 2) c = mix(c, RIM_L, 0.11);
+            }
+          }
+
+          od[j] = (0xff000000 | c) >>> 0;
+        }
+      }
+    }
+
+    return out;
+  }
+
   Object.assign(PK, {
+    HD, hdLater, hdOf, upscale,
     C, TEAM, rgb, mix, css, rng, hash, vnoise, fbm, tnoise, bayer, dither,
     clamp, smooth, makeCanvas, Pix, strokeEllipse,
     // Rozměry bufferu v art px; game.js je mění podle velikosti okna.

@@ -62,24 +62,31 @@
   /* ---------- glow sprites (banded, additive) ---------- */
   const glowCache = new Map();
 
+  function glowPix(r, color, levels, k) {
+    const size = (r * 2 + 1) * k;
+    const mid = size / 2;
+    const P = new Pix(size, size);
+
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const d = Math.hypot(x + 0.5 - mid, y + 0.5 - mid) / (r * k + k / 2);
+        if (d > 1) continue;
+        const lv = Math.ceil((1 - d) * levels);
+        P.setA(x, y, color, Math.round(255 * Math.pow(lv / levels, 1.4)));
+      }
+    }
+
+    return P;
+  }
+
   function glow(r, color, levels = 4) {
     const key = `${r}|${color}`;
     let c = glowCache.get(key);
 
     if (!c) {
-      const size = r * 2 + 1;
-      const P = new Pix(size, size);
-
-      for (let y = 0; y < size; y++) {
-        for (let x = 0; x < size; x++) {
-          const d = Math.hypot(x - r, y - r) / r;
-          if (d > 1) continue;
-          const lv = Math.ceil((1 - d) * levels);
-          P.setA(x, y, color, Math.round(255 * Math.pow(lv / levels, 1.4)));
-        }
-      }
-
-      c = P.toCanvas();
+      c = glowPix(r, color, levels, 1).toCanvas();
+      // HD záře: jemnější kruh a víc pásem, pořád stupňovitá jako pixel art
+      PK.hdLater(c, () => glowPix(r, color, levels * 2, PK.HD).rawCanvas());
       glowCache.set(key, c);
     }
 
@@ -89,28 +96,45 @@
   /* ---------- shadows (flat translucent) ---------- */
   const shadowCache = new Map();
 
+  // k = hustota (1 = art px, PK.HD = jemný okraj); HD stín má navíc měkčí lem
+  function shadowPix(kind, w, h, k) {
+    const P = new Pix((w + 24) * k, (h + 14) * k);
+    const a = 82;
+
+    if (kind === "ellipse") {
+      P.disc(P.w / 2, P.h / 2, w / 2 * k, h / 2 * k, 0);
+    } else {
+      // building: footprint ellipse + a slanted cast shadow toward the lower right
+      const cx = (w + 24) / 2 - 6;
+      const cy = h + 14 - 7;
+      const s = ([x, y]) => [x * k, y * k];
+      P.poly([[cx - w / 2 + 2, cy], [cx + w / 2, cy], [cx + w / 2 + 12, cy - 5], [cx - w / 2 + 14, cy - 5]].map(s), 0);
+      P.disc(cx * k, cy * k, w / 2 * k, 5 * k, 0);
+      P.disc((cx + 10) * k, (cy - 2) * k, (w / 2 - 6) * k, 4 * k, 0);
+    }
+
+    for (let i = 0; i < P.d.length; i++) if (P.d[i]) P.d[i] = ((a << 24) | C.shade) >>> 0;
+
+    if (k > 1) {
+      // jemný lem: krajní body stínu jsou světlejší, okraj se neláme ostře
+      const edge = [];
+      for (let y = 0; y < P.h; y++) for (let x = 0; x < P.w; x++) {
+        if (!P.alpha(x, y)) continue;
+        if (!P.alpha(x - 1, y) || !P.alpha(x + 1, y) || !P.alpha(x, y - 1) || !P.alpha(x, y + 1)) edge.push(x, y);
+      }
+      for (let n = 0; n < edge.length; n += 2) P.setA(edge[n], edge[n + 1], C.shade, 44);
+    }
+
+    return P;
+  }
+
   function shadow(kind, w, h) {
     const key = `${kind}|${w}|${h}`;
     let c = shadowCache.get(key);
 
     if (!c) {
-      const P = new Pix(w + 24, h + 14);
-      const a = 82;
-
-      if (kind === "ellipse") {
-        P.disc(P.w / 2, P.h / 2, w / 2, h / 2, 0);
-        for (let i = 0; i < P.d.length; i++) if (P.d[i]) P.d[i] = ((a << 24) | C.shade) >>> 0;
-      } else {
-        // building: footprint ellipse + a slanted cast shadow toward the lower right
-        const cx = P.w / 2 - 6;
-        const cy = P.h - 7;
-        P.poly([[cx - w / 2 + 2, cy], [cx + w / 2, cy], [cx + w / 2 + 12, cy - 5], [cx - w / 2 + 14, cy - 5]], 0);
-        P.disc(cx, cy, w / 2, 5, 0);
-        P.disc(cx + 10, cy - 2, w / 2 - 6, 4, 0);
-        for (let i = 0; i < P.d.length; i++) if (P.d[i]) P.d[i] = ((a << 24) | C.shade) >>> 0;
-      }
-
-      c = P.toCanvas();
+      c = shadowPix(kind, w, h, 1).toCanvas();
+      PK.hdLater(c, () => shadowPix(kind, w, h, PK.HD).rawCanvas());
       shadowCache.set(key, c);
     }
 
@@ -647,7 +671,65 @@
       }
     }
 
-    return T.toCanvas();
+    const canvas = T.toCanvas();
+    PK.hdLater(canvas, () => hdTerrain(T, b).rawCanvas());
+    return canvas;
+  }
+
+  /*
+   * HD terén: Scale2x zaoblí hrany cest a skal, pak se v jemné mřížce doplní
+   * stébla trávy, oblázky na cestách a zkosené hrany kamenů (světlo zleva shora).
+   */
+  function hdTerrain(T, b) {
+    const { W, H, zone, ashMap } = b;
+    const P = PK.upscale(T, { rim: 0, outline: false, tol: 24 });
+    const W2 = W * 2;
+    const H2 = H * 2;
+    const d = P.d;
+    const src = d.slice();
+    const put = (j, c) => { d[j] = (0xff000000 | c) >>> 0; };
+    const lum = v => ((v >> 16) & 255) * 0.3 + ((v >> 8) & 255) * 0.59 + (v & 255) * 0.11;
+
+    for (let y = 1; y < H2 - 1; y++) {
+      for (let x = 1; x < W2 - 1; x++) {
+        const i = (y >> 1) * W + (x >> 1);
+        const z = zone[i];
+        const j = y * W2 + x;
+        const c = src[j] & 0xffffff;
+        const h = hash(x, y, 913);
+
+        if (z === Z_GRASS) {
+          const ash = ashMap[i] === 1;
+          // stéblo: světlá špička a pod ní stín
+          if (h > 0.9) {
+            put(j, mix(c, ash ? A[4] : G[6], 0.3));
+            put(j + W2, mix(src[j + W2] & 0xffffff, ash ? A[0] : G[0], 0.32));
+          } else if (h < 0.04) {
+            put(j, mix(c, ash ? A[0] : G[0], 0.22));
+          }
+        } else if (z === Z_PATH || z === Z_BANK) {
+          // oblázek: světlé temeno, stín vpravo dole
+          if (h > 0.965) {
+            put(j, mix(c, D[5], 0.5));
+            put(j + 1 + W2, mix(src[j + 1 + W2] & 0xffffff, D[0], 0.4));
+          } else if (h < 0.06) {
+            put(j, mix(c, D[0], 0.16));
+          }
+        } else if (z !== Z_WATER) {
+          // kámen: hrana pod tmavou spárou je osvětlená, nad spárou ve stínu
+          const lc = lum(c);
+          const up = lum(src[j - W2] & 0xffffff);
+          const dn = lum(src[j + W2] & 0xffffff);
+          const lf = lum(src[j - 1] & 0xffffff);
+          if (up < lc - 22 || lf < lc - 22) put(j, mix(c, C.white, 0.2));
+          else if (dn < lc - 22) put(j, mix(c, C.ink, 0.22));
+          else if (h > 0.94) put(j, mix(c, C.white, 0.09));
+          else if (h < 0.06) put(j, mix(c, C.ink, 0.12));
+        }
+      }
+    }
+
+    return P;
   }
 
   /* ---------- water (4 animated frames) ---------- */
@@ -704,7 +786,7 @@
         }
       }
 
-      frames.push(P.toCanvas());
+      frames.push(P.toCanvas({ rim: 0, outline: false, tol: 20 }));
     }
 
     return frames;
@@ -724,7 +806,7 @@
         }
       }
 
-      frames.push(P.toCanvas());
+      frames.push(P.toCanvas({ rim: 0.15, outline: false }));
     }
 
     const R = rng(311);
@@ -1032,6 +1114,7 @@
     if (!world.warmth) world.warmth = buildWarmth();
     world.mistLanes = rec.mist;
     world.minimap = scaled(world.terrain, 88, 48);
+    PK.hdOf(world.terrain); // HD terén se peče při načtení mapy, ne v prvním snímku
     world.ready = true;
   }
 
