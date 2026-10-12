@@ -1624,6 +1624,15 @@
     return list[((i % list.length) + list.length) % list.length];
   }
 
+  /* Snímek úderu podle průběhu 0..1: nápřah drží, máchnutí (rozmazaný
+   * mezisnímek) proletí, zásah a dokmit drží déle, jak to v úderu cítíme. */
+  const ATTACK_T = [0.1, 0.3, 0.38, 0.6, 0.75, 1];
+
+  function attackFrame(p) {
+    const i = ATTACK_T.findIndex(t => p < t);
+    return i < 0 ? ATTACK_T.length - 1 : i;
+  }
+
   function frameCount(anim) {
     return POSES[anim].length;
   }
@@ -1731,7 +1740,7 @@
   }
 
   PK.units = {
-    CELL, AX, AY, frame, frameCount, flash, lying, dissolved, portrait, carry,
+    CELL, AX, AY, frame, frameCount, attackFrame, flash, lying, dissolved, portrait, carry,
     types: Object.keys(RIGS)
   };
 })();

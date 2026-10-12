@@ -3021,10 +3021,11 @@
     const at = (anim, p) => [anim, Math.min(U.frameCount(anim) - 1, Math.floor(clamp(p, 0, 0.999) * U.frameCount(anim)))];
 
     if (u.castT > 0 && (u.type === "hero" || u.type === "lich")) return at("cast", 1 - u.castT / 0.5);
-    if (u.atk > 0) return at("attack", 1 - u.atk / 0.3);
+    if (u.atk > 0) return ["attack", U.attackFrame(1 - u.atk / 0.3)];
 
-    if (u.workT > 0) return ["attack", Math.floor(clock * 9 + u.id) % U.frameCount("attack")];
-    if (u.moveT > 0) return ["walk", Math.floor(u.wd / 28 * U.frameCount("walk")) % U.frameCount("walk")];
+    if (u.workT > 0) return ["attack", Math.floor(clock * 13 + u.id) % U.frameCount("attack")];
+    // jeden cyklus chůze (dva kroky) na 22 logických jednotek dráhy = délka kroku spritu
+    if (u.moveT > 0) return ["walk", Math.floor(u.wd / 22 * U.frameCount("walk")) % U.frameCount("walk")];
     return ["idle", Math.floor(clock * 1.4 + u.id * 0.37) & 1];
   }
 
