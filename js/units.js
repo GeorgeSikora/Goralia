@@ -478,6 +478,66 @@
 
   const casting = p => p.sw === "up" || p.sw === "flare" || p.sw === "fwd";
 
+  /* ---------- náklad dělníka (jemné px, stejné světlo a obrys jako tělo) ---------- */
+  const BURLAP = ramp(C.d[4], C.d[3], C.d[2], C.d[1]);
+  const RINGS = ramp(C.d[5], C.d[4], C.d[3], C.w[2]);
+
+  // pytel se zlatem visí za zády, hrdlo přehozené přes rameno
+  function sackBack(k, lx, y) {
+    const m = k.mask().ell(lx - 8, y + 3, 5.2, 5.8).cap(lx - 6, y - 1, lx - 2, y - 3, 2.6, 1.5);
+    k.paint(m, BURLAP, {
+      occ: 0.35,
+      tex: (x, yy, t, c) => ((x * 2 + yy) % 5 === 0 && t === 1 ? BURLAP[2] : c)
+    });
+    // záplata a šev
+    k.R(lx - 11, y + 4, 3, 3, BURLAP[2]);
+    k.R(lx - 11, y + 4, 3, 1, BURLAP[1]);
+    for (let i = 0; i < 4; i++) k.px(lx - 6, y + 1 + i * 2, BURLAP[3]);
+    // zlato prosvítá z natržené díry v pytli
+    k.R(lx - 11, y, 4, 3, C.gold[1]);
+    k.px(lx - 11, y, C.gold[2]);
+    k.px(lx - 10, y, C.white);
+    k.px(lx - 8, y + 2, C.gold[0]);
+    k.px(lx - 11, y + 2, C.gold[0]);
+    k.dark(lx - 12, y + 1, 0.4);
+    k.dark(lx - 7, y + 1, 0.4);
+    // spodek pytle se prohýbá pod vahou
+    k.dark(lx - 8, y + 8, 0.3);
+    k.dark(lx - 7, y + 8, 0.3);
+  }
+
+  // provázek na hrdle a ruka, která ho drží nad ramenem
+  function sackGrip(k, lx, y) {
+    const neck = k.mask().cap(lx - 3, y - 3, lx, y - 4, 1.3, 1);
+    k.paint(neck, BURLAP, { occ: 0.3 });
+    k.px(lx - 3, y - 3, C.w[1]);
+    k.px(lx - 3, y - 2, C.w[2]);
+    k.paint(k.mask().ell(lx - 1, y - 2, 1.7, 1.6), R.skin, { occ: 0.3 });
+    k.px(lx + 1, y - 5, C.gold[2]);
+  }
+
+  // náruč tří polen před hrudí, přední čela s letokruhy, provaz
+  function logsInArms(k, lx, y) {
+    const logs = [[lx - 6, lx + 10, y + 7.5], [lx - 3, lx + 12, y + 4.5]];
+    for (const [x0, x1, yy] of logs) {
+      const m = k.mask().cap(x0, yy, x1, yy, 1.9);
+      k.paint(m, R.leatherL, {
+        dir: "v",
+        occ: 0.35,
+        tex: (x, ty, t, c) => (t === 1 && (x * 5 + ty * 3) % 7 === 0 ? R.leatherL[2] : c)
+      });
+      // čelo polena: světlé dřevo s letokruhem a středem
+      k.paint(k.mask().ell(x1, yy, 1.6, 1.9), RINGS, { occ: 0.5 });
+      k.px(x1, yy, C.w[2]);
+      // zadní čelo jen jako tmavší řez
+      k.dark(x0 - 1, yy, 0.25);
+    }
+    // provaz kolem otepi
+    k.L(lx + 3, y + 2, lx + 4, y + 9, C.w[1]);
+    k.px(lx + 3, y + 3, C.d[4]);
+    k.px(lx + 4, y + 7, C.d[4]);
+  }
+
   /* ================= DĚLNÍK ================= */
   function drawWorker(k) {
     const { T, pose: p } = k;
@@ -518,12 +578,19 @@
       k.px(pb[0], pb[1], S[5]);
     };
 
-    if (behind) pickaxe();
+    // náklad: s pytlem nebo otepí se nese krumpáč za opaskem (nekreslí se), náklad se při kroku
+    // opožďuje o 1 jemný px proti tělu (setrvačnost)
+    const load = p.carry;
+    const ly = sh + (p.lag || 0);
+    if (load === "gold") sackBack(k, lx, ly);
+    if (behind && !load) pickaxe();
 
-    // zadní paže: při práci drží násadu, jinak se kývá
-    const bh = behind
-      ? [lx - 2 - (p.swing || 0) * 3, hipY + 1]
-      : [gx + pdx * 5 - 1, gy + pdy * 5];
+    // zadní paže: při práci drží násadu, s pytlem drží jeho hrdlo nad ramenem, jinak se kývá
+    const bh = load === "gold" ? [lx - 2, ly - 3]
+      : load === "wood" ? [lx - 4, ly + 9]
+      : behind
+        ? [lx - 2 - (p.swing || 0) * 3, hipY + 1]
+        : [gx + pdx * 5 - 1, gy + pdy * 5];
     arm(k, lx - 1, sh + 1, ...reach(lx - 1, sh + 1, bh[0], bh[1], 10.3), { ramp: R.clothD, r0: 1.9, r1: 1.6, hand: R.skin, len: 5.2 });
 
     leg(k, lx - 2, hipY, lx + p.fb[0], p.fb[1], { ramp: R.clothD, boot: R.leather, bootH: 4, len: 5 });
@@ -559,6 +626,14 @@
     const scarf = k.mask().ell(lx, sh, 5, 1.8).cap(lx - 4, sh, lx - 7, sh + 4 + p.cape, 1.1, 0.9);
     k.paint(scarf, teamR(T), { occ: 0.3 });
 
+    if (load === "gold") sackGrip(k, lx, ly);
+    if (load === "wood") {
+      // paže objímá polena zespodu: rukáv za nimi, dlaň na předním konci
+      arm(k, lx + 2, sh + 1, lx + 8, ly + 9, { ramp: R.cloth, r0: 2, r1: 1.7, cuff: R.leather, hand: false });
+      logsInArms(k, lx, ly);
+      k.paint(k.mask().ell(lx + 8, ly + 9, 1.7, 1.5), R.skin, { occ: 0.3 });
+    }
+
     // hlava
     const hx = lx + 1;
     const hy = sh - 6;
@@ -588,13 +663,16 @@
     k.px(hx + 4, hy - 6, T.s);
     k.px(hx, hy - 12, C.d[5]);
 
-    if (!behind) {
+    if (!behind && !load) {
       pickaxe();
       if (p.sw === "strike") smear(k, lx + 4, -16 + dy, 18, -2.2, -0.35, S[5], S[3]);
     }
 
-    // přední paže drží násadu
-    arm(k, lx + 2, sh + 1, gx, gy, { ramp: R.cloth, r0: 2, r1: 1.7, cuff: R.leather });
+    // přední paže drží násadu, otep zespodu za přední konec, u pytle se volně kývá
+    const fh = load === "wood" ? [lx + 6, ly + 10]
+      : load === "gold" ? [lx + 3 + (p.swing || 0) * 3, hipY + 1]
+      : [gx, gy];
+    if (load !== "wood") arm(k, lx + 2, sh + 1, ...(load === "gold" ? reach(lx + 2, sh + 1, fh[0], fh[1], 10.3) : fh), { ramp: R.cloth, r0: 2, r1: 1.7, cuff: R.leather });
 
     k.meta.head = [hx / HD, hy / HD];
   }
@@ -1550,10 +1628,17 @@
   /* ---------- atlas ---------- */
   const store = {};
 
+  // dělník s nákladem: stejná chůze a postoj, kolena víc pokrčená, náklad se opožďuje
+  const withLoad = (poses, carry) => poses.map(q => ({ ...q, dy: (q.dy || 0) + 1, carry, lag: q.dy < 0 ? 1 : q.dy > 0 ? -1 : 0 }));
+  const CARRY_POSES = {
+    walk_gold: withLoad(POSES.walk, "gold"), idle_gold: withLoad(POSES.idle, "gold"),
+    walk_wood: withLoad(POSES.walk, "wood"), idle_wood: withLoad(POSES.idle, "wood")
+  };
+
   function build(type, team) {
     const out = {};
 
-    for (const [anim, poses] of Object.entries(POSES)) {
+    for (const [anim, poses] of Object.entries(type === "worker" ? { ...POSES, ...CARRY_POSES } : POSES)) {
       if (anim === "cast" && type !== "hero" && type !== "lich") continue;
 
       const render = pose => {
@@ -1634,7 +1719,7 @@
   }
 
   function frameCount(anim) {
-    return POSES[anim].length;
+    return (POSES[anim] || CARRY_POSES[anim]).length;
   }
 
   /* Bílý záblesk zásahu (cache na snímek). */

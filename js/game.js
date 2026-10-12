@@ -3024,9 +3024,11 @@
     if (u.atk > 0) return ["attack", U.attackFrame(1 - u.atk / 0.3)];
 
     if (u.workT > 0) return ["attack", Math.floor(clock * 13 + u.id) % U.frameCount("attack")];
+    // dělník s nákladem má vlastní chůzi a postoj (pytel přes rameno, otep na rameni)
+    const load = u.type === "worker" && u.carry ? "_" + u.carry : "";
     // jeden cyklus chůze (dva kroky) na 22 logických jednotek dráhy = délka kroku spritu
-    if (u.moveT > 0) return ["walk", Math.floor(u.wd / 22 * U.frameCount("walk")) % U.frameCount("walk")];
-    return ["idle", Math.floor(clock * 1.4 + u.id * 0.37) & 1];
+    if (u.moveT > 0) return ["walk" + load, Math.floor(u.wd / 22 * U.frameCount("walk")) % U.frameCount("walk")];
+    return ["idle" + load, Math.floor(clock * 1.4 + u.id * 0.37) & 1];
   }
 
   function drawUnit(u) {
@@ -3042,12 +3044,6 @@
     const rec = U.frame(u.type, u.team, anim, idx);
     const img = u.flashT > 0 ? U.flash(rec, flip) : flip ? rec.cf : rec.c;
     const ox = flip ? U.CELL - 1 - U.AX : U.AX;
-    const bob = anim === "walk" && idx % 3 === 0 ? -1 : 0;
-
-    if (u.carry && U.carry[u.carry]) {
-      const c = U.carry[u.carry];
-      g.drawImage(c, footX + (flip ? 3 : -3 - c.width) , footY - 18 + bob);
-    }
 
     g.drawImage(img, footX - ox, footY - U.AY);
 
