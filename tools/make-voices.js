@@ -102,8 +102,8 @@ const CHARACTERS = {
   },
   soldier: {
     // voják: hrdý, strohý
-    say: { rate: 160, pitch: 0.93, eq: "equalizer=f=180:t=q:w=1:g=2,equalizer=f=2300:t=q:w=1:g=1.2" },
-    eleven: { stability: 0.3, style: 0.6 },
+    say: { rate: 160, pitch: 0.8, eq: "equalizer=f=180:t=q:w=1:g=2,equalizer=f=2300:t=q:w=1:g=1.2" },
+    eleven: { stability: 0.9, style: 0.6 },
     openai: "onyx",
     select: [
       "[serious] Voják hlásí připravenost!",

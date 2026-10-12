@@ -18,6 +18,15 @@
  *              taller than a knee on the walkable ground except
  *              interactive objects (trees, ore) and buildings.
  * UI           Carved dark stone, brass bevels, amber glow for focus.
+ *
+ * JEMNÁ MŘÍŽKA (PK.HD = 2)
+ * Herní svět (terén, jednotky, budovy, stromy, drobnosti, světla, stíny,
+ * částice) se kreslí v jemných px: 1 art px = 2x2 jemné px. Souřadnice ve
+ * hře, kotvy a metadata spritů zůstávají v art px (smí mít .5), ale každý
+ * viditelný bod světa má velikost právě 1 jemný px (= 0.5 art px). Nikde ve
+ * světě se nesmí objevit zvětšený (2x2) pixel. Sprite se kreslí do
+ * new Pix(w * HD, h * HD) a vrací přes PK.fine(P). UI (HUD, písmo, ikony)
+ * zůstává v art px.
  */
 (() => {
   "use strict";
@@ -491,6 +500,10 @@
     }
 
     toCanvas() {
+      return this.rawCanvas();
+    }
+
+    rawCanvas() {
       const { c, g } = makeCanvas(this.w, this.h);
       const img = g.createImageData(this.w, this.h);
       const u = new Uint32Array(img.data.buffer);
@@ -544,7 +557,72 @@
     }
   }
 
+  /* ---------- HD: art pixel rozdělený na 2x2 jemnější body ----------
+   * Herní buffer má dvojnásobnou hustotu. Sprity zůstávají v art px (stejné
+   * rozměry, kotvy i kolize), ale ke každému plátnu lze přiřadit jemnější
+   * dvojče, které kontext s hdDraw = true vykreslí místo něj. */
+  const HD = 2;
+  const hdTwins = new WeakMap();
+
+  function hdLater(canvas, build) {
+    hdTwins.set(canvas, build);
+  }
+
+  function hdOf(canvas) {
+    let t = hdTwins.get(canvas);
+    if (typeof t === "function") {
+      t = t();
+      hdTwins.set(canvas, t);
+    }
+    return t || null;
+  }
+
+  if (typeof CanvasRenderingContext2D !== "undefined") {
+    const proto = CanvasRenderingContext2D.prototype;
+    const raw = proto.drawImage;
+
+    proto.drawImage = function (img, a, b, c, d, e, f, h, i) {
+      const n = arguments.length;
+      const t = this.hdDraw && img && hdTwins.has(img) ? hdOf(img) : null;
+      if (!t) return n === 3 ? raw.call(this, img, a, b) : n === 5 ? raw.call(this, img, a, b, c, d) : raw.call(this, img, a, b, c, d, e, f, h, i);
+      const k = t.width / img.width;
+      if (n === 3) return raw.call(this, t, a, b, img.width, img.height);
+      if (n === 5) return raw.call(this, t, a, b, c, d);
+      return raw.call(this, t, a * k, b * k, c * k, d * k, e, f, h, i);
+    };
+  }
+
+  /*
+   * Sprite nakreslený v jemné mřížce: P má rozměry (w * HD) x (h * HD) jemných
+   * px. Vrací plátno v art px (w x h, hrubý náhled pro editor a minimapu)
+   * a k němu jemné dvojče, které se ve hře vykreslí místo něj.
+   */
+  function fine(P) {
+    const w = Math.ceil(P.w / HD);
+    const h = Math.ceil(P.h / HD);
+    const small = new Pix(w, h);
+
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        // náhled: první neprůhledný ze čtyř jemných bodů (střed těžiště dole vpravo)
+        for (const [dx, dy] of [[1, 1], [0, 1], [1, 0], [0, 0]]) {
+          const v = P.d[(y * HD + dy) * P.w + x * HD + dx];
+          if (y * HD + dy < P.h && x * HD + dx < P.w && v >>> 24) {
+            small.d[y * w + x] = v;
+            break;
+          }
+        }
+      }
+    }
+
+    const c = small.rawCanvas();
+    const snap = P.clone();
+    hdLater(c, () => snap.rawCanvas());
+    return c;
+  }
+
   Object.assign(PK, {
+    HD, hdLater, hdOf, fine,
     C, TEAM, rgb, mix, css, rng, hash, vnoise, fbm, tnoise, bayer, dither,
     clamp, smooth, makeCanvas, Pix, strokeEllipse,
     // Rozměry bufferu v art px; game.js je mění podle velikosti okna.

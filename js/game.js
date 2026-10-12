@@ -18,6 +18,7 @@
   const net = PK.net;
   const account = PK.account;
   const view = PK.view;
+  const HD = PK.HD;
 
   const canvas = document.querySelector("#game");
   const display = canvas.getContext("2d");
@@ -2997,9 +2998,15 @@
     let c = ringCache.get(key);
 
     if (!c) {
-      const P = new PK.Pix(rx * 2 + 3, ry * 2 + 3);
-      P.ring(rx + 1.5, ry + 1.5, rx + 0.5, ry + 0.5, color, 1);
-      c = P.toCanvas();
+      // prstenec v jemné mřížce: 1 jemný px jasný okraj, pod ním průsvitná vnitřní stopa
+      const P = new PK.Pix((rx * 2 + 3) * HD, (ry * 2 + 3) * HD);
+      const cx = (rx + 1.5) * HD;
+      const cy = (ry + 1.5) * HD;
+      P.ring(cx, cy, (rx + 0.5) * HD - 1, (ry + 0.5) * HD - 1, color, 1);
+      const inner = new PK.Pix(P.w, P.h);
+      inner.ring(cx, cy, (rx + 0.5) * HD - 2, (ry + 0.5) * HD - 2, color, 1);
+      for (let i = 0; i < inner.d.length; i++) if (inner.d[i] && !P.d[i]) P.d[i] = ((90 << 24) | color) >>> 0;
+      c = PK.fine(P);
       ringCache.set(key, c);
     }
 
@@ -3010,24 +3017,24 @@
   const BIG = { hero: 16, abomination: 19, lich: 17 };
 
   function unitAnim(u) {
-    if (u.castT > 0 && (u.type === "hero" || u.type === "lich")) {
-      const p = 1 - u.castT / 0.5;
-      return ["cast", p < 0.3 ? 0 : p < 0.7 ? 1 : 2];
-    }
+    // snímky rovnoměrně přes průběh akce (animace mají mezisnímky, viz units.js)
+    const at = (anim, p) => [anim, Math.min(U.frameCount(anim) - 1, Math.floor(clamp(p, 0, 0.999) * U.frameCount(anim)))];
 
-    if (u.atk > 0) {
-      const p = 1 - u.atk / 0.3;
-      return ["attack", p < 0.35 ? 0 : p < 0.65 ? 1 : 2];
-    }
+    if (u.castT > 0 && (u.type === "hero" || u.type === "lich")) return at("cast", 1 - u.castT / 0.5);
+    if (u.atk > 0) return ["attack", U.attackFrame(1 - u.atk / 0.3)];
 
-    if (u.workT > 0) return ["attack", Math.floor(clock * 4.5 + u.id) % 3];
-    if (u.moveT > 0) return ["walk", Math.floor(u.wd / 28 * 6) % 6];
-    return ["idle", Math.floor(clock * 1.4 + u.id * 0.37) & 1];
+    if (u.workT > 0) return ["attack", Math.floor(clock * 13 + u.id) % U.frameCount("attack")];
+    // dělník s nákladem má vlastní chůzi a postoj (pytel přes rameno, otep na rameni)
+    const load = u.type === "worker" && u.carry ? "_" + u.carry : "";
+    // jeden cyklus chůze (dva kroky) na 22 logických jednotek dráhy = délka kroku spritu
+    if (u.moveT > 0) return ["walk" + load, Math.floor(u.wd / 22 * U.frameCount("walk")) % U.frameCount("walk")];
+    return ["idle" + load, Math.floor(clock * 1.4 + u.id * 0.37) & 1];
   }
 
   function drawUnit(u) {
-    const footX = Math.round(u.x / 2);
-    const footY = Math.round(u.y / 2) + 6;
+    // jednotky se posouvají po půl art px (jemná HD mřížka), pohyb je plynulejší
+    const footX = Math.round(u.x / 2 * HD) / HD;
+    const footY = Math.round(u.y / 2 * HD) / HD + 6;
     const flip = u.facing < 0;
 
     const sh = world.shadow("ellipse", BIG[u.type] || 13, 5);
@@ -3037,26 +3044,23 @@
     const rec = U.frame(u.type, u.team, anim, idx);
     const img = u.flashT > 0 ? U.flash(rec, flip) : flip ? rec.cf : rec.c;
     const ox = flip ? U.CELL - 1 - U.AX : U.AX;
-    const bob = anim === "walk" && idx % 3 === 0 ? -1 : 0;
-
-    if (u.carry && U.carry[u.carry]) {
-      const c = U.carry[u.carry];
-      g.drawImage(c, footX + (flip ? 3 : -3 - c.width) , footY - 18 + bob);
-    }
 
     g.drawImage(img, footX - ox, footY - U.AY);
 
     const meta = rec.meta || {};
-    const cellX = x => footX - ox + (flip ? U.CELL - 1 - (U.AX + x) : U.AX + x);
+    // poloha jemného bodu buňky (art px, může být .5); zrcadlení po jemných px
+    const cellX = x => footX - ox + (flip ? U.CELL - 0.5 - (U.AX + x) : U.AX + x);
 
     if (meta.eye) {
+      // jednotky mají štěrbinu oka nakreslenou samy; tady jen jemný záblesk a slabá záře
       const ex = cellX(meta.eye[0]);
       const ey = footY + meta.eye[1];
-      const flick = Math.sin(clock * 13 + u.id) > 0.2;
-      g.fillStyle = flick ? "#fff6cc" : "#ffbf45";
-      g.fillRect(ex, ey, 1, 1);
-      g.fillRect(ex + (flip ? -1 : 1), ey, 1, 1);
-      world.light(g, ex, ey, 4, 0xff8f4a, 0.35);
+      const flick = Math.sin(clock * 13 + u.id) > 0.6;
+      if (flick) {
+        g.fillStyle = "#fff6cc";
+        g.fillRect(ex, ey, 0.5, 0.5);
+      }
+      world.light(g, ex + 0.25, ey + 0.25, 3, 0xff8f4a, 0.25);
     }
 
     if (meta.lantern) {
@@ -3076,7 +3080,7 @@
   function drawTree(r) {
     const footX = Math.round(r.x / 2);
     const footY = Math.round(r.y / 2) + 15;
-    const variant = Math.floor(hash3(r.x, r.y, 5) * 3);
+    const variant = PK.props.treeKind(hash3(r.x, r.y, 5));
     const t = PK.props.trees[variant];
     const stage = r.amount > 66 ? 0 : r.amount > 33 ? 1 : 2;
     const sway = Math.sin(clock * 1.3 + r.x * 0.05) > 0.35 ? 1 : 0;
@@ -3092,8 +3096,18 @@
     if (stage === 0) {
       const k = Math.floor(clock * 1.6 + r.x) % t.fruit.length;
       const [fx0, fy0] = t.fruit[k];
-      g.fillStyle = (Math.floor(clock * 6 + r.y) & 1) ? "#fff6cc" : "#ffbf45";
-      g.fillRect(footX - t.ax + fx0 + sway, footY - t.ay + fy0, 1, 1);
+      const bright = Math.floor(clock * 6 + r.y) & 1;
+      const px = footX - t.ax + fx0 + sway;
+      const py = footY - t.ay + fy0;
+      g.fillStyle = bright ? "#fff6cc" : "#ffbf45";
+      g.fillRect(px, py, 0.5, 0.5);
+      if (bright) {
+        g.fillStyle = "rgba(255,224,138,0.55)";
+        g.fillRect(px - 0.5, py, 0.5, 0.5);
+        g.fillRect(px + 0.5, py, 0.5, 0.5);
+        g.fillRect(px, py - 0.5, 0.5, 0.5);
+        g.fillRect(px, py + 0.5, 0.5, 0.5);
+      }
     }
   }
 
@@ -3108,15 +3122,26 @@
     m.sparkle.forEach(([sx, sy], i) => {
       const ph = (clock * 1.3 + i * 0.61 + r.x * 0.01) % 2.4;
       if (ph > 0.28) return;
-      const x = footX - m.ax + sx;
-      const y = footY - m.ay + sy;
-      g.fillStyle = "#fff6cc";
-      g.fillRect(x, y, 1, 1);
-      if (ph < 0.18) {
-        g.fillRect(x - 1, y, 3, 1);
-        g.fillRect(x, y - 1, 1, 3);
-      }
+      sparkleAt(footX - m.ax + sx, footY - m.ay + sy, ph < 0.18, "#fff6cc");
     });
+  }
+
+  // jiskřička v jemné mřížce: bod, na vrcholu záblesku křížek s rameny po jemných px
+  function sparkleAt(x, y, big, color) {
+    g.fillStyle = color;
+    g.fillRect(x, y, 0.5, 0.5);
+    if (big) {
+      g.fillRect(x - 1, y, 0.5, 0.5);
+      g.fillRect(x + 1, y, 0.5, 0.5);
+      g.fillRect(x, y - 1, 0.5, 0.5);
+      g.fillRect(x, y + 1, 0.5, 0.5);
+      g.globalAlpha = 0.6;
+      g.fillRect(x - 0.5, y, 0.5, 0.5);
+      g.fillRect(x + 0.5, y, 0.5, 0.5);
+      g.fillRect(x, y - 0.5, 0.5, 0.5);
+      g.fillRect(x, y + 0.5, 0.5, 0.5);
+      g.globalAlpha = 1;
+    }
   }
 
   function flameAt(x, y, seed, size = 1) {
@@ -3127,15 +3152,22 @@
   const blueprints = new Map();
 
   function blueprint(spr) {
+    if (PK.buildings.blueprint) return PK.buildings.blueprint(spr);
     let c = blueprints.get(spr);
 
     if (!c) {
-      const t = PK.makeCanvas(spr.c.width, spr.c.height);
-      t.g.drawImage(spr.c, 0, 0);
-      t.g.globalCompositeOperation = "source-atop";
-      t.g.fillStyle = spr.hell ? "rgba(200,40,30,0.75)" : "rgba(70,150,255,0.7)";
-      t.g.fillRect(0, 0, t.c.width, t.c.height);
-      c = t.c;
+      // obarvené plátno i jeho jemné dvojče
+      const tint = src => {
+        const t = PK.makeCanvas(src.width, src.height);
+        t.g.drawImage(src, 0, 0);
+        t.g.globalCompositeOperation = "source-atop";
+        t.g.fillStyle = spr.hell ? "rgba(200,40,30,0.75)" : "rgba(70,150,255,0.7)";
+        t.g.fillRect(0, 0, t.c.width, t.c.height);
+        return t.c;
+      };
+      c = tint(spr.c);
+      const fine = PK.hdOf(spr.c);
+      if (fine) PK.hdLater(c, () => tint(fine));
       blueprints.set(spr, c);
     }
 
@@ -3171,15 +3203,28 @@
 
       // pekelná budova se vyvolává ze země (žhnoucí čára), ostatní stojí na lešení
       if (!spr.hell) {
+        // lešení: dvě tyče (světlá a stínová hrana) a příčky po 6 art px
+        const hgt = y0 + spr.h - top;
+        for (const px of [x0 - 1, x0 + spr.w]) {
+          g.fillStyle = "#be9660";
+          g.fillRect(px, top, 0.5, hgt);
+          g.fillStyle = "#6c4a35";
+          g.fillRect(px + 0.5, top, 0.5, hgt);
+        }
         g.fillStyle = "#946b45";
-        g.fillRect(x0 - 1, top, 1, y0 + spr.h - top);
-        g.fillRect(x0 + spr.w, top, 1, y0 + spr.h - top);
+        for (let yy = y0 + spr.h - 3; yy > top; yy -= 6) {
+          g.fillRect(x0 - 1.5, yy, 1.5, 0.5);
+          g.fillRect(x0 + spr.w, yy, 1.5, 0.5);
+        }
       }
 
-      for (let x = x0 - 1; x <= x0 + spr.w; x++) {
-        if (((x + Math.floor(clock * 8)) & 1) === 0) {
-          g.fillStyle = spr.hell ? "#ff8f4a" : "#ffe08a";
-          g.fillRect(x, top, 1, 1);
+      // čára růstu: běžící jemné body
+      const step = Math.floor(clock * 16);
+      for (let x = x0 - 1; x <= x0 + spr.w + 0.5; x += 0.5) {
+        const ph = (x * 2 + step) & 3;
+        if (ph < 2) {
+          g.fillStyle = ph === 0 ? (spr.hell ? "#ffd27a" : "#fff6cc") : (spr.hell ? "#ff8f4a" : "#ffe08a");
+          g.fillRect(x, top, 0.5, 0.5);
         }
       }
 
@@ -3231,12 +3276,7 @@
       s.sparkle.forEach(([sx, sy], i) => {
         const ph = (clock * 1.1 + i * 0.7 + d.x * 0.03) % 2.6;
         if (ph > 0.3) return;
-        g.fillStyle = "#e0ffff";
-        g.fillRect(d.x - s.ax + sx, d.y - s.ay + sy, 1, 1);
-        if (ph < 0.2) {
-          g.fillRect(d.x - s.ax + sx - 1, d.y - s.ay + sy, 3, 1);
-          g.fillRect(d.x - s.ax + sx, d.y - s.ay + sy - 1, 1, 3);
-        }
+        sparkleAt(d.x - s.ax + sx, d.y - s.ay + sy, ph < 0.2, "#e0ffff");
       });
     }
   }
@@ -3287,25 +3327,92 @@
   }
 
   /* ---------- in-world UI ---------- */
-  function drawBar(x, y, w, pct, team) {
-    const fw = Math.max(1, Math.round(w * clamp(pct, 0, 1)));
+  /* Ukazatel zdraví v jemné mřížce (1 jemný px = 0,5 art px): tenký 2 px pruh v tmavém rámečku
+   * se seříznutými rohy. Zdraví neubývá skokem: světlá stopa zásahu chvíli stojí a pak dobíhá,
+   * léčení se plynule doplní a krátce zazáří. Barva jde po paletě od zelené přes jantar k rudé. */
+  const HB_FILL = [
+    [0.5, "#98c76a", "#4a8548"],
+    [0.25, "#ffe08a", "#e0902a"],
+    [0, "#ff8f4a", "#a8323a"]
+  ];
+
+  function hbState(e, pct) {
+    let s = e.hb;
+    if (!s) s = e.hb = { shown: 1, trail: 1, hold: 0, heal: 0, t: clock, seen: 0 }; // dosud skrytý pruh = plné zdraví
+    const dt = clamp(clock - s.t, 0, 0.1);
+    s.t = clock;
+    if (pct < s.shown - 1e-4) { s.hold = 0.35; s.trail = Math.max(s.trail, s.shown); s.shown = pct; }
+    else if (pct > s.shown + 1e-4) { s.heal = 0.5; s.shown = Math.min(pct, s.shown + dt * 0.9); }
+    if (s.hold > 0) s.hold -= dt;
+    else s.trail = Math.max(s.shown, s.trail - dt * 0.8);
+    s.heal = Math.max(0, s.heal - dt);
+    s.seen = Math.min(1, s.seen + dt * 6);
+    return s;
+  }
+
+  function drawBar(x, y, w, pct, team, e) {
+    const p = clamp(pct, 0, 1);
+    const s = e ? hbState(e, p) : { shown: p, trail: p, heal: 0, seen: 1 };
+    const f = 1 / HD;
+    const cur = s.shown;
+    const [, hi, lo] = HB_FILL.find(([t]) => cur > t) || HB_FILL[2];
+    const low = cur <= 0.25;
+
+    g.globalAlpha = s.seen;
+    // rámeček: 1 jemný px kolem pruhu 2 jemné px, seříznuté rohy
     g.fillStyle = "#15121f";
-    g.fillRect(x - 1, y - 1, w + 2, 4);
-    g.fillStyle = "#2a1c26";
-    g.fillRect(x, y, w, 2);
-    g.fillStyle = pct > 0.5 ? "#6fd36f" : pct > 0.25 ? "#ffbf45" : "#ff5a4a";
-    g.fillRect(x, y, fw, 2);
-    g.fillStyle = "rgba(255,255,255,0.4)";
-    g.fillRect(x, y, fw, 1);
-    g.fillStyle = teamCss(team);
-    g.fillRect(x - 2, y - 1, 1, 4);
+    g.fillRect(x - f, y, w + 2 * f, 2 * f);
+    g.fillRect(x, y - f, w, 4 * f);
+    g.fillStyle = "#2a2238";
+    g.fillRect(x, y, w, 2 * f);
+
+    // stopa zásahu (světlá), pod ní aktuální zdraví
+    const tw = Math.round(w * s.trail * HD) / HD;
+    const fw = Math.max(f, Math.round(w * cur * HD) / HD);
+    if (tw > fw) {
+      g.fillStyle = s.hold > 0 ? "#fff6cc" : "#e0b4a0";
+      g.fillRect(x + fw, y, tw - fw, 2 * f);
+    }
+    if (cur > 0) {
+      g.fillStyle = hi;
+      g.fillRect(x, y, fw, f);
+      g.fillStyle = lo;
+      g.fillRect(x, y + f, fw, f);
+      // léčení: zářivá špička pruhu
+      if (s.heal > 0) {
+        g.globalAlpha = s.seen * Math.min(1, s.heal * 2);
+        g.fillStyle = "#cfffe8";
+        g.fillRect(x + fw - 2 * f, y, 2 * f, 2 * f);
+        g.globalAlpha = s.seen;
+      }
+      // málo zdraví: pruh tepe
+      if (low && Math.sin(clock * 9) > 0.2) {
+        g.fillStyle = "rgba(255,246,204,0.35)";
+        g.fillRect(x, y, fw, f);
+      }
+    }
+    // zářezy po čtvrtinách na delších pruzích (budovy)
+    if (w >= 20) {
+      g.fillStyle = "rgba(21,18,31,0.55)";
+      for (let k = 1; k < 4; k++) g.fillRect(x + Math.round(w * k / 4 * HD) / HD, y, f, 2 * f);
+    }
+    // týmová značka: kosočtverec 3x3 jemné px vlevo
+    if (team) {
+      g.fillStyle = "#15121f";
+      g.fillRect(x - 4 * f, y - f, 3 * f, 4 * f);
+      g.fillRect(x - 5 * f, y, 5 * f, 2 * f);
+      g.fillStyle = teamCss(team);
+      g.fillRect(x - 4 * f, y, 3 * f, 2 * f);
+      g.fillRect(x - 3 * f, y - f, f, 4 * f);
+    }
+    g.globalAlpha = 1;
   }
 
   function drawOverlays() {
     for (const u of units) {
-      if (u.hp >= u.maxHp && !selected.includes(u)) continue;
-      const w = u.type === "hero" ? 18 : 14;
-      drawBar(Math.round(u.x / 2) - (w >> 1), Math.round(u.y / 2) + 6 - HB_TOP[u.type] - (u.type === "hero" ? 6 : 0), w, u.hp / u.maxHp, u.team);
+      if (u.hp >= u.maxHp && !selected.includes(u) && !(u.hb && u.hb.trail > u.hb.shown)) { if (u.hb) u.hb.seen = 0; continue; }
+      const w = u.type === "hero" ? 16 : 12;
+      drawBar(Math.round(u.x / 2) - (w >> 1), Math.round(u.y / 2) + 6 - HB_TOP[u.type] - (u.type === "hero" ? 6 : 0), w, u.hp / u.maxHp, u.team, u);
     }
 
     for (const b of buildings) {
@@ -3319,21 +3426,29 @@
         continue;
       }
 
-      if (b.hp >= b.maxHp && !selected.includes(b)) continue;
-      drawBar(bx, by, w, b.hp / b.maxHp, b.team);
+      if (b.hp >= b.maxHp && !selected.includes(b)) { if (b.hb) b.hb.seen = 0; continue; }
+      drawBar(bx, by, w, b.hp / b.maxHp, b.team, b);
     }
   }
 
+  // stavba: stejný tenký pruh, modrá náplň s přebíhajícím leskem
   function drawProgressBar(x, y, w, pct) {
-    const fw = Math.max(1, Math.round(w * clamp(pct, 0, 1)));
+    const f = 1 / HD;
+    const fw = Math.max(f, Math.round(w * clamp(pct, 0, 1) * HD) / HD);
     g.fillStyle = "#15121f";
-    g.fillRect(x - 1, y - 1, w + 2, 4);
+    g.fillRect(x - f, y, w + 2 * f, 2 * f);
+    g.fillRect(x, y - f, w, 4 * f);
     g.fillStyle = "#1c2a46";
-    g.fillRect(x, y, w, 2);
-    g.fillStyle = "#58a6e0";
-    g.fillRect(x, y, fw, 2);
-    g.fillStyle = "rgba(255,255,255,0.4)";
-    g.fillRect(x, y, fw, 1);
+    g.fillRect(x, y, w, 2 * f);
+    g.fillStyle = "#6fb2f0";
+    g.fillRect(x, y, fw, f);
+    g.fillStyle = "#3f7fd0";
+    g.fillRect(x, y + f, fw, f);
+    const sx = Math.round(((clock * 18) % (w + 6)) * HD) / HD - 3;
+    if (sx >= 0 && sx < fw - f) {
+      g.fillStyle = "#e0f2ff";
+      g.fillRect(x + sx, y, f, 2 * f);
+    }
   }
 
   function selectionRing(e) {
@@ -3351,7 +3466,7 @@
 
       for (let k = 0; k < 4; k++) {
         const a = clock * 2 + k * Math.PI / 2;
-        g.fillRect(Math.round(footX + Math.cos(a) * rx), Math.round(footY + Math.sin(a) * ry), 1, 1);
+        g.fillRect(Math.round((footX + Math.cos(a) * (rx + 0.25)) * 2) / 2, Math.round((footY + Math.sin(a) * (ry + 0.25)) * 2) / 2, 0.5, 0.5);
       }
     } else {
       const spr = PK.buildings.get(e.type);
@@ -3371,11 +3486,14 @@
     const k = Math.round(Math.sin(clock * 4) * 0.5 + 0.5);
     const x1 = x0 + spr.w + 1 + k;
     const y1 = y0 + spr.h + 1 + k;
-    g.fillStyle = "#ffe08a";
-
-    for (const [cx, cy, dx, dy] of [[x0 - k, y0 - k, 1, 1], [x1, y0 - k, -1, 1], [x0 - k, y1, 1, -1], [x1, y1, -1, -1]]) {
-      g.fillRect(dx > 0 ? cx : cx - 4, cy, 5, 1);
-      g.fillRect(cx, dy > 0 ? cy : cy - 4, 1, 5);
+    // rohové závorky: jemná světlá linka a pod ní tmavší stín (čitelné na světlém i tmavém)
+    for (const [cx, cy, dx, dy] of [[x0 - k, y0 - k, 1, 1], [x1 + 0.5, y0 - k, -1, 1], [x0 - k, y1 + 0.5, 1, -1], [x1 + 0.5, y1 + 0.5, -1, -1]]) {
+      g.fillStyle = "rgba(21,18,31,0.55)";
+      g.fillRect(dx > 0 ? cx + 0.5 : cx - 4, cy + 0.5 * dy, 4.5, 0.5);
+      g.fillRect(cx + 0.5 * dx, dy > 0 ? cy + 0.5 : cy - 4, 0.5, 4.5);
+      g.fillStyle = "#ffe08a";
+      g.fillRect(dx > 0 ? cx : cx - 4.5, cy, 5, 0.5);
+      g.fillRect(cx, dy > 0 ? cy : cy - 4.5, 0.5, 5);
     }
   }
 
@@ -3389,34 +3507,37 @@
     g.fillStyle = "rgba(255,224,138,0.12)";
     g.fillRect(xa, ya, xb - xa, yb - ya);
 
-    for (let x = xa; x <= xb; x++) {
-      const on = ((x + off) >> 1) & 1;
+    // běžící čárkovaný rámeček z jemných bodů (čárka 3 jemné px světlá, 2 tmavé)
+    for (let k = 0; k <= (xb - xa) * 2; k++) {
+      const x = xa + k / 2;
+      const on = ((k + off) % 5) < 3;
       g.fillStyle = on ? "#fff6cc" : "#15121f";
-      g.fillRect(x, ya, 1, 1);
-      g.fillRect(x, yb, 1, 1);
+      g.fillRect(x, ya, 0.5, 0.5);
+      g.fillRect(x, yb, 0.5, 0.5);
     }
 
-    for (let y = ya; y <= yb; y++) {
-      const on = ((y + off) >> 1) & 1;
+    for (let k = 0; k <= (yb - ya) * 2; k++) {
+      const y = ya + k / 2;
+      const on = ((k + off) % 5) < 3;
       g.fillStyle = on ? "#fff6cc" : "#15121f";
-      g.fillRect(xa, y, 1, 1);
-      g.fillRect(xb, y, 1, 1);
+      g.fillRect(xa, y, 0.5, 0.5);
+      g.fillRect(xb, y, 0.5, 0.5);
     }
   }
 
   function circlePx(cx, cy, r, color, dash = 0) {
     g.fillStyle = color;
-    const steps = Math.ceil(r * 7);
+    const steps = Math.ceil(r * 2 * 7);
     let lx = null;
     let ly = null;
 
     for (let i = 0; i < steps; i++) {
       const a = i / steps * Math.PI * 2;
       if (dash && Math.floor((a + clock * 0.5) / (Math.PI * 2) * dash * 2) % 2) continue;
-      const x = Math.round(cx + Math.cos(a) * r);
-      const y = Math.round(cy + Math.sin(a) * r);
+      const x = Math.round((cx + Math.cos(a) * r) * HD) / HD;
+      const y = Math.round((cy + Math.sin(a) * r) * HD) / HD;
       if (x === lx && y === ly) continue;
-      g.fillRect(x, y, 1, 1);
+      g.fillRect(x, y, 0.5, 0.5);
       lx = x;
       ly = y;
     }
@@ -3464,10 +3585,14 @@
     const col = inRange ? "#ff8f4a" : "#8a8085";
 
     circlePx(ax, ay, 23.5, col, 12);
+    circlePx(ax, ay, 23, inRange ? "rgba(255,143,74,0.4)" : "rgba(138,128,133,0.4)", 12);
     g.fillStyle = inRange ? "#ffd27a" : "#8a8085";
-    g.fillRect(ax, ay, 1, 1);
+    g.fillRect(ax, ay, 0.5, 0.5);
 
-    for (const [dx, dy] of [[0, -4], [0, 4], [-4, 0], [4, 0]]) g.fillRect(ax + dx, ay + dy, 1, 1);
+    // zaměřovací kříž: čtyři krátká ramena z jemných bodů
+    for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+      for (let k = 3; k <= 5; k += 0.5) g.fillRect(ax + dx * k, ay + dy * k, 0.5, 0.5);
+    }
   }
 
   // Pozice kurzoru ve světě (logické jednotky), nebo null, když kurzor není nad mapou.
@@ -3793,10 +3918,13 @@
     view.h = vh;
     view.mapH = vh - view.hudH;
 
-    if (bufCanvas.width !== vw || bufCanvas.height !== vh) {
-      bufCanvas.width = vw;
-      bufCanvas.height = vh;
+    // buffer má PK.HD násobnou hustotu; kreslí se dál v art px přes měřítko kontextu
+    if (bufCanvas.width !== vw * HD || bufCanvas.height !== vh * HD) {
+      bufCanvas.width = vw * HD;
+      bufCanvas.height = vh * HD;
+      g.setTransform(HD, 0, 0, HD, 0, 0);
       g.imageSmoothingEnabled = false;
+      g.hdDraw = true;
     }
 
     canvas.width = cw;
@@ -3820,13 +3948,14 @@
     const k = scale;
     const mapH = view.mapH;
 
-    display.imageSmoothingEnabled = false;
+    // menší plátno než buffer (malé okno): jemné body se průměrují místo vypouštění
+    display.imageSmoothingEnabled = k < HD;
     display.fillStyle = "#15121f";
 
     if (sx || sy) {
       display.fillRect(0, 0, canvas.width, mapH * k);
-      display.drawImage(bufCanvas, 0, 0, view.w, mapH, sx * k, sy * k, view.w * k, mapH * k);
-      display.drawImage(bufCanvas, 0, mapH, view.w, view.h - mapH, 0, mapH * k, view.w * k, (view.h - mapH) * k);
+      display.drawImage(bufCanvas, 0, 0, view.w * HD, mapH * HD, sx * k, sy * k, view.w * k, mapH * k);
+      display.drawImage(bufCanvas, 0, mapH * HD, view.w * HD, (view.h - mapH) * HD, 0, mapH * k, view.w * k, (view.h - mapH) * k);
     } else {
       display.drawImage(bufCanvas, 0, 0, canvas.width, canvas.height);
     }

@@ -971,7 +971,7 @@
       for (const d of PK.world.doodads) bg.drawImage(d.spr.c, d.x - d.spr.ax, d.y - d.spr.ay);
 
       for (const [x, y] of [...map.trees].sort((a, b) => a[1] - b[1])) {
-        const t = PK.props.trees[(x * 7 + y) % 3 | 0];
+        const t = PK.props.trees[PK.props.treeKind(((x * 7 + y) % 97) / 97)];
         bg.drawImage(t.trunk, x / 2 - t.ax, y / 2 + 15 - t.ay);
         bg.drawImage(t.crown[0], x / 2 - t.ax, y / 2 + 15 - t.ay);
       }
