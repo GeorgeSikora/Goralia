@@ -2492,7 +2492,10 @@
         }
 
         if (m.off) mpOff = new Set(m.off.map(String));
-        if (m.t === "hello") online.authed = !!m.me;
+        if (m.t === "hello") {
+          online.authed = !!m.me;
+          PK.vchat.setIce(m.ice);
+        }
         online.rooms = Array.isArray(m.list) ? m.list : [];
         online.live = Array.isArray(m.live) ? m.live : [];
         online.playing = m.playing | 0;
@@ -2517,6 +2520,7 @@
         break;
 
       case "left":
+        PK.vchat.reset();
         online.roomId = 0;
         lobby.online = false;
         if (online.phase === "room") {
@@ -2548,6 +2552,18 @@
         PK.chat.receiveLog(m.list);
         break;
 
+      case "voice":
+        PK.vchat.onVoice(m);
+        break;
+
+      case "talk":
+        PK.vchat.onTalk(m);
+        break;
+
+      case "rtc":
+        PK.vchat.onRtc(m);
+        break;
+
       default:
     }
   };
@@ -2566,7 +2582,15 @@
     return { left: rect.left + 8, bottom: window.innerHeight - (rect.top + mapAreaH() * k) + 8 };
   };
 
+  // hlasový chat: vlevo nahoře pod přehledem surovin (HUD je kreslený v polovičních jednotkách ukazatele)
+  PK.vchat.anchor = () => {
+    const rect = canvas.getBoundingClientRect();
+    const k = rect.height / (view.h * 2);
+    return { left: rect.left + 8, top: rect.top + 40 * k };
+  };
+
   setInterval(() => {
+    PK.vchat.sync({ roomId: online.roomId, where: chatWhere(), touch: isTouch });
     const names = lobby.online ? lobby.slots.filter((s, i) => s.kind === "human" && i !== lobby.you).map(s => s.name) : [];
     PK.chat.sync({
       roomId: online.roomId,
@@ -2578,6 +2602,7 @@
   }, 250);
 
   net.onclose = () => {
+    PK.vchat.reset();
     if (mode === "online" && started && !matchOver) {
       if (state === "playing") {
         state = "lose";
@@ -2736,6 +2761,8 @@
     soundEl.checked = !audio.muted;
     $("s-ambient").checked = audio.ambient;
     $("s-voice").checked = PK.voice.enabled;
+    $("s-vchat").checked = PK.vchat.enabled;
+    $("s-vchat-label").textContent = PK.vchat.supported ? "Hlasový chat (online)" : "Hlasový chat (prohlížeč ho nepodporuje)";
     $("s-voice-label").textContent = PK.voice.available ? "České hlasy postav" : "České hlasy postav (nenačteny)";
     $("s-shake").checked = settings.shake;
     $("s-pixel").checked = settings.pixel;
@@ -2762,6 +2789,12 @@
   $("s-voice").addEventListener("change", event => {
     PK.voice.setEnabled(event.target.checked);
   });
+
+  $("s-vchat").addEventListener("change", event => {
+    PK.vchat.setEnabled(event.target.checked);
+  });
+  PK.vchat.bindKeyButton($("s-ptt"), () => { $("h-ptt").textContent = PK.vchat.keyLabel(); });
+  $("h-ptt").textContent = PK.vchat.keyLabel();
   PK.voice.onLoad = syncSettings;
 
   $("s-shake").addEventListener("change", event => {
