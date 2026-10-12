@@ -323,6 +323,21 @@
     if (master) master.gain.value = masterLevel();
   }
 
+  /* ---------- hudební sběrnice (js/music.js): vlastní hlasitost, za ní hlavní hlasitost a ztlumení ---------- */
+  let musicBus = null;
+
+  function music() {
+    if (!ensure()) return null;
+
+    if (!musicBus) {
+      musicBus = ctx.createGain();
+      musicBus.gain.value = 1;
+      musicBus.connect(master);
+    }
+
+    return { ctx, bus: musicBus, noise: noiseBuf };
+  }
+
   function setAmbient(value) {
     ambientOn = !!value;
     try { localStorage.setItem("pk-ambient", ambientOn ? "1" : "0"); } catch (e) { /* ignore */ }
@@ -338,6 +353,9 @@
     setMuted,
     setVolume,
     setAmbient,
+    music,
+    get running() { return !!ctx && ctx.state === "running" && !muted; },
+    get intensity() { return intensity; },
     toggle() { setMuted(!muted); return muted; },
     get muted() { return muted; },
     get volume() { return volume; },

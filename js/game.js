@@ -2566,6 +2566,15 @@
     return { left: rect.left + 8, bottom: window.innerHeight - (rect.top + mapAreaH() * k) + 8 };
   };
 
+  // hudba: menu / klidná hra / boj (podle intenzity bitvy)
+  setInterval(() => {
+    const playing = started && !matchOver;
+    const sceneNow = !playing ? "menu" : battleLevel > 0.3 || musicHeat > 0 ? "battle" : "peace";
+    PK.music.setScene(sceneNow);
+    musicHeat = battleLevel > 0.3 ? 20 : Math.max(0, musicHeat - 1);
+  }, 1000);
+  let musicHeat = 0; // boj doznívá ještě ~20 s, ať hudba nepřeskakuje sem a tam
+
   setInterval(() => {
     const names = lobby.online ? lobby.slots.filter((s, i) => s.kind === "human" && i !== lobby.you).map(s => s.name) : [];
     PK.chat.sync({
@@ -2735,6 +2744,9 @@
     $("s-volume-out").textContent = `${volumeEl.value} %`;
     soundEl.checked = !audio.muted;
     $("s-ambient").checked = audio.ambient;
+    $("s-music").checked = PK.music.enabled;
+    $("s-music-vol").value = Math.round(PK.music.level * 100);
+    $("s-music-out").textContent = `${$("s-music-vol").value} %`;
     $("s-voice").checked = PK.voice.enabled;
     $("s-voice-label").textContent = PK.voice.available ? "České hlasy postav" : "České hlasy postav (nenačteny)";
     $("s-shake").checked = settings.shake;
@@ -2752,6 +2764,17 @@
   soundEl.addEventListener("change", () => {
     audio.unlock();
     audio.setMuted(!soundEl.checked);
+  });
+
+  $("s-music").addEventListener("change", event => {
+    audio.unlock();
+    PK.music.setEnabled(event.target.checked);
+  });
+
+  $("s-music-vol").addEventListener("input", event => {
+    audio.unlock();
+    PK.music.setLevel(event.target.value / 100);
+    $("s-music-out").textContent = `${event.target.value} %`;
   });
 
   $("s-ambient").addEventListener("change", event => {
