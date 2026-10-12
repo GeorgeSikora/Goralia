@@ -2573,6 +2573,14 @@
     const k = rect.height / (view.h * 2);
     return { left: rect.left + 8, top: rect.top + 40 * k };
   };
+  // hudba: menu / klidná hra / boj (podle intenzity bitvy)
+  setInterval(() => {
+    const playing = started && !matchOver;
+    const sceneNow = !playing ? "menu" : battleLevel > 0.3 || musicHeat > 0 ? "battle" : "peace";
+    PK.music.setScene(sceneNow);
+    musicHeat = battleLevel > 0.3 ? 20 : Math.max(0, musicHeat - 1);
+  }, 1000);
+  let musicHeat = 0; // boj doznívá ještě ~20 s, ať hudba nepřeskakuje sem a tam
 
   setInterval(() => {
     PK.vchat.sync({ roomId: online.roomId, where: chatWhere(), touch: isTouch });
@@ -2745,6 +2753,9 @@
     $("s-volume-out").textContent = `${volumeEl.value} %`;
     soundEl.checked = !audio.muted;
     $("s-ambient").checked = audio.ambient;
+    $("s-music").checked = PK.music.enabled;
+    $("s-music-vol").value = Math.round(PK.music.level * 100);
+    $("s-music-out").textContent = `${$("s-music-vol").value} %`;
     $("s-voice").checked = PK.voice.enabled;
     $("s-vchat").checked = PK.vchat.enabled;
     $("s-vchat-label").textContent = PK.vchat.supported ? "Hlasový chat (online)" : "Hlasový chat (prohlížeč ho nepodporuje)";
@@ -2764,6 +2775,17 @@
   soundEl.addEventListener("change", () => {
     audio.unlock();
     audio.setMuted(!soundEl.checked);
+  });
+
+  $("s-music").addEventListener("change", event => {
+    audio.unlock();
+    PK.music.setEnabled(event.target.checked);
+  });
+
+  $("s-music-vol").addEventListener("input", event => {
+    audio.unlock();
+    PK.music.setLevel(event.target.value / 100);
+    $("s-music-out").textContent = `${event.target.value} %`;
   });
 
   $("s-ambient").addEventListener("change", event => {
