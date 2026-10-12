@@ -951,6 +951,8 @@
     return {
       c: PK.fine(P), w: W, h: H, ax: 16, ay: 60,
       banners: [],
+      // vlajka na stožáru nad hrotem střechy (art px, hrot je na jemném x 31..32)
+      flags: [[14.5, -14]],
       smoke: [],
       glows: [
         { x: 26, y: 34, r: 11, a: 0.5, color: C.a[2], pulse: true },
@@ -1870,6 +1872,74 @@
     return (bannerCache[team] = frames);
   }
 
+  /* ======================= vlajka na stožáru ======================= */
+  const flagCache = {};
+  const FLAG_FRAMES = 8;
+
+  /*
+   * Osm snímků vlajky 16 x 15 art px (= 32 x 30 jemných) pro hrot věže.
+   * Stožár je na jemném x 2..3, látka vlaje doprava: vlna se rozbíhá od
+   * stožáru a roste ke konci, plochy natočené ke světlu jsou světlejší,
+   * odvrácené tmavší (celé pruhy, žádná šachovnice). Konec má vlaštovčí ocas, středem vede pruh týmového
+   * akcentu. Dole stožár přesahuje do zlaté hlavice střechy.
+   */
+  function flagFrames(team) {
+    if (flagCache[team]) return flagCache[team];
+
+    const T = TEAM[team] || TEAM.blue;
+    const frames = [];
+    const L = 24;
+    const top0 = 4;
+
+    for (let f = 0; f < FLAG_FRAMES; f++) {
+      const P = new Pix(32, 30);
+      const ph = f * Math.PI * 2 / FLAG_FRAMES;
+
+      for (let cx = 0; cx < L; cx++) {
+        const t = cx / (L - 1);
+        const a = cx * 0.36 - ph;
+        const dy = Math.sin(a) * (0.4 + t * 2.4);
+        // sklon látky: + natočená vzhůru ke světlu, - odvrácená dolů
+        const slope = Math.cos(a) * (0.35 + t);
+        const hgt = 12 - Math.round(t * 2);
+        const y0 = Math.round(top0 + dy + t * 1.5);
+        const tail = cx - (L - 6);
+        const x = 4 + cx;
+
+        for (let ry = 0; ry < hgt; ry++) {
+          if (tail > 0 && Math.abs(ry + 0.5 - hgt / 2) < tail * 0.95) continue;
+          let c = T.m;
+          if (slope > 0.45) c = T.l;
+          else if (slope < -0.45) c = T.s;
+          // pruh akcentu středem látky
+          const mid = Math.abs(ry + 0.5 - hgt / 2);
+          if (cx > 2 && mid < 1.1) c = slope < -0.55 ? mix(T.accent, T.s, 0.35) : T.accent;
+          // horní hrana chytá světlo, spodní je ve stínu
+          if (ry === 0) c = slope > 0.2 ? T.h : T.l;
+          else if (ry === hgt - 1) c = T.d;
+          // přišitý lem u stožáru
+          if (cx < 2) c = cx === 0 ? T.d : T.s;
+          P.set(x, y0 + ry, c);
+        }
+      }
+
+      // stožár s hlavicí; dole končí v hrotu střechy
+      for (let y = 3; y < 30; y++) {
+        P.set(2, y, WOOD[4]);
+        P.set(3, y, WOOD[1]);
+      }
+      P.rect(1, 0, 4, 3, C.gold[1]);
+      P.rect(2, 0, 2, 1, C.gold[2]);
+      P.set(4, 2, C.gold[0]);
+      P.set(1, 2, C.gold[0]);
+
+      P.outline(C.ink, 0.7);
+      frames.push(PK.fine(P));
+    }
+
+    return (flagCache[team] = frames);
+  }
+
   /* ======================= sutiny ======================= */
   const rubbleCache = {};
 
@@ -1991,6 +2061,7 @@
   PK.buildings = {
     get,
     banner: bannerFrames,
+    flag: flagFrames,
     rubble,
     blueprint,
     teamOf: type => (type === "citadel" ? "red" : "blue")
