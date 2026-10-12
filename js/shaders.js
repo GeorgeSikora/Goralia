@@ -33,13 +33,13 @@
   const CYCLE = 480;
   const MOOD = [
     // fáze, šero r g b, síla světel, bloom, paprsky r g b × síla
-    [0.0, [1.0, 0.98, 0.95], 0.4, 0.55, [0.07, 0.065, 0.045]], // dopoledne
-    [0.34, [1.0, 0.97, 0.92], 0.45, 0.6, [0.075, 0.066, 0.042]], // odpoledne
-    [0.46, [0.9, 0.74, 0.66], 0.85, 0.9, [0.22, 0.15, 0.07]], // soumrak, zlatá hodinka
-    [0.56, [0.56, 0.6, 0.8], 1.2, 1.15, [0.03, 0.04, 0.06]], // noc, slabý měsíc
-    [0.8, [0.58, 0.62, 0.82], 1.2, 1.15, [0.03, 0.04, 0.06]], // pozdní noc
-    [0.9, [0.82, 0.78, 0.88], 0.8, 0.8, [0.16, 0.12, 0.12]], // úsvit
-    [1.0, [1.0, 0.98, 0.95], 0.4, 0.55, [0.07, 0.065, 0.045]]
+    [0.0, [0.88, 0.86, 0.85], 0.35, 0.4, [0.05, 0.046, 0.032]], // dopoledne
+    [0.34, [0.87, 0.85, 0.82], 0.4, 0.42, [0.055, 0.048, 0.03]], // odpoledne
+    [0.46, [0.74, 0.6, 0.56], 0.75, 0.65, [0.16, 0.11, 0.05]], // soumrak, zlatá hodinka
+    [0.56, [0.42, 0.46, 0.64], 1.0, 0.8, [0.02, 0.026, 0.04]], // noc, slabý měsíc
+    [0.8, [0.4, 0.44, 0.62], 1.0, 0.8, [0.02, 0.026, 0.04]], // pozdní noc
+    [0.9, [0.7, 0.66, 0.76], 0.7, 0.6, [0.11, 0.08, 0.08]], // úsvit
+    [1.0, [0.88, 0.86, 0.85], 0.35, 0.4, [0.05, 0.046, 0.032]]
   ];
   const MENU_PHASE = 0.47; // menu a lobby v soumraku
   const START_PHASE = 0.05; // zápas začíná dopoledne
@@ -210,16 +210,16 @@ void main() {
     acc *= q / m;
   }
 
-  // přepal měkce stlačený: nejsvětlejší místo je nanejvýš 1,5× původní barva
+  // přepal měkce stlačený: nejsvětlejší místo je nanejvýš 1,33× původní barva
   vec3 L = uAmb + acc;
   vec3 over = max(L - 1.0, 0.0);
-  L = min(L, 1.0) + over / (1.0 + 2.0 * over);
+  L = min(L, 1.0) + over / (1.0 + 3.0 * over);
   // svítící body (okna, plameny, láva, krystaly) šero neztlumí, v noci tak vyniknou
   float mx = max(src.r, max(src.g, src.b));
   float sat = (mx - min(src.r, min(src.g, src.b))) / max(mx, 1e-3);
   float lum = dot(src, vec3(0.3, 0.59, 0.11));
   float e = smoothstep(0.6, 0.82, lum) * smoothstep(0.3, 0.5, sat);
-  L = mix(L, max(L, vec3(1.08)), e);
+  L = mix(L, max(L, vec3(1.0)), e);
   vec3 lit = src * L;
 
   // paprsky světla: šikmé pásy ukotvené ve světě, pomalu se posouvají, začínají a končí;
