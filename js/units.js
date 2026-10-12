@@ -785,8 +785,8 @@
         return {
           pix: P,
           pixf: pf,
-          c: P.toCanvas(true),
-          cf: pf.toCanvas(true),
+          c: P.toCanvas(),
+          cf: pf.toCanvas(),
           meta,
           flash: null,
           flashf: null
@@ -816,7 +816,7 @@
     const k = flip ? "flashf" : "flash";
 
     if (!rec[k]) {
-      rec[k] = (flip ? rec.pixf : rec.pix).tint(0xffffff, 0.72).toCanvas(true);
+      rec[k] = (flip ? rec.pixf : rec.pix).tint(0xffffff, 0.72).toCanvas();
     }
 
     return rec[k];
@@ -830,7 +830,7 @@
       const rec = frame(type, team, "idle", 0);
       const base = flip ? rec.pixf : rec.pix;
       const rot = flip ? base.rot90().flipX() : base.rot90();
-      store[key] = { pix: rot, c: rot.toCanvas(true) };
+      store[key] = { pix: rot, c: rot.toCanvas() };
     }
 
     return store[key];
@@ -840,7 +840,7 @@
     const q = Math.round(keep * 4);
     rec.dis = rec.dis || {};
 
-    if (!rec.dis[q]) rec.dis[q] = rec.pix.dissolve(q / 4).toCanvas(true);
+    if (!rec.dis[q]) rec.dis[q] = rec.pix.dissolve(q / 4).toCanvas();
     return rec.dis[q];
   }
 
@@ -865,10 +865,7 @@
     if (!portraitCache[key]) {
       const rec = frame(type, team, "idle", frameIndex);
       const [cx, cy] = PORTRAIT_CROP[type];
-      const face = rec.pix.crop(cx, cy, 20, 20);
-      const c = face.scale(2).toCanvas();
-      PK.hdLater(c, () => PK.upscale(face).scale(2).rawCanvas());
-      portraitCache[key] = c;
+      portraitCache[key] = rec.pix.crop(cx, cy, 20, 20).scale(2).toCanvas();
     }
 
     return portraitCache[key];
@@ -885,7 +882,7 @@
     gold.set(4, 4, C.gold[1]);
     gold.set(2, 4, C.gold[1]);
     gold.outline(C.ink, 0.75);
-    carry.gold = gold.toCanvas(true);
+    carry.gold = gold.toCanvas();
 
     const wood = new Pix(9, 8);
     wood.rect(0, 1, 8, 2, C.w[3]);
@@ -895,7 +892,7 @@
     wood.rect(1, 4, 1, 2, C.w[4]);
     wood.rect(3, 0, 1, 7, C.d[3]);
     wood.outline(C.ink, 0.75);
-    carry.wood = wood.toCanvas(true);
+    carry.wood = wood.toCanvas();
   }
 
   PK.units = {

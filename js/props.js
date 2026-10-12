@@ -8,8 +8,6 @@
 
   const PK = window.PK;
   const { C, Pix, mix, hash } = PK;
-  // jemnější HD verze stromů a drobností
-  const HDP = { rim: 0.18, grain: 0.22 };
 
   const G = C.g;
   const S = C.s;
@@ -129,11 +127,11 @@
     }
 
     return {
-      trunk: trunk.toCanvas(HDP),
+      trunk: trunk.toCanvas(),
       crown: [
-        crown.toCanvas(HDP),
-        crown.dissolve(0.8).toCanvas(HDP),
-        crown.dissolve(0.55).toCanvas(HDP)
+        crown.toCanvas(),
+        crown.dissolve(0.8).toCanvas(),
+        crown.dissolve(0.55).toCanvas()
       ],
       fruit,
       w: W,
@@ -203,7 +201,7 @@
     P.outline(C.ink, 0.72);
 
     return {
-      c: P.toCanvas(HDP),
+      c: P.toCanvas(),
       w: W,
       h: H,
       ax: 25,
@@ -220,7 +218,7 @@
     const P = new Pix(w, h);
     fn(P);
     P.outline(C.ink, 0.72);
-    out[name] = { c: P.toCanvas(HDP), w, h, ax, ay, ...extra };
+    out[name] = { c: P.toCanvas(), w, h, ax, ay, ...extra };
   }
 
   function shard(P, x, y, w, h, ramp) {
@@ -586,7 +584,7 @@
       layer(0.72, 0.8, C.r[4]);
       layer(0.4, 0.5, C.a[3]);
       P.set(Math.round(w / 2), h - 2, C.a[4]);
-      frames.push(P.toCanvas({ rim: 0 }));
+      frames.push(P.toCanvas());
     }
 
     return (flameCache[key] = frames);

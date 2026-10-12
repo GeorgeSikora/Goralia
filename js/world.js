@@ -671,65 +671,7 @@
       }
     }
 
-    const canvas = T.toCanvas();
-    PK.hdLater(canvas, () => hdTerrain(T, b).rawCanvas());
-    return canvas;
-  }
-
-  /*
-   * HD terén: Scale2x zaoblí hrany cest a skal, pak se v jemné mřížce doplní
-   * stébla trávy, oblázky na cestách a zkosené hrany kamenů (světlo zleva shora).
-   */
-  function hdTerrain(T, b) {
-    const { W, H, zone, ashMap } = b;
-    const P = PK.upscale(T, { rim: 0, outline: false, tol: 24 });
-    const W2 = W * 2;
-    const H2 = H * 2;
-    const d = P.d;
-    const src = d.slice();
-    const put = (j, c) => { d[j] = (0xff000000 | c) >>> 0; };
-    const lum = v => ((v >> 16) & 255) * 0.3 + ((v >> 8) & 255) * 0.59 + (v & 255) * 0.11;
-
-    for (let y = 1; y < H2 - 1; y++) {
-      for (let x = 1; x < W2 - 1; x++) {
-        const i = (y >> 1) * W + (x >> 1);
-        const z = zone[i];
-        const j = y * W2 + x;
-        const c = src[j] & 0xffffff;
-        const h = hash(x, y, 913);
-
-        if (z === Z_GRASS) {
-          const ash = ashMap[i] === 1;
-          // stéblo: světlá špička a pod ní stín
-          if (h > 0.9) {
-            put(j, mix(c, ash ? A[4] : G[6], 0.3));
-            put(j + W2, mix(src[j + W2] & 0xffffff, ash ? A[0] : G[0], 0.32));
-          } else if (h < 0.04) {
-            put(j, mix(c, ash ? A[0] : G[0], 0.22));
-          }
-        } else if (z === Z_PATH || z === Z_BANK) {
-          // oblázek: světlé temeno, stín vpravo dole
-          if (h > 0.965) {
-            put(j, mix(c, D[5], 0.5));
-            put(j + 1 + W2, mix(src[j + 1 + W2] & 0xffffff, D[0], 0.4));
-          } else if (h < 0.06) {
-            put(j, mix(c, D[0], 0.16));
-          }
-        } else if (z !== Z_WATER) {
-          // kámen: hrana pod tmavou spárou je osvětlená, nad spárou ve stínu
-          const lc = lum(c);
-          const up = lum(src[j - W2] & 0xffffff);
-          const dn = lum(src[j + W2] & 0xffffff);
-          const lf = lum(src[j - 1] & 0xffffff);
-          if (up < lc - 22 || lf < lc - 22) put(j, mix(c, C.white, 0.2));
-          else if (dn < lc - 22) put(j, mix(c, C.ink, 0.22));
-          else if (h > 0.94) put(j, mix(c, C.white, 0.09));
-          else if (h < 0.06) put(j, mix(c, C.ink, 0.12));
-        }
-      }
-    }
-
-    return P;
+    return T.toCanvas();
   }
 
   /* ---------- water (4 animated frames) ---------- */
@@ -786,7 +728,7 @@
         }
       }
 
-      frames.push(P.toCanvas({ rim: 0, outline: false, tol: 20 }));
+      frames.push(P.toCanvas());
     }
 
     return frames;
@@ -806,7 +748,7 @@
         }
       }
 
-      frames.push(P.toCanvas({ rim: 0.15, outline: false }));
+      frames.push(P.toCanvas());
     }
 
     const R = rng(311);
@@ -1114,7 +1056,6 @@
     if (!world.warmth) world.warmth = buildWarmth();
     world.mistLanes = rec.mist;
     world.minimap = scaled(world.terrain, 88, 48);
-    PK.hdOf(world.terrain); // HD terén se peče při načtení mapy, ne v prvním snímku
     world.ready = true;
   }
 
