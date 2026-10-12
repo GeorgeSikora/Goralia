@@ -13,7 +13,7 @@
   const PK = (window.PK = window.PK || {});
 
   const SCRIPTS = [
-    "rules", "maps", "nav", "ai", "sim", "audio", "music", "pixel", "font", "keys",
+    "rules", "maps", "nav", "ai", "sim", "audio", "music", "pixel", "shaders", "font", "keys",
     "units", "buildings", "props", "icons", "world", "fx", "hud", "net", "menubg",
     "custommaps", "charts", "matchview", "account", "voice", "chat", "voicechat", "game"
   ];

@@ -1511,11 +1511,13 @@
 
   /* ======================= menu + settings ======================= */
   const SETTINGS_KEY = "pk-settings";
-  const settings = { shake: true, pixel: false, autoFullscreen: false };
+  const settings = { shake: true, pixel: false, autoFullscreen: false, shaders: true };
 
   try {
     Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {});
   } catch (e) { /* storage unavailable or corrupt */ }
+
+  if (PK.shaders) PK.shaders.enabled = settings.shaders;
 
   function saveSettings() {
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* ignore */ }
@@ -2840,6 +2842,10 @@
     $("s-shake").checked = settings.shake;
     $("s-pixel").checked = settings.pixel;
     $("s-autofs").checked = settings.autoFullscreen;
+    const shOk = !!(PK.shaders && PK.shaders.supported);
+    $("s-shaders").checked = shOk && settings.shaders;
+    $("s-shaders").disabled = !shOk;
+    $("s-shaders-label").textContent = shOk ? "Světla a stíny (shadery)" : "Světla a stíny (prohlížeč nepodporuje WebGL 2)";
   }
 
   volumeEl.addEventListener("input", () => {
@@ -2891,6 +2897,12 @@
     settings.pixel = event.target.checked;
     saveSettings();
     fit();
+  });
+
+  $("s-shaders").addEventListener("change", event => {
+    settings.shaders = event.target.checked;
+    if (PK.shaders) PK.shaders.enabled = settings.shaders;
+    saveSettings();
   });
 
   $("s-autofs").addEventListener("change", event => {
@@ -3137,7 +3149,7 @@
         g.fillStyle = "#fff6cc";
         g.fillRect(ex, ey, 0.5, 0.5);
       }
-      world.light(g, ex + 0.25, ey + 0.25, 3, 0xff8f4a, 0.25);
+      world.light(g, ex + 0.25, ey + 0.25, 3, 0xff8f4a, 0.25, footY - ey);
     }
 
     if (meta.lantern) {
@@ -3145,7 +3157,7 @@
       const ly = footY + meta.lantern[1];
       const cast = anim === "cast" ? 1 : 0;
       const flick = 0.55 + Math.sin(clock * 9 + u.id) * 0.08;
-      world.light(g, lx, ly, cast ? 24 : 15, 0xffbf45, cast ? 0.8 : flick);
+      world.light(g, lx, ly, cast ? 24 : 15, 0xffbf45, cast ? 0.8 : flick, footY - ly);
     }
 
     if (u.type === "hero") {
@@ -3341,6 +3353,8 @@
       const fxp = x0 + spr.w * (0.2 + 0.6 * hash3(b.id, i, 3));
       const fyp = y0 + spr.h * (0.3 + 0.45 * hash3(b.id, i, 4));
       flameAt(Math.round(fxp), Math.round(fyp), i * 3 + b.id);
+      // hořící budova svítí do okolí (jen se shadery)
+      if (shading) PK.shaders.light(Math.round(fxp), Math.round(fyp) - 4, 9, 0xff8f4a, 0.55 + 0.12 * Math.sin(clock * 11 + i * 2 + b.id), footY - Math.round(fyp) + 4);
     }
   }
 
@@ -3365,6 +3379,28 @@
     }
   }
 
+  /* Překážky pro stíny ze světel (shadery): svislý válec u paty objektu, art px. */
+  function addOccluder(it) {
+    const o = it.o;
+    const S = PK.shaders;
+    if (it.k === 4) {
+      const k = (BIG[o.type] || 13) / 13;
+      S.occluder(o.x / 2, o.y / 2 + 5, 2.6 * k, 10 * k);
+    } else if (it.k === 3) {
+      const spr = PK.buildings.get(o.type, o.team);
+      const r = spr.w * 0.36;
+      S.occluder(o.x / 2, o.y / 2 + 19 - r * 0.6, r, spr.h * 0.75 * Math.max(0.15, o.progress));
+    } else if (it.k === 0) {
+      const stage = o.amount > 66 ? 1 : o.amount > 33 ? 0.8 : 0.6;
+      S.occluder(o.x / 2, o.y / 2 + 14, 4.5, 24 * stage);
+    } else if (it.k === 1) {
+      S.occluder(o.x / 2, o.y / 2 + 9, 11, 16);
+    } else {
+      const s = o.spr;
+      if (!s.glow && s.h > 8) S.occluder(o.x, o.y - 1, Math.max(2, s.w * 0.3), s.h * 0.8);
+    }
+  }
+
   /* additive light pass: ground=true lights sit under the sprites */
   function lightFlicker(L, seed) {
     let a = L.a;
@@ -3377,12 +3413,13 @@
     for (const d of world.doodads) {
       const s = d.spr;
 
-      if (ground && s.ground) {
+      // skvrnu na zemi u lampy nahradí shader (lampa svítí i na zem)
+      if (ground && s.ground && !shading) {
         world.light(g, d.x - s.ax + s.ground.x, d.y - s.ay + s.ground.y, s.ground.r, s.ground.color, 0.22 * lightFlicker({ a: 1, flicker: true }, d.x));
       }
 
       if (!ground && s.glow) {
-        world.light(g, d.x - s.ax + s.glow.x, d.y - s.ay + s.glow.y, s.glow.r, s.glow.color, lightFlicker(s.glow, d.x));
+        world.light(g, d.x - s.ax + s.glow.x, d.y - s.ay + s.glow.y, s.glow.r, s.glow.color, lightFlicker(s.glow, d.x), s.ay - s.glow.y);
       }
     }
 
@@ -3396,7 +3433,8 @@
         if (!!L.ground !== ground) continue;
         let a = lightFlicker(L, b.id + L.x);
         if (b.type === "tower" && b.fireT > 0 && L.pulse) a = 1;
-        world.light(g, x0 + L.x, y0 + L.y, L.r, L.color, a);
+        // okna a dveře svítí do okolí jen zlehka (power 0.6), ať fasáda nepřepálí
+        world.light(g, x0 + L.x, y0 + L.y, L.r, L.color, a, ground ? 2 : spr.ay - L.y, ground, 0.6);
       }
     }
 
@@ -3405,7 +3443,7 @@
 
       for (const r of resources) {
         if (r.type !== "gold" || r.amount <= 0) continue;
-        world.light(g, Math.round(r.x / 2) - m.ax + m.glow.x, Math.round(r.y / 2) + 13 - m.ay + m.glow.y, m.glow.r, m.glow.color, 0.35 + Math.sin(clock * 3 + r.x) * 0.06);
+        world.light(g, Math.round(r.x / 2) - m.ax + m.glow.x, Math.round(r.y / 2) + 13 - m.ay + m.glow.y, m.glow.r, m.glow.color, 0.35 + Math.sin(clock * 3 + r.x) * 0.06, m.ay - m.glow.y);
       }
     }
   }
@@ -3774,6 +3812,7 @@
   }
 
   const list = [];
+  let shading = false; // tento snímek jde přes shadery (PK.shaders)
 
   function render(dt) {
     const T = clock;
@@ -3786,6 +3825,9 @@
 
     g.fillStyle = "#15121f";
     g.fillRect(0, 0, view.w, view.h);
+
+    shading = !!(PK.shaders && PK.shaders.active);
+    if (shading) PK.shaders.begin(worldView);
 
     // všechno nad HUD je oříznuto na mapovou část; svět se kreslí posunutý o kameru
     g.save();
@@ -3808,6 +3850,7 @@
     for (const b of buildings) if (visible(b.x / 2, b.y / 2)) list.push({ y: b.y / 2 + 19.5, k: 3, o: b });
     for (const u of units) if (visible(u.x / 2, u.y / 2)) list.push({ y: u.y / 2 + 6, k: 4, o: u });
     list.sort((a, b) => a.y - b.y);
+    if (shading) for (const it of list) addOccluder(it);
 
     for (const it of list) {
       if (it.k === 0) drawTree(it.o);
@@ -3826,6 +3869,8 @@
     world.drawClouds(g, T, cam);
     world.drawMist(g, T, cam);
     g.restore();
+    // osvětlení a stíny; světlušky (fx.drawAmbient) se zaznamenají až pro další snímek
+    if (shading) PK.shaders.apply(g, bufCanvas, vw, vh, cam, zoom);
     world.drawGrade(g, vw, vh);
 
     g.save();
@@ -3833,6 +3878,7 @@
     g.translate(-cam.x, -cam.y);
 
     fx.drawAmbient(g, T);
+    if (shading) PK.shaders.end();
 
     for (const e of selected) if (alive(e) && e.kind === "building") drawBrackets(e);
     drawOverlays();
