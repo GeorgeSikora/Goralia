@@ -22,8 +22,37 @@
   const MAXL = 24; // světel v jednom snímku
   const MAXO = 96; // překážek celkem (každé světlo si vezme nejbližší)
   const PER_LIGHT = 6; // překážek na jedno světlo
-  const BANDS = 6; // pásma intenzity světla (na jednotku jasu)
-  const AMBIENT = [0.76, 0.79, 0.92]; // lehký večerní šer, ať světla vyniknou
+  const BANDS = 5; // pásma intenzity světla (na jednotku jasu)
+
+  /* Denní doba: během zápasu se pomalu střídá den, soumrak, noc a úsvit (jeden oběh = CYCLE s).
+   * amb = barva šera (násobí obraz), gain = síla světel, bloom = síla prozáření.
+   * Ve dne je obraz skoro jako bez shaderů a světla jen lehce dýchají; v noci je svět
+   * tmavší a modravý, lucerny a ohně ho drží čitelný. Přechody trvají desítky sekund. */
+  const CYCLE = 480;
+  const MOOD = [
+    // fáze, šero r g b, síla světel, bloom
+    [0.0, [1.0, 0.98, 0.95], 0.4, 0.55], // dopoledne
+    [0.34, [1.0, 0.97, 0.92], 0.45, 0.6], // odpoledne
+    [0.46, [0.9, 0.74, 0.66], 0.85, 0.9], // soumrak, zlatá hodinka
+    [0.56, [0.56, 0.6, 0.8], 1.2, 1.15], // noc
+    [0.8, [0.58, 0.62, 0.82], 1.2, 1.15], // pozdní noc
+    [0.9, [0.82, 0.78, 0.88], 0.8, 0.8], // úsvit
+    [1.0, [1.0, 0.98, 0.95], 0.4, 0.55]
+  ];
+  const MENU_PHASE = 0.47; // menu a lobby v soumraku
+  const START_PHASE = 0.05; // zápas začíná dopoledne
+
+  function mood(time) {
+    const p = S.phase != null ? S.phase : time == null ? MENU_PHASE : ((START_PHASE + time / CYCLE) % 1 + 1) % 1;
+    let i = 0;
+    while (i < MOOD.length - 2 && p >= MOOD[i + 1][0]) i++;
+    const [p0, a0, g0, b0] = MOOD[i];
+    const [p1, a1, g1, b1] = MOOD[i + 1];
+    let t = (p - p0) / (p1 - p0);
+    t = t * t * (3 - 2 * t);
+    const mix = (x, y) => x + (y - x) * t;
+    return { amb: [mix(a0[0], a1[0]), mix(a0[1], a1[1]), mix(a0[2], a1[2])], gain: mix(g0, g1), bloom: mix(b0, b1) };
+  }
 
   const canvas = document.createElement("canvas");
   canvas.width = 1;
@@ -40,8 +69,10 @@
     lost: false,
     get active() { return this.supported && this.enabled && !this.lost; },
     recording: false,
-    bloom: 1.35
+    bloom: 1.0,
+    phase: null // pevná fáze dne 0..1 (ladění, náhledy); null = podle času zápasu
   };
+  S.mood = t => mood(t);
   PK.shaders = S;
 
   // světla a překážky nasbírané během kreslení snímku
@@ -159,7 +190,7 @@ void main() {
   // součet světel po pásmech: ploché prstence, dithering jen v úzkém lemu mezi nimi
   float m = max(acc.r, max(acc.g, acc.b));
   if (m > 0.0) {
-    float q = floor(m * ${BANDS}.0 + 0.5 + (dth - 0.5) * 0.45) / ${BANDS}.0;
+    float q = floor(m * ${BANDS}.0 + 0.5 + (dth - 0.5) * 0.35) / ${BANDS}.0;
     acc *= q / m;
   }
 
@@ -167,7 +198,7 @@ void main() {
   vec3 L = uAmb + acc;
   vec3 over = max(L - 1.0, 0.0);
   L = min(L, 1.0) + over / (1.0 + 2.0 * over);
-  // svítící body (okna, plameny, láva, krystaly) šero neztlumí
+  // svítící body (okna, plameny, láva, krystaly) šero neztlumí, v noci tak vyniknou
   float mx = max(src.r, max(src.g, src.b));
   float sat = (mx - min(src.r, min(src.g, src.b))) / max(mx, 1e-3);
   float lum = dot(src, vec3(0.3, 0.59, 0.11));
@@ -222,7 +253,7 @@ void main() {
   vec2 w = uCam + vec2(float(px.x) + 0.5, uSize.y - gl_FragCoord.y) / (${HD}.0 * uZoom);
   float dth = bayer4(floor(w * ${HD}.0));
   float m = max(b.r, max(b.g, b.b));
-  if (m > 0.0) b *= floor(m * 6.0 + 0.5 + (dth - 0.5) * 0.4) / 6.0 / m;
+  if (m > 0.0) b *= floor(m * 5.0 + 0.5 + (dth - 0.5) * 0.35) / 5.0 / m;
   o = vec4(lit + b, 1.0);
 }`;
 
@@ -322,7 +353,7 @@ void main() {
   const LC = new Float32Array(MAXL * 4);
   const OC = new Float32Array(MAXO * 4);
 
-  function pack(view) {
+  function pack(view, gain) {
     const vx0 = view.x;
     const vy0 = view.y;
     const vx1 = view.x + view.w;
@@ -349,7 +380,7 @@ void main() {
       LB[i * 4] = L.r;
       LB[i * 4 + 1] = L.g;
       LB[i * 4 + 2] = L.b;
-      LB[i * 4 + 3] = L.a;
+      LB[i * 4 + 3] = L.a * gain;
 
       near.length = 0;
       if (L.cast) {
@@ -387,9 +418,10 @@ void main() {
 
   /*
    * Osvětlí mapovou část bufferu `src` (2D plátno s PK.HD hustotou) a výsledek nakreslí zpět do `g`.
-   * w, mapH: rozměr mapové části v art px obrazovky; cam, zoom: kamera světa.
+   * w, mapH: rozměr mapové části v art px obrazovky; cam, zoom: kamera světa;
+   * time: čas zápasu v s (denní doba), null v menu.
    */
-  S.apply = function (g, src, w, mapH, cam, zoom) {
+  S.apply = function (g, src, w, mapH, cam, zoom, time) {
     if (!S.active) return false;
     const W = w * HD;
     const H = mapH * HD;
@@ -399,7 +431,8 @@ void main() {
     }
 
     const view = { x: cam.x, y: cam.y, w: w / zoom, h: mapH / zoom };
-    const nl = pack(view);
+    const m = mood(time);
+    const nl = pack(view, m.gain);
 
     gl.disable(gl.BLEND);
     gl.activeTexture(gl.TEXTURE0);
@@ -418,7 +451,7 @@ void main() {
     gl.uniform1f(u.uH, H);
     gl.uniform2f(u.uCam, cam.x, cam.y);
     gl.uniform1f(u.uZoom, zoom);
-    gl.uniform3fv(u.uAmb, AMBIENT);
+    gl.uniform3fv(u.uAmb, m.amb);
     gl.uniform1i(u.uNL, nl);
     gl.uniform4fv(u.uLA, LA);
     gl.uniform4fv(u.uLB, LB);
@@ -469,7 +502,7 @@ void main() {
     gl.uniform2f(u.uSize, W, H);
     gl.uniform2f(u.uCam, cam.x, cam.y);
     gl.uniform1f(u.uZoom, zoom);
-    gl.uniform1f(u.uBloomK, S.bloom);
+    gl.uniform1f(u.uBloomK, S.bloom * m.bloom);
     quad();
 
     g.save();

@@ -3156,7 +3156,7 @@
       const lx = cellX(meta.lantern[0]);
       const ly = footY + meta.lantern[1];
       const cast = anim === "cast" ? 1 : 0;
-      const flick = 0.55 + Math.sin(clock * 9 + u.id) * 0.08;
+      const flick = 0.55 + Math.sin(clock * (shading ? 2.5 : 9) + u.id) * (shading ? 0.03 : 0.08);
       world.light(g, lx, ly, cast ? 24 : 15, 0xffbf45, cast ? 0.8 : flick, footY - ly);
     }
 
@@ -3354,7 +3354,7 @@
       const fyp = y0 + spr.h * (0.3 + 0.45 * hash3(b.id, i, 4));
       flameAt(Math.round(fxp), Math.round(fyp), i * 3 + b.id);
       // hořící budova svítí do okolí (jen se shadery)
-      if (shading) PK.shaders.light(Math.round(fxp), Math.round(fyp) - 4, 9, 0xff8f4a, 0.55 + 0.12 * Math.sin(clock * 11 + i * 2 + b.id), footY - Math.round(fyp) + 4);
+      if (shading) PK.shaders.light(Math.round(fxp), Math.round(fyp) - 4, 9, 0xff8f4a, 0.55 + 0.05 * Math.sin(clock * 2.3 + i * 2 + b.id), footY - Math.round(fyp) + 4);
     }
   }
 
@@ -3404,8 +3404,9 @@
   /* additive light pass: ground=true lights sit under the sprites */
   function lightFlicker(L, seed) {
     let a = L.a;
-    if (L.flicker) a *= 0.8 + 0.2 * Math.sin(clock * 15 + seed) * Math.sin(clock * 6.3 + seed * 2);
-    if (L.pulse) a *= 0.72 + 0.28 * Math.sin(clock * 2.1 + seed);
+    // se shadery světlo osvětluje celé okolí, takže plamen jen pomalu dýchá, aby scéna neblikala
+    if (L.flicker) a *= shading ? 0.93 + 0.07 * Math.sin(clock * 2.7 + seed) * Math.sin(clock * 1.1 + seed * 2) : 0.8 + 0.2 * Math.sin(clock * 15 + seed) * Math.sin(clock * 6.3 + seed * 2);
+    if (L.pulse) a *= shading ? 0.86 + 0.14 * Math.sin(clock * 1.3 + seed) : 0.72 + 0.28 * Math.sin(clock * 2.1 + seed);
     return a;
   }
 
@@ -3419,7 +3420,8 @@
       }
 
       if (!ground && s.glow) {
-        world.light(g, d.x - s.ax + s.glow.x, d.y - s.ay + s.glow.y, s.glow.r, s.glow.color, lightFlicker(s.glow, d.x), s.ay - s.glow.y);
+        // ohně a lucerny svítí naplno, kouzelné záře (krystaly, houby, runy) jen jemně do okolí
+        world.light(g, d.x - s.ax + s.glow.x, d.y - s.ay + s.glow.y, s.glow.r, s.glow.color, lightFlicker(s.glow, d.x), s.ay - s.glow.y, false, s.glow.flicker ? 1 : 0.45);
       }
     }
 
@@ -3870,7 +3872,7 @@
     world.drawMist(g, T, cam);
     g.restore();
     // osvětlení a stíny; světlušky (fx.drawAmbient) se zaznamenají až pro další snímek
-    if (shading) PK.shaders.apply(g, bufCanvas, vw, vh, cam, zoom);
+    if (shading) PK.shaders.apply(g, bufCanvas, vw, vh, cam, zoom, started ? elapsed : null);
     world.drawGrade(g, vw, vh);
 
     g.save();
