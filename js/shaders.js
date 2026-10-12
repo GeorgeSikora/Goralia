@@ -155,8 +155,6 @@ uniform vec4 uLA[${MAXL}]; // zem x, y, výška, dosah
 uniform vec4 uLB[${MAXL}]; // barva rgb, síla
 uniform vec4 uLC[${MAXL}]; // první překážka, počet
 uniform vec4 uOc[${MAXO}]; // pata x, y, poloměr, výška
-uniform sampler2D uWater; // maska vody po art px: r = voda, g = počet vodních buněk od břehu (vč. této)
-uniform vec2 uMap;
 uniform float uTime;
 uniform int uNS;
 uniform vec4 uSh[${MAXS}]; // lesklá plocha x0, y0, x1, y1
@@ -169,29 +167,6 @@ void main() {
   vec2 cell = floor(w * ${HD}.0);
   vec2 wf = (cell + 0.5) / ${HD}.0;
   float dth = bayer4(cell);
-
-  // odraz ve vodě: hladina zrcadlí břeh nad sebou (u břehu nejvíc, dál slábne) a pomalu se vlní
-  vec2 mc = floor(wf);
-  if (mc.x >= 0.0 && mc.y >= 0.0 && mc.x < uMap.x && mc.y < uMap.y && src.b >= src.r) {
-    vec2 wm = texelFetch(uWater, ivec2(mc), 0).rg;
-    if (wm.r > 0.5) {
-      float shore = mc.y + 1.0 - floor(wm.g * 255.0 + 0.5);
-      float dist = wf.y - shore;
-      // u břehu nejsilnější, po pásmech podle vzdálenosti (bez šumu)
-      float fade = dist < 7.0 ? 0.42 : dist < 14.0 ? 0.28 : dist < 22.0 ? 0.14 : 0.0;
-      // vlnka posouvá odraz po celých jemných px, aby zůstal pixelartový
-      float rx = floor(sin(wf.y * 1.7 + uTime * 1.4 + floor(wf.x / 7.0)) * 1.2 + 0.5) / ${HD}.0;
-      vec2 rw = vec2(wf.x + rx, shore - dist);
-      vec2 rp = floor((rw - uCam) * ${HD}.0 * uZoom);
-      vec2 rm = floor(rw);
-      bool dry = rm.y < 0.0 || texelFetch(uWater, ivec2(clamp(rm, vec2(0.0), uMap - 1.0)), 0).r < 0.5;
-      if (fade > 0.0 && dry && rp.x >= 0.0 && rp.y >= 0.0 && rp.x < float(textureSize(uSrc, 0).x) && rp.y < uH) {
-        vec3 rc = texelFetch(uSrc, ivec2(rp), 0).rgb;
-        // odraz přebírá barvu vody, ať hladina zůstane modrá
-        src = mix(src, rc * vec3(0.55, 0.72, 0.95) + src * 0.25, fade);
-      }
-    }
-  }
 
   vec3 acc = vec3(0.0);
   for (int i = 0; i < ${MAXL}; i++) {
@@ -362,37 +337,6 @@ void main() {
 
   let P;
   let srcTex;
-  let waterTex;
-  let waterOf = null; // terén, ze kterého je maska vody
-  const mapSize = [1, 1];
-
-  // maska vody po art px z PK.world.zoneAt; staví se jednou pro každou mapu
-  function waterMask() {
-    const world = PK.world;
-    const t = world && world.terrain;
-    if (!t || t === waterOf) return;
-    waterOf = t;
-    const W = t.width;
-    const H = t.height;
-    const WATER = world.Z.WATER;
-    const d = new Uint8Array(W * H * 4);
-    for (let x = 0; x < W; x++) {
-      let run = 0;
-      for (let y = 0; y < H; y++) {
-        const i = (y * W + x) * 4;
-        if (world.zoneAt(x, y) === WATER) {
-          run = Math.min(255, run + 1);
-          d[i] = 255;
-          d[i + 1] = run;
-        } else run = 0;
-        d[i + 3] = 255;
-      }
-    }
-    mapSize[0] = W;
-    mapSize[1] = H;
-    gl.bindTexture(gl.TEXTURE_2D, waterTex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, d);
-  }
   let litT;
   let brightT;
   let blurA;
@@ -411,8 +355,6 @@ void main() {
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
     srcTex = texture(gl.NEAREST);
-    waterTex = texture(gl.NEAREST);
-    waterOf = null;
     litT = target(gl.NEAREST);
     brightT = target(gl.LINEAR);
     blurA = target(gl.LINEAR);
@@ -528,10 +470,6 @@ void main() {
     // takže výsledek leží ve framebufferech vzpřímeně a plátno ho ukáže správně
     gl.activeTexture(gl.TEXTURE0);
     size(litT, W, H); // (váže texturu cíle, proto před vazbou zdroje)
-    waterMask();
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, waterTex);
-    gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, srcTex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
 
@@ -549,8 +487,6 @@ void main() {
     gl.uniform4fv(u.uLB, LB);
     gl.uniform4fv(u.uLC, LC);
     gl.uniform4fv(u.uOc, OC);
-    gl.uniform1i(u.uWater, 1);
-    gl.uniform2fv(u.uMap, mapSize);
     gl.uniform1f(u.uTime, (performance.now() / 1000) % 3600);
     gl.uniform1i(u.uNS, sheens.length);
     sheens.forEach((s, i) => {
