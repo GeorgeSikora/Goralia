@@ -8,9 +8,11 @@
     "start": "node server/server.js",
     "test": "node server/test.js && node server/test-accounts.js",
     "admin:reset": "node server/admin-reset.js",
-    "voices": "node tools/make-voices.js"
+    "voices": "node tools/make-voices.js",
+    "geoip": "node tools/geoip-update.js"
   },
   "dependencies": {
+    "maxmind": "^5.0.7",
     "ws": "^8.18.0"
   }
 }

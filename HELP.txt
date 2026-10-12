@@ -21,3 +21,10 @@ Hlasový chat (push-to-talk, výchozí klávesa V)
     Výchozí STUN: stun:stun.l.google.com:19302 (jiný: GORALIA_STUN_URLS="stun:...,stun:...").
     Hráčům za přísným NATem (mobilní data, firemní síť) pomůže vlastní TURN server, např. coturn na VPS:
     GORALIA_TURN_URL="turn:goralia.cz:3478" GORALIA_TURN_USER=goralia GORALIA_TURN_PASS=... pm2 restart goralia --update-env
+
+Odkud se hráči připojují (mapa a tabulka v panelu serveru, Návštěvnost)
+    Země a město se zjišťují z IP offline v databázi data/geoip.mmdb (IP se nikam neposílají ani neukládají).
+    Stažení / aktualizace (DB-IP City Lite, zdarma, vychází měsíčně), běžící server ji do hodiny načte sám:
+    npm run geoip
+    Cron jednou měsíčně: 15 4 3 * * cd /cesta/ke/goralia && npm run geoip >> data/geoip.log 2>&1
+    Jiný soubor (např. MaxMind GeoLite2-City.mmdb): GORALIA_GEOIP=/cesta/k/souboru.mmdb
