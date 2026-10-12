@@ -22,7 +22,11 @@
 
   const canvas = document.querySelector("#game");
   const display = canvas.getContext("2d");
-  const { c: bufCanvas, g } = PK.makeCanvas(view.w, view.h);
+  const { c: bufCanvas, g: mainG } = PK.makeCanvas(view.w, view.h);
+  // kam se právě kreslí: hlavní buffer, nebo plátno odrazů ve vodě (drawReflections)
+  let g = mainG;
+  const refl = PK.makeCanvas(view.w, view.h);
+  let reflecting = false;
 
   const costs = R.COSTS;
 
@@ -1511,11 +1515,13 @@
 
   /* ======================= menu + settings ======================= */
   const SETTINGS_KEY = "pk-settings";
-  const settings = { shake: true, pixel: false, autoFullscreen: false };
+  const settings = { shake: true, pixel: false, autoFullscreen: false, shaders: true };
 
   try {
     Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {});
   } catch (e) { /* storage unavailable or corrupt */ }
+
+  if (PK.shaders) PK.shaders.enabled = settings.shaders;
 
   function saveSettings() {
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) { /* ignore */ }
@@ -2840,6 +2846,10 @@
     $("s-shake").checked = settings.shake;
     $("s-pixel").checked = settings.pixel;
     $("s-autofs").checked = settings.autoFullscreen;
+    const shOk = !!(PK.shaders && PK.shaders.supported);
+    $("s-shaders").checked = shOk && settings.shaders;
+    $("s-shaders").disabled = !shOk;
+    $("s-shaders-label").textContent = shOk ? "Světla a stíny (shadery)" : "Světla a stíny (prohlížeč nepodporuje WebGL 2)";
   }
 
   volumeEl.addEventListener("input", () => {
@@ -2891,6 +2901,12 @@
     settings.pixel = event.target.checked;
     saveSettings();
     fit();
+  });
+
+  $("s-shaders").addEventListener("change", event => {
+    settings.shaders = event.target.checked;
+    if (PK.shaders) PK.shaders.enabled = settings.shaders;
+    saveSettings();
   });
 
   $("s-autofs").addEventListener("change", event => {
@@ -3115,7 +3131,7 @@
     const flip = u.facing < 0;
 
     const sh = world.shadow("ellipse", BIG[u.type] || 13, 5);
-    g.drawImage(sh, footX - (sh.width >> 1), footY - (sh.height >> 1));
+    if (!reflecting) g.drawImage(sh, footX - (sh.width >> 1), footY - (sh.height >> 1));
 
     const [anim, idx] = unitAnim(u);
     const rec = U.frame(u.type, u.team, anim, idx);
@@ -3137,18 +3153,18 @@
         g.fillStyle = "#fff6cc";
         g.fillRect(ex, ey, 0.5, 0.5);
       }
-      world.light(g, ex + 0.25, ey + 0.25, 3, 0xff8f4a, 0.25);
+      world.light(g, ex + 0.25, ey + 0.25, 3, 0xff8f4a, 0.25, footY - ey);
     }
 
     if (meta.lantern) {
       const lx = cellX(meta.lantern[0]);
       const ly = footY + meta.lantern[1];
       const cast = anim === "cast" ? 1 : 0;
-      const flick = 0.55 + Math.sin(clock * 9 + u.id) * 0.08;
-      world.light(g, lx, ly, cast ? 24 : 15, 0xffbf45, cast ? 0.8 : flick);
+      const flick = 0.55 + Math.sin(clock * (shading ? 2.5 : 9) + u.id) * (shading ? 0.03 : 0.08);
+      world.light(g, lx, ly, cast ? 24 : 15, 0xffbf45, cast ? 0.8 : flick, footY - ly);
     }
 
-    if (u.type === "hero") {
+    if (u.type === "hero" && !reflecting) {
       g.drawImage(PK.icons.small.star, footX - 8, footY - 41);
       PK.text(g, String(u.level), footX + 2, footY - 40, 0xffe08a, { font: "3", outline: C.ink, shadow: null });
     }
@@ -3164,7 +3180,7 @@
     const shake = r.shake > 0 ? (Math.floor(clock * 30) & 1 ? 1 : -1) : 0;
 
     const sh = world.shadow("ellipse", 22, 7);
-    g.drawImage(sh, footX - (sh.width >> 1) + 5, footY - (sh.height >> 1) - 1);
+    if (!reflecting) g.drawImage(sh, footX - (sh.width >> 1) + 5, footY - (sh.height >> 1) - 1);
 
     g.drawImage(t.trunk, footX - t.ax, footY - t.ay);
     g.drawImage(t.crown[stage], footX - t.ax + sway + shake, footY - t.ay);
@@ -3193,7 +3209,7 @@
     const footX = Math.round(r.x / 2);
     const footY = Math.round(r.y / 2) + 13;
     const sh = world.shadow("ellipse", 34, 8);
-    g.drawImage(sh, footX - (sh.width >> 1) + 4, footY - (sh.height >> 1) - 1);
+    if (!reflecting) g.drawImage(sh, footX - (sh.width >> 1) + 4, footY - (sh.height >> 1) - 1);
     g.drawImage(m.c, footX - m.ax + (r.shake > 0 ? (Math.floor(clock * 30) & 1) : 0), footY - m.ay);
 
     m.sparkle.forEach(([sx, sy], i) => {
@@ -3261,7 +3277,7 @@
     const building = b.progress >= 1;
     const prog = b.progress;
 
-    g.drawImage(sh, footX - (sh.width / 2 - 6 | 0), footY - (sh.height - 7));
+    if (!reflecting) g.drawImage(sh, footX - (sh.width / 2 - 6 | 0), footY - (sh.height - 7));
 
     if (!building) {
       // blueprint: průhledná modrá předloha celé budovy, hotová část roste od země nahoru
@@ -3309,6 +3325,7 @@
     }
 
     g.drawImage(spr.c, x0, y0);
+    if (shading) PK.shaders.sheen(x0, y0, x0 + spr.w, y0 + spr.h, 1);
 
     if (b.flashT > 0) {
       g.globalAlpha = 0.45;
@@ -3341,6 +3358,8 @@
       const fxp = x0 + spr.w * (0.2 + 0.6 * hash3(b.id, i, 3));
       const fyp = y0 + spr.h * (0.3 + 0.45 * hash3(b.id, i, 4));
       flameAt(Math.round(fxp), Math.round(fyp), i * 3 + b.id);
+      // hořící budova svítí do okolí (jen se shadery)
+      if (shading) PK.shaders.light(Math.round(fxp), Math.round(fyp) - 4, 9, 0xff8f4a, 0.55 + 0.05 * Math.sin(clock * 2.3 + i * 2 + b.id), footY - Math.round(fyp) + 4);
     }
   }
 
@@ -3348,11 +3367,12 @@
     const s = d.spr;
     const sh = world.shadow("ellipse", Math.max(8, s.w - 4), 4);
 
-    if (!["lanternPost", "monolith", "skullStake", "signpost"].includes(d.name) || true) {
+    if (!reflecting) {
       g.drawImage(sh, d.x - (sh.width >> 1) + 2, d.y - (sh.height >> 1));
     }
 
     g.drawImage(s.c, d.x - s.ax, d.y - s.ay);
+    if (shading && d.name.startsWith("crystal")) PK.shaders.sheen(d.x - s.ax, d.y - s.ay, d.x - s.ax + s.w, d.y - s.ay + s.h, 0);
 
     if (s.flame) flameAt(d.x - s.ax + s.flame.x, d.y - s.ay + s.flame.y + 1, d.x, 1);
 
@@ -3365,11 +3385,34 @@
     }
   }
 
+  /* Překážky pro stíny ze světel (shadery): svislý válec u paty objektu, art px. */
+  function addOccluder(it) {
+    const o = it.o;
+    const S = PK.shaders;
+    if (it.k === 4) {
+      const k = (BIG[o.type] || 13) / 13;
+      S.occluder(o.x / 2, o.y / 2 + 5, 2.6 * k, 10 * k);
+    } else if (it.k === 3) {
+      const spr = PK.buildings.get(o.type, o.team);
+      const r = spr.w * 0.36;
+      S.occluder(o.x / 2, o.y / 2 + 19 - r * 0.6, r, spr.h * 0.75 * Math.max(0.15, o.progress));
+    } else if (it.k === 0) {
+      const stage = o.amount > 66 ? 1 : o.amount > 33 ? 0.8 : 0.6;
+      S.occluder(o.x / 2, o.y / 2 + 14, 4.5, 24 * stage);
+    } else if (it.k === 1) {
+      S.occluder(o.x / 2, o.y / 2 + 9, 11, 16);
+    } else {
+      const s = o.spr;
+      if (!s.glow && s.h > 8) S.occluder(o.x, o.y - 1, Math.max(2, s.w * 0.3), s.h * 0.8);
+    }
+  }
+
   /* additive light pass: ground=true lights sit under the sprites */
   function lightFlicker(L, seed) {
     let a = L.a;
-    if (L.flicker) a *= 0.8 + 0.2 * Math.sin(clock * 15 + seed) * Math.sin(clock * 6.3 + seed * 2);
-    if (L.pulse) a *= 0.72 + 0.28 * Math.sin(clock * 2.1 + seed);
+    // se shadery světlo osvětluje celé okolí, takže plamen jen pomalu dýchá, aby scéna neblikala
+    if (L.flicker) a *= shading ? 0.93 + 0.07 * Math.sin(clock * 2.7 + seed) * Math.sin(clock * 1.1 + seed * 2) : 0.8 + 0.2 * Math.sin(clock * 15 + seed) * Math.sin(clock * 6.3 + seed * 2);
+    if (L.pulse) a *= shading ? 0.86 + 0.14 * Math.sin(clock * 1.3 + seed) : 0.72 + 0.28 * Math.sin(clock * 2.1 + seed);
     return a;
   }
 
@@ -3377,12 +3420,14 @@
     for (const d of world.doodads) {
       const s = d.spr;
 
-      if (ground && s.ground) {
+      // skvrnu na zemi u lampy nahradí shader (lampa svítí i na zem)
+      if (ground && s.ground && !shading) {
         world.light(g, d.x - s.ax + s.ground.x, d.y - s.ay + s.ground.y, s.ground.r, s.ground.color, 0.22 * lightFlicker({ a: 1, flicker: true }, d.x));
       }
 
       if (!ground && s.glow) {
-        world.light(g, d.x - s.ax + s.glow.x, d.y - s.ay + s.glow.y, s.glow.r, s.glow.color, lightFlicker(s.glow, d.x));
+        // ohně a lucerny svítí naplno, kouzelné záře (krystaly, houby, runy) jen jemně do okolí
+        world.light(g, d.x - s.ax + s.glow.x, d.y - s.ay + s.glow.y, s.glow.r, s.glow.color, lightFlicker(s.glow, d.x), s.ay - s.glow.y, false, s.glow.flicker ? 1 : 0.45);
       }
     }
 
@@ -3396,7 +3441,8 @@
         if (!!L.ground !== ground) continue;
         let a = lightFlicker(L, b.id + L.x);
         if (b.type === "tower" && b.fireT > 0 && L.pulse) a = 1;
-        world.light(g, x0 + L.x, y0 + L.y, L.r, L.color, a);
+        // okna a dveře svítí do okolí jen zlehka (power 0.6), ať fasáda nepřepálí
+        world.light(g, x0 + L.x, y0 + L.y, L.r, L.color, a, ground ? 2 : spr.ay - L.y, ground, 0.6);
       }
     }
 
@@ -3405,7 +3451,7 @@
 
       for (const r of resources) {
         if (r.type !== "gold" || r.amount <= 0) continue;
-        world.light(g, Math.round(r.x / 2) - m.ax + m.glow.x, Math.round(r.y / 2) + 13 - m.ay + m.glow.y, m.glow.r, m.glow.color, 0.35 + Math.sin(clock * 3 + r.x) * 0.06);
+        world.light(g, Math.round(r.x / 2) - m.ax + m.glow.x, Math.round(r.y / 2) + 13 - m.ay + m.glow.y, m.glow.r, m.glow.color, 0.35 + Math.sin(clock * 3 + r.x) * 0.06, m.ay - m.glow.y);
       }
     }
   }
@@ -3773,7 +3819,103 @@
     }
   }
 
+  /* ---------- odrazy ve vodě (jen se shadery) ----------
+   * Entity, pod kterými je voda, se nakreslí podle čáry paty vzhůru nohama do zvláštního plátna,
+   * to se ořízne maskou vody a položí na hladinu průsvitně a po řádcích zvlněné o celý jemný px. */
+  let waterMask = null;
+  let waterMaskOf = null;
+
+  function waterMaskCanvas() {
+    const t = world.terrain;
+    if (waterMaskOf === t) return waterMask;
+    waterMaskOf = t;
+    const W = t.width;
+    const H = t.height;
+    const { c, g: mg } = PK.makeCanvas(W, H);
+    const img = mg.createImageData(W, H);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (world.zoneAt(x, y) === world.Z.WATER) img.data[(y * W + x) * 4 + 3] = 255;
+    }
+    mg.putImageData(img, 0, 0);
+    waterMask = c;
+    return c;
+  }
+
+  // pata a poloviční šířka entity v art px
+  function footOf(it) {
+    const o = it.o;
+    if (it.k === 4) return [Math.round(o.x / 2 * HD) / HD, Math.round(o.y / 2 * HD) / HD + 6, 7];
+    if (it.k === 3) return [Math.round(o.x / 2), Math.round(o.y / 2) + 19, PK.buildings.get(o.type, o.team).w / 2];
+    if (it.k === 0) return [Math.round(o.x / 2), Math.round(o.y / 2) + 15, 10];
+    if (it.k === 1) return [Math.round(o.x / 2), Math.round(o.y / 2) + 13, 14];
+    return [o.x, o.y, o.spr.w / 2];
+  }
+
+  function nearWater(fx, fy, hw) {
+    const W = world.Z.WATER;
+    for (const dy of [1, 4, 8, 13]) for (const dx of [-hw, -hw / 2, 0, hw / 2, hw]) {
+      if (world.zoneAt(Math.round(fx + dx), Math.round(fy + dy)) === W) return true;
+    }
+    return false;
+  }
+
+  function drawReflections() {
+    const rg = refl.g;
+    const k = HD * zoom;
+    let any = false;
+
+    for (const it of list) {
+      const [fx, fy, hw] = footOf(it);
+      if (!nearWater(fx, fy, hw)) continue;
+      if (!any) {
+        any = true;
+        rg.setTransform(1, 0, 0, 1, 0, 0);
+        rg.clearRect(0, 0, refl.c.width, refl.c.height);
+        rg.setTransform(k, 0, 0, k, -cam.x * k, -cam.y * k);
+        g = rg;
+        reflecting = true;
+        PK.shaders.recording = false; // světla a lesky z odrazu se nepočítají podruhé
+      }
+      rg.save();
+      // odraz sahá jen kus pod patu, koruna stromu nezakryje celou řeku
+      rg.beginPath();
+      rg.rect(fx - hw - 8, fy, hw * 2 + 16, 26);
+      rg.clip();
+      rg.translate(0, 2 * fy);
+      rg.scale(1, -1);
+      if (it.k === 0) drawTree(it.o);
+      else if (it.k === 1) drawMine(it.o);
+      else if (it.k === 2) drawDoodad(it.o);
+      else if (it.k === 3) drawBuilding(it.o);
+      else drawUnit(it.o);
+      rg.restore();
+    }
+
+    if (!any) return;
+    g = mainG;
+    reflecting = false;
+    PK.shaders.recording = true;
+
+    rg.globalCompositeOperation = "destination-in";
+    rg.drawImage(waterMaskCanvas(), 0, 0);
+    rg.globalCompositeOperation = "source-over";
+
+    // na hladinu: průsvitně, řádky po 1 art px posunuté vlnkou o jemný px
+    mainG.save();
+    mainG.setTransform(1, 0, 0, 1, 0, 0);
+    mainG.globalAlpha = 0.48;
+    const W = refl.c.width;
+    const rows = view.mapH * HD;
+    for (let y = 0; y < rows; y += HD) {
+      const wy = cam.y + y / k;
+      const dx = Math.round(Math.sin(wy * 0.9 + clock * 1.4) * 0.8);
+      mainG.drawImage(refl.c, 0, y, W, HD, dx, y, W, HD);
+    }
+    mainG.restore();
+  }
+
   const list = [];
+  let shading = false; // tento snímek jde přes shadery (PK.shaders)
 
   function render(dt) {
     const T = clock;
@@ -3786,6 +3928,9 @@
 
     g.fillStyle = "#15121f";
     g.fillRect(0, 0, view.w, view.h);
+
+    shading = !!(PK.shaders && PK.shaders.active);
+    if (shading) PK.shaders.begin(worldView);
 
     // všechno nad HUD je oříznuto na mapovou část; svět se kreslí posunutý o kameru
     g.save();
@@ -3808,6 +3953,8 @@
     for (const b of buildings) if (visible(b.x / 2, b.y / 2)) list.push({ y: b.y / 2 + 19.5, k: 3, o: b });
     for (const u of units) if (visible(u.x / 2, u.y / 2)) list.push({ y: u.y / 2 + 6, k: 4, o: u });
     list.sort((a, b) => a.y - b.y);
+    if (shading) for (const it of list) addOccluder(it);
+    if (shading) drawReflections();
 
     for (const it of list) {
       if (it.k === 0) drawTree(it.o);
@@ -3826,6 +3973,8 @@
     world.drawClouds(g, T, cam);
     world.drawMist(g, T, cam);
     g.restore();
+    // osvětlení a stíny; světlušky (fx.drawAmbient) se zaznamenají až pro další snímek
+    if (shading) PK.shaders.apply(g, bufCanvas, vw, vh, cam, zoom, started ? elapsed : null);
     world.drawGrade(g, vw, vh);
 
     g.save();
@@ -3833,6 +3982,7 @@
     g.translate(-cam.x, -cam.y);
 
     fx.drawAmbient(g, T);
+    if (shading) PK.shaders.end();
 
     for (const e of selected) if (alive(e) && e.kind === "building") drawBrackets(e);
     drawOverlays();
@@ -4011,6 +4161,10 @@
       g.setTransform(HD, 0, 0, HD, 0, 0);
       g.imageSmoothingEnabled = false;
       g.hdDraw = true;
+      refl.c.width = vw * HD;
+      refl.c.height = vh * HD;
+      refl.g.imageSmoothingEnabled = false;
+      refl.g.hdDraw = true;
     }
 
     canvas.width = cw;

@@ -1979,8 +1979,17 @@
     g.drawImage(vignetteFor(w, h), 0, 0);
   }
 
-  /* additive light: draws a banded glow centred on (x, y) */
-  function light(g, x, y, r, color, alpha) {
+  /* additive light: draws a banded glow centred on (x, y)
+   * h = výška zdroje nad zemí (art px) pro shadery; ground = jen světelná skvrna na zemi;
+   * power = síla světla v shaderu (záře se nemění).
+   * Se zapnutými shadery světlo osvětlí okolí v WebGL a tady zůstane jen slabší záře. */
+  function light(g, x, y, r, color, alpha, h, ground, power) {
+    const sh = PK.shaders;
+    if (sh && sh.recording) {
+      sh.light(x, y, r, color, alpha, h, power);
+      if (ground) return;
+      alpha *= 0.6;
+    }
     g.globalAlpha = alpha;
     g.globalCompositeOperation = "lighter";
     g.drawImage(glow(r, color), Math.round(x * 2) / 2 - r, Math.round(y * 2) / 2 - r);

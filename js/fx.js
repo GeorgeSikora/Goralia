@@ -682,7 +682,7 @@
       if (f.kind === "burst") {
         drawBurst(g, f, t);
       } else if (f.kind === "flash") {
-        PK.world.light(g, f.x, f.y, Math.round(f.r * 1.4), 0xffbf45, 0.9 * (1 - t));
+        PK.world.light(g, f.x, f.y - 4, Math.round(f.r * 1.4), 0xffbf45, 0.9 * (1 - t), 4);
       } else if (f.kind === "slash") {
         drawSlash(g, f, t);
       } else if (f.kind === "arrow") {
@@ -849,8 +849,9 @@
 
   function drawFireball(g, f, t) {
     const x = q(f.x1 + (f.x2 - f.x1) * t);
-    const y = q(f.y1 + (f.y2 - f.y1) * t - Math.sin(t * Math.PI) * 14);
-    PK.world.light(g, x, y, 14, 0xff8f4a, 0.6);
+    const arc = Math.sin(t * Math.PI) * 14;
+    const y = q(f.y1 + (f.y2 - f.y1) * t - arc);
+    PK.world.light(g, x, y, 14, 0xff8f4a, 0.6, arc + 3);
 
     // koule v jemné mřížce: vrstvy od rudého okraje k bílému jádru, okraj plápolá
     const R0 = 3;
@@ -883,6 +884,8 @@
     const y0 = q(f.y);
     const rows = Math.round(H * 2);
     const fade = Math.min(1, f.life / f.max * 1.8);
+    // sloup světla osvětlí okolí jen se shadery (dřív tu žádná záře nebyla)
+    if (PK.shaders) PK.shaders.light(x, y0 - 8, f.small ? 9 : 15, 0xffe08a, fade * 0.9, 8);
     g.globalCompositeOperation = "lighter";
 
     for (let r = 0; r < rows; r++) {
