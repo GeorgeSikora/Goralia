@@ -26,18 +26,47 @@
   const api = {
     say,
     setEnabled,
+    preload,
     onLoad: null,
     get enabled() { return enabled; },
     get available() { return !!manifest; }
   };
 
-  fetch(`${DIR}voices.json`)
+  const listed = fetch(`${DIR}voices.json`)
     .then(res => (res.ok ? res.json() : Promise.reject(new Error(res.status))))
     .then(data => {
       manifest = data;
       if (api.onLoad) api.onLoad();
     })
     .catch(() => { /* bez nahrávek hra mlčí */ });
+
+  /* Stáhne předem všechny nahrávky (načítací obrazovka), aby první hláška
+   * nečekala na síť. onStep(hotovo, celkem) po každém souboru. */
+  function preload(onStep) {
+    return listed.then(() => {
+      const files = [];
+      for (const kinds of Object.values(manifest || {})) {
+        for (const lines of Object.values(kinds)) for (const line of lines) if (!files.includes(line.file)) files.push(line.file);
+      }
+
+      let done = 0;
+      const one = file => fetch(DIR + file)
+        .then(res => (res.ok ? res.blob() : Promise.reject(new Error(res.status))))
+        .then(blob => {
+          if (clips.has(file)) return;
+          const audio = new Audio(URL.createObjectURL(blob));
+          audio.preload = "auto";
+          clips.set(file, audio);
+        })
+        .catch(() => { /* chybějící nahrávku dohraje síť až při použití */ })
+        .then(() => { if (onStep) onStep(++done, files.length); });
+
+      // pár souběžných stahování, ať nezahltí pomalou linku
+      const queue = files.slice();
+      const worker = () => (queue.length ? one(queue.shift()).then(worker) : null);
+      return Promise.all(Array.from({ length: 6 }, worker)).then(() => files.length);
+    });
+  }
 
   function clip(file) {
     let audio = clips.get(file);

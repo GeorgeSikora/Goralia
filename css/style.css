@@ -865,3 +865,128 @@ a.btn { display: block; text-align: center; text-decoration: none; }
 .btn.keybind.unbound { opacity: 0.6; }
 .btn.keybind.conflict { outline: 2px solid #ff6a5a; outline-offset: 1px; }
 #k-msg .btn { margin-left: 6px; padding: 4px 10px; }
+
+/* ---------- načítací obrazovka (js/loader.js) ---------- */
+.loading {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background:
+    radial-gradient(ellipse at 50% 30%, #2b2447 0%, #17132c 52%, #0b0914 100%);
+  transition: opacity 0.3s ease-out;
+}
+
+.loading[hidden] { display: none; }
+.loading.done { opacity: 0; pointer-events: none; }
+
+.ld-box {
+  width: min(420px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.ld-logo {
+  height: 148px;
+  image-rendering: pixelated;
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+
+.ld-logo.ready { opacity: 1; }
+
+.ld-road {
+  position: relative;
+  width: 100%;
+  margin-top: 96px;
+}
+
+.ld-walker {
+  position: absolute;
+  left: 0;
+  bottom: 100%;
+  width: 128px; /* 2 css px na jemný bod (dělník má 64 x 64 jemných bodů) */
+  height: 128px;
+  margin-left: -64px;
+  margin-bottom: -2px; /* nohy (art y 30 z 32) stojí na rámu pruhu */
+  image-rendering: pixelated;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.ld-walker.ready { opacity: 1; }
+
+.ld-track {
+  position: relative;
+  height: 20px;
+  background: #120f1d;
+  box-shadow:
+    0 0 0 2px var(--ink),
+    0 0 0 4px var(--brass),
+    0 0 0 6px var(--ink),
+    inset 2px 2px 0 #08060e;
+}
+
+.ld-fill {
+  position: relative;
+  width: 0;
+  height: 100%;
+  overflow: hidden;
+  background: repeating-linear-gradient(90deg, #ffbf45 0 10px, #d98f2b 10px 12px);
+  box-shadow: inset 0 3px 0 #ffe08a, inset 0 -3px 0 #a8661c;
+}
+
+/* odlesk běží i ve chvíli, kdy hlavní vlákno peče (animuje jen transform) */
+.ld-fill::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 24px;
+  background: rgba(255, 246, 214, 0.45);
+  transform: translateX(-40px);
+  animation: ld-shine 1.4s steps(28) infinite;
+  will-change: transform;
+}
+
+@keyframes ld-shine {
+  to { transform: translateX(440px); }
+}
+
+.ld-row {
+  width: 100%;
+  margin: 16px 0 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #ffe9a8;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: bold;
+}
+
+.ld-pct { color: var(--amber); font-variant-numeric: tabular-nums; }
+
+.ld-tip {
+  min-height: 2.9em;
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.loading.failed .ld-text { color: #ff8a7a; }
+.loading.failed .ld-fill::after { animation: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ld-fill::after { animation: none; display: none; }
+}
+
+@media (max-height: 420px) {
+  .ld-logo { height: 96px; }
+  .ld-road { margin-top: 80px; }
+}

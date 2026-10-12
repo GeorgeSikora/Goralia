@@ -238,6 +238,46 @@
     } catch (err) { /* statistiky nejsou důležité */ }
   }
 
+  /* ---------- příprava zápasu (načítací obrazovka) ----------
+   * Sprity jednotek a budov se kreslí až při prvním použití a jemný terén se
+   * peče při načtení mapy; obojí by v prvních snímcích zápasu cuklo. Proto se
+   * upečou předem po kouscích a mezitím běží načítací obrazovka. */
+  const HUMAN_UNITS = ["worker", "soldier", "archer", "hero"];
+  const HUMAN_BUILDINGS = ["hall", "citadel", "barracks", "tower", "hut", "smithy"];
+  const span = PK.loader ? PK.loader.span : function* (steps) { return yield* steps; };
+
+  // teams: [[tým, nemrtví?]]
+  function* warmSprites(teams) {
+    const jobs = [];
+
+    for (const [team, undead] of teams) {
+      for (const t of undead ? R.UNDEAD.units : HUMAN_UNITS) jobs.push(() => U.frame(t, team, "idle", 0));
+      for (const t of undead ? R.UNDEAD.buildings : HUMAN_BUILDINGS) jobs.push(() => PK.buildings.get(t, team));
+    }
+
+    for (let i = 0; i < jobs.length; i++) {
+      jobs[i]();
+      yield (i + 1) / jobs.length;
+    }
+  }
+
+  function* matchSteps(next, slots) {
+    const teams = slots.map(slot => [R.TEAMS[slot], !!(next.coop && next.coop.ai === slot)]);
+
+    yield "Kreslím jednotky a budovy…";
+    yield* span(warmSprites(teams), 0, 0.25);
+    if (!world.isPrepared(next)) yield "Peču krajinu…";
+    yield* span(world.prepare(next), 0.25, 0.92);
+    yield "Dokresluji detaily…";
+    yield* span(PK.hdBakeAll(), 0.92, 1);
+  }
+
+  // Spustí then() až s upečenými podklady; vše hotové = bez načítací obrazovky.
+  function prepareMatch(next, slots, then) {
+    if (!PK.loader) return then();
+    PK.loader.prepare(matchSteps(next, slots), next.name ? `Mapa: ${next.name}` : "").then(then);
+  }
+
   // cfg: { mode, map, slot, players: [{ slot, name, ai }] }
   function beginMatch(cfg) {
     reset();
@@ -1478,6 +1518,7 @@
   const pages = [...menuEl.querySelectorAll(".page")];
   let menuOpen = true;
   let started = false;
+  let looping = false; // hlavní smyčka běží (po načítací obrazovce)
 
   function showPage(name) {
     if (name !== "online" && name !== "lobby") leaveLobby();
@@ -1602,7 +1643,11 @@
   // Vlastní mapy z editoru; změněné mapy ztratí starý náhled.
   function refreshCustomMaps() {
     return PK.customMaps.load().then(changed => {
-      if (map === STUB_MAP && MAPS.list.length && !started) loadMap(MAPS.list[0], 0);
+      if (map === STUB_MAP && MAPS.list.length && !started) {
+        // při prvním načtení mapu upeče načítací obrazovka (bootSteps), ne tady naráz
+        if (looping) loadMap(MAPS.list[0], 0);
+        else map = MAPS.list[0];
+      }
       if (!MAPS.get(lobby.mapId) && MAPS.list.length) lobby.mapId = MAPS.DEFAULT;
       for (const id of changed) previews.delete(id);
       return changed;
@@ -2072,8 +2117,9 @@
       return;
     }
 
+    if (PK.loader && PK.loader.busy) return;
     lastOffline = { mapId: c.mapId, slots: c.slots.map(s => ({ ...s })) };
-    beginMatch({ mode: "ai", map: next, slot: 0, players: roster });
+    prepareMatch(next, roster.map(p => p.slot), () => beginMatch({ mode: "ai", map: next, slot: 0, players: roster }));
   }
 
   function handleRoom(m) {
@@ -2107,11 +2153,20 @@
       return;
     }
 
-    online.pendingTrain = 0;
-    online.pendingBuild = 0;
-    online.count = 0;
-    beginMatch({ mode: "online", map: next, slot: m.slot, players: m.players, spectate: !!m.spectate });
+    // zprávy ze serveru během přípravy počkají a projdou až po startu zápasu
+    netHold = netHold || [];
+    prepareMatch(next, m.players.map(p => p.slot), () => {
+      online.pendingTrain = 0;
+      online.pendingBuild = 0;
+      online.count = 0;
+      beginMatch({ mode: "online", map: next, slot: m.slot, players: m.players, spectate: !!m.spectate });
+      const held = netHold;
+      netHold = null;
+      for (const msg of held) onNetMessage(msg);
+    });
   }
+
+  let netHold = null;
 
   function netUnit(id, type, team, x, y) {
     const s = R.UNITS[type];
@@ -2466,7 +2521,14 @@
     return best;
   }
 
-  net.onmessage = m => {
+  net.onmessage = onNetMessage;
+
+  function onNetMessage(m) {
+    if (netHold) {
+      netHold.push(m);
+      return;
+    }
+
     switch (m.t) {
       case "hello":
       case "rooms":
@@ -2552,7 +2614,7 @@
 
       default:
     }
-  };
+  }
 
   /* chat místnosti: kde se právě zobrazuje (lobby / ve hře / vůbec) */
   function chatWhere() {
@@ -2838,7 +2900,8 @@
   account.start();
 
   // Odkaz z editoru (?map=id) otevře výběr hry proti AI s danou vlastní mapou.
-  refreshCustomMaps().then(() => {
+  const mapsReady = refreshCustomMaps();
+  mapsReady.then(() => {
     const id = new URLSearchParams(location.search).get("map");
     const wanted = id && MAPS.get(id);
     if (!wanted || started) return;
@@ -3975,6 +4038,12 @@
 
     previousFrame = now;
 
+    // načítací obrazovka zakrývá vše: snímky nekreslit, ať pečení běží naplno
+    if (PK.loader && PK.loader.covering && !started) {
+      requestAnimationFrame(frame);
+      return;
+    }
+
     // online běží i s otevřeným menu, hra proti AI se pauzuje
     const running = !menuOpen || (mode === "online" && started);
 
@@ -4002,9 +4071,28 @@
 
   PK.hud.drawLogo(document.querySelector("#logo"));
   reset();
-  loadMap(map, 0);
-  fit();
-  requestAnimationFrame(frame);
+
+  // Výchozí mapa a sprity menu se upečou za načítací obrazovky, pak se rozběhne smyčka.
+  function* bootSteps() {
+    yield "Kreslím jednotky a budovy…";
+    yield* span(warmSprites([["blue", false], ["red", false]]), 0, 0.2);
+    yield "Načítám mapy…";
+    yield mapsReady.catch(() => {});
+    yield "Peču krajinu…";
+    yield* span(world.prepare(map), 0.2, 0.85);
+    yield "Dokresluji detaily…";
+    yield* span(PK.hdBakeAll(), 0.85, 1);
+  }
+
+  function startLoop() {
+    looping = true;
+    loadMap(map, 0);
+    fit();
+    requestAnimationFrame(frame);
+  }
+
+  if (PK.loader) PK.loader.boot(bootSteps(), startLoop);
+  else startLoop();
 
   // read-only handle for tests and debugging
   PK.game = {
