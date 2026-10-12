@@ -169,3 +169,8 @@ tr.clickable:focus-visible { outline: 2px solid var(--amber); outline-offset: -2
 .modal-box { width: min(1100px, 100%); padding: 16px 18px 20px; background: var(--panel); box-shadow: 0 0 0 1px var(--line), 0 0 0 3px var(--brass), 0 20px 50px rgba(0, 0, 0, 0.6); }
 .modal-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .modal-head h2 { flex: 1; margin: 0; }
+
+.geo .chart-card { margin-top: 4px; }
+.geo-tables { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; margin-top: 14px; }
+.geo-tables h3 { margin: 0 0 6px; color: #ffe9a8; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; }
+.geo-tables .table-wrap { max-height: 420px; overflow: auto; }

@@ -1211,6 +1211,58 @@ function testCoop() {
   assert.deepStrictEqual(m2.winners, ["red"]);
 }
 
+/* ---------- odkud se kdo připojuje (offline geolokace) ---------- */
+function testGeo() {
+  const { createGeo } = require("./geoip.js");
+  const { createTraffic } = require("./traffic.js");
+
+  const geo = createGeo(path.join(__dirname, "fixtures", "geo-test.mmdb"));
+  try {
+    assert(geo.info(), "testovací databáze se načte");
+    assert.deepStrictEqual(geo.lookup("203.0.113.5"), { cc: "CZ", country: "Czechia", region: "Prague", city: "Prague", lat: 50.09, lon: 14.42 });
+    assert.strictEqual(geo.lookup("::ffff:198.51.100.7").city, "Bratislava", "IPv4 zabalená v IPv6");
+    assert.deepStrictEqual(geo.lookup("2001:db8::1"), { cc: "DE", country: "Germany", region: "", city: "", lat: 51, lon: 9 });
+    assert.strictEqual(geo.lookup("8.8.8.8"), null, "mimo databázi");
+    assert.strictEqual(geo.lookup("127.0.0.1"), null, "lokální adresa");
+    assert.strictEqual(geo.lookup("192.168.1.10"), null, "LAN");
+    assert.strictEqual(geo.lookup("nesmysl"), null);
+
+    const store = { data: {}, save() {} };
+    const traffic = createTraffic(store, geo);
+    const ua = "Mozilla/5.0 Firefox";
+    traffic.pageView("203.0.113.5", ua);
+    traffic.pageView("203.0.113.5", ua); // stejný návštěvník podruhé
+    traffic.pageView("203.0.113.6", ua);
+    traffic.pageView("203.0.113.200", ua); // Brno
+    traffic.pageView("8.8.8.8", ua); // neznámo
+    traffic.pageView("203.0.113.9", "Googlebot"); // robot se nepočítá
+    traffic.connection("203.0.113.5", ua, null, 1);
+    traffic.connection("198.51.100.7", ua, { id: 7 }, 2);
+    traffic.connection("203.0.113.77", ua, { id: 7 }, 2); // stejný účet podruhé
+
+    const rep = traffic.report(7).geo;
+    assert(rep.enabled);
+    const at = city => rep.places.find(p => p.city === city);
+    assert.deepStrictEqual([at("Prague").visitors, at("Prague").players], [2, 1]);
+    assert.deepStrictEqual([at("Brno").visitors, at("Brno").players], [1, 0]);
+    assert.deepStrictEqual([at("Bratislava").visitors, at("Bratislava").players, at("Bratislava").cc], [0, 1, "SK"]);
+    assert.strictEqual(at("Prague").lat, 50.09);
+    assert.strictEqual(rep.places.find(p => p.cc === "").visitors, 1, "neznámé místo");
+    assert.strictEqual(rep.places[0].city, "Prague", "seřazeno od nejčastějšího");
+    assert(!/203\.0\.113|198\.51\.100|8\.8\.8\.8/.test(JSON.stringify(store.data)), "IP adresy se neukládají");
+
+    // bez databáze vše běží, jen se místo nezjišťuje
+    const none = createGeo(path.join(os.tmpdir(), "goralia-neni.mmdb"));
+    assert.strictEqual(none.lookup("203.0.113.5"), null);
+    const plain = createTraffic({ data: {}, save() {} }, none);
+    plain.pageView("203.0.113.5", ua);
+    assert.strictEqual(plain.report(7).geo.enabled, false);
+    none.close();
+  } finally {
+    geo.close();
+  }
+}
+
 async function main() {
   require("./mapstore.js").load(); // mapy z repozitáře (maps/*.json)
   testMaps();
@@ -1218,6 +1270,7 @@ async function main() {
   testMapDocs();
   testSimulation();
   testCoop();
+  testGeo();
   await testServer();
 }
 

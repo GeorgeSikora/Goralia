@@ -190,9 +190,9 @@
     ));
 
     $("clients").replaceChildren(table(
-      ["Klient", "Účet", "IP", "Místnost", "Akce"],
+      ["Klient", "Účet", "IP", "Odkud", "Místnost", "Akce"],
       clients.clients.map(c => [
-        c.id, c.userId ? `${c.name} (#${c.userId})` : "nepřihlášený", c.ip, c.room,
+        c.id, c.userId ? `${c.name} (#${c.userId})` : "nepřihlášený", c.ip, placeName(c.place), c.room,
         { actions: [button("Odpojit", async () => {
           await api("POST", `/api/admin/clients/${c.id}/kick`, {});
           await loadLive();
@@ -200,6 +200,104 @@
       ]),
       "Nikdo není připojený."
     ));
+  }
+
+  /* ---------- odkud se kdo připojuje ---------- */
+  let regionNames = null;
+  try { regionNames = new Intl.DisplayNames(["cs"], { type: "region" }); } catch (e) { /* starý prohlížeč */ }
+  const countryName = (cc, fallback) => {
+    if (!cc) return "neznámo";
+    try { return (regionNames && regionNames.of(cc)) || fallback || cc; } catch (e) { return fallback || cc; }
+  };
+  const placeName = p => (p ? [p.city, p.region && p.region !== p.city ? p.region : "", countryName(p.cc, p.country)].filter(Boolean).join(", ") : "");
+
+  let geoMetric = "players";
+  const GEO_METRICS = {
+    players: ["Hráči", "unikátní připojení ke hře za den, sečteno"],
+    visitors: ["Návštěvníci webu", "unikátní návštěvníci stránky hry za den, sečteno"]
+  };
+
+  function renderGeo(geo) {
+    const wrap = el("div", "geo");
+    const head = el("div", "bar range");
+    const card = el("div", "chart-card");
+
+    function paint() {
+      const [label, hint] = GEO_METRICS[geoMetric];
+      const places = geo.places.map(p => ({ ...p, value: p[geoMetric] })).filter(p => p.value > 0);
+      const total = places.reduce((n, p) => n + p.value, 0);
+      const pct = v => (total ? `${Math.round((v / total) * 1000) / 10} %` : "–");
+
+      const countries = new Map();
+      for (const p of places) {
+        const c = countries.get(p.cc) || countries.set(p.cc, { cc: p.cc, name: countryName(p.cc, p.country), value: 0, cities: 0 }).get(p.cc);
+        c.value += p.value;
+        if (p.city) c.cities++;
+      }
+
+      const map = GMap.create({
+        places: places.filter(p => p.cc).map(p => ({
+          lat: p.lat, lon: p.lon, value: p.value,
+          title: p.city || p.region || countryName(p.cc, p.country),
+          sub: [p.city && p.region !== p.city ? p.region : "", countryName(p.cc, p.country)].filter(Boolean).join(", ")
+        })),
+        color: PALETTE[geoMetric === "players" ? 0 : 1],
+        name: label.toLowerCase(),
+        empty: "Za toto období žádná místa."
+      });
+
+      const tables = el("div", "geo-tables");
+      const countryBox = el("div", "table-wrap");
+      countryBox.append(el("h3", "", "Země"), table(
+        ["Země", label, "Podíl", "Měst"],
+        [...countries.values()].sort((a, b) => b.value - a.value).map(c => [c.cc ? `${c.name} (${c.cc})` : "neznámo", c.value, pct(c.value), c.cities])
+      ));
+      const cityBox = el("div", "table-wrap");
+      const cities = places.filter(p => p.city || p.region);
+      cityBox.append(el("h3", "", cities.length > 100 ? "Města (prvních 100)" : "Města"), table(
+        ["Město", "Kraj", "Země", label, "Podíl"],
+        cities.slice(0, 100).map(p => [p.city || "–", p.region, countryName(p.cc, p.country), p.value, pct(p.value)])
+      ));
+      tables.append(countryBox, cityBox);
+
+      card.replaceChildren(el("h3", "", "Odkud se připojují"), el("p", "sub", `${hint} · ${total.toLocaleString("cs-CZ")} celkem`), map, tables);
+    }
+
+    for (const [key, [label]] of Object.entries(GEO_METRICS)) {
+      const b = el("button", key === geoMetric ? "active" : "", label);
+      b.type = "button";
+      b.addEventListener("click", () => {
+        geoMetric = key;
+        for (const other of head.querySelectorAll("button")) other.classList.toggle("active", other === b);
+        paint();
+      });
+      head.append(b);
+    }
+
+    const src = geo.source;
+    const credit = el("span", "muted");
+    const day = ms => (ms ? new Date(ms).toLocaleDateString("cs-CZ") : "?");
+    if (src && /dbip/i.test(src.type)) {
+      const a = el("a", "link", "DB-IP.com");
+      a.href = "https://db-ip.com";
+      a.target = "_blank";
+      a.rel = "noopener";
+      credit.append("IP geolokace: ", a, ` (CC BY 4.0), databáze z ${day(src.built)}`);
+    } else if (src) {
+      credit.textContent = `Databáze ${src.type} z ${day(src.built)}`;
+    }
+    head.append(credit);
+
+    paint();
+    wrap.append(head, card);
+
+    if (!geo.enabled) {
+      const off = el("p", "notice");
+      off.append("Geolokace je vypnutá: na serveru chybí databáze. Stáhni ji příkazem ", el("code", "", "npm run geoip"),
+        " (DB-IP City Lite, zdarma) a server ji do hodiny načte sám. IP adresy se nikam neposílají.");
+      wrap.insertBefore(off, head);
+    }
+    return wrap;
   }
 
   /* ---------- návštěvnost ---------- */
@@ -353,8 +451,8 @@
     ));
     details.append(wrapTable);
 
-    box.replaceChildren(cards, grid, details);
-    $("traffic-note").textContent = `Časové pásmo ${data.tz}. Bez cookies, IP se neukládá.`;
+    box.replaceChildren(cards, grid, renderGeo(data.geo || { enabled: false, places: [] }), details);
+    $("traffic-note").textContent = `Časové pásmo ${data.tz}. Bez cookies, IP se neukládá (u míst jen souhrn za den: země, kraj, město).`;
   }
 
   async function loadTraffic() {

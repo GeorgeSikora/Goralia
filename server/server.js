@@ -16,6 +16,7 @@ const { createStore } = require("./store.js");
 const { createAccounts } = require("./accounts.js");
 const { createStats } = require("./stats.js");
 const { createTraffic } = require("./traffic.js");
+const { createGeo } = require("./geoip.js");
 const { createMapConfig } = require("./mapconfig.js");
 const { createApi, SID } = require("./api.js");
 const { SECURITY_HEADERS, parseCookies, sameOrigin, clientIp } = require("./httputil.js");
@@ -49,7 +50,9 @@ if (process.env.GORALIA_TURN_URL) {
 const STARTED = Date.now();
 
 const store = createStore(DATA_DIR);
-const traffic = createTraffic(store);
+// Offline databáze pro zjištění země a města z IP (npm run geoip); bez ní se místo nezjišťuje.
+const geo = createGeo(path.resolve(process.env.GORALIA_GEOIP || path.join(DATA_DIR, "geoip.mmdb")));
+const traffic = createTraffic(store, geo);
 const accounts = createAccounts(store, {
   adminName: process.env.GORALIA_ADMIN_NAME,
   adminEmail: process.env.GORALIA_ADMIN_EMAIL,
@@ -740,7 +743,7 @@ Object.assign(live, {
     slots: room.slots.map(s => s.kind)
   })),
 
-  clients: () => [...clients].map(c => ({ id: c.id, userId: c.user ? c.user.id : null, name: c.user ? c.user.name : "", ip: c.ip, room: c.room ? c.room.id : null })),
+  clients: () => [...clients].map(c => ({ id: c.id, userId: c.user ? c.user.id : null, name: c.user ? c.user.name : "", ip: c.ip, place: geo.lookup(c.ip), room: c.room ? c.room.id : null })),
 
   kickUser(userId, text) {
     const client = byUser.get(userId);

@@ -94,6 +94,7 @@
     <ul>
       <li>Počítají se souhrnná čísla za den: zobrazení stránky hry, počet unikátních návštěvníků, podíl mobilních zařízení, počet připojení do hry (přihlášených a nepřihlášených zvlášť), nové registrace a přihlášení, odehrané online zápasy a spuštěné a dokončené hry proti počítači (jejich počet, výsledek a délka).</li>
       <li>Unikátního návštěvníka server rozpozná jen krátkodobým nevratným otiskem z IP adresy a údajů prohlížeče, který se mísí s náhodnou solí platnou jediný den. Otisk i sůl se po skončení dne zahodí, takže návštěvníka nelze sledovat mezi dny ani zpětně dohledat jeho IP adresu.</li>
+      <li>Z IP adresy se přímo na našem serveru, v offline databázi a bez odesílání komukoli dalšímu, zjistí přibližná poloha: země, kraj a město. Uloží se jen souhrnný počet návštěvníků a hráčů z daného místa za den, bez IP adresy a bez vazby na účet. Administrátor navíc u právě připojených hráčů vidí, odkud se připojili (jen po dobu spojení). Poloha z IP je jen přibližná, často jde o město poskytovatele internetu.</li>
       <li>Každých 5 minut se uloží okamžitý počet připojených hráčů, přihlášených hráčů a hráčů ve hře (bez jmen).</li>
       <li>Hra proti počítači běží ve tvém prohlížeči. Při jejím začátku a konci prohlížeč serveru anonymně pošle jen údaj o události, výsledek a délku hry. Neodesílá se žádná přezdívka ani identifikátor účtu.</li>
       <li>Návštěvy známých robotů (např. vyhledávačů) se počítají zvlášť.</li>
@@ -102,7 +103,7 @@
 
     <h3>3.5 Technické údaje</h3>
     <ul>
-      <li><strong>IP adresa:</strong> používá se k ochraně proti útokům a zneužití (omezení počtu pokusů o přihlášení a registraci) a administrátor ji vidí u právě připojených hráčů. Hra ji do databáze neukládá; v paměti serveru zůstává nejdéle hodinu.</li>
+      <li><strong>IP adresa:</strong> používá se k ochraně proti útokům a zneužití (omezení počtu pokusů o přihlášení a registraci) a administrátor ji vidí u právě připojených hráčů spolu s přibližnou polohou (země, město) zjištěnou z ní offline. Hra ji do databáze neukládá; v paměti serveru zůstává nejdéle hodinu.</li>
       <li><strong>Serverové záznamy (logy):</strong> webový server a hostingová infrastruktura mohou krátkodobě zaznamenávat technické údaje o požadavcích (IP adresa, čas, požadovaná adresa, typ prohlížeče) pro řešení chyb a bezpečnost.</li>
       <li><strong>Relace přihlášení:</strong> náhodný identifikátor v cookie; na serveru je uložen jen jeho otisk spolu s datem vytvoření a vypršení.</li>
       <li><strong>Záznamy o správě:</strong> zásahy administrátora (např. blokace, smazání účtu) se zapisují do interního auditu, který obsahuje přezdívku a ID dotčeného účtu.</li>

@@ -2,6 +2,7 @@
  * Návštěvnost a aktivita: souhrny po dnech a vzorky „kdo je online“ každých 5 minut.
  * Nepoužívá cookies ani neukládá IP. Unikátní návštěvník = otisk (IP + prohlížeč + denní sůl),
  * sůl i otisky platí jen jeden den a pak se zahodí, takže návštěvníky nejde spojit mezi dny.
+ * Odkud kdo je (země, kraj, město) se zjistí z IP offline (geoip.js) a uloží se jen jako počet za den a místo.
  */
 "use strict";
 
@@ -13,6 +14,7 @@ const SAMPLE_MS = 5 * 60 * 1000;
 const KEEP_SAMPLES = 14 * 24 * 12; // 14 dní po 5 minutách
 const MAX_TODAY = 50000; // strop otisků za den (ochrana paměti)
 const BOT_RE = /bot|crawl|spider|slurp|facebookexternalhit|embedly|preview|monitor|curl|wget|python|httpclient|headless|lighthouse|pingdom|uptime/i;
+const MAX_PLACES_DAY = 3000; // strop různých míst za den; další se sečtou pod „neznámo“
 const MOBILE_RE = /Mobi|Android|iPhone|iPad|iPod/i;
 
 const dayFormat = new Intl.DateTimeFormat("sv-SE", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" });
@@ -28,12 +30,15 @@ const DAY_FIELDS = [
 
 const newDay = () => Object.fromEntries(DAY_FIELDS.map(k => [k, 0]));
 
-function createTraffic(store) {
+// geo: { lookup(ip) } z geoip.js, nebo nic (bez geolokace)
+function createTraffic(store, geo = null) {
   const data = store.data;
   if (!data.traffic || typeof data.traffic !== "object") data.traffic = {};
   const t = data.traffic;
   t.days = t.days || {};
   t.samples = t.samples || [];
+  t.geo = t.geo || {};       // { den: { "CZ|kraj|město": [návštěvníci webu, hráči] } }
+  t.places = t.places || {}; // { "CZ|kraj|město": [lat, lon, název země] }
 
   function today() {
     const key = dayKey();
@@ -51,6 +56,25 @@ function createTraffic(store) {
   function prune() {
     const keys = Object.keys(t.days).sort();
     while (keys.length > KEEP_DAYS) delete t.days[keys.shift()];
+
+    const geoKeys = Object.keys(t.geo).sort();
+    while (geoKeys.length > KEEP_DAYS) delete t.geo[geoKeys.shift()];
+    const used = new Set();
+    for (const day of Object.values(t.geo)) for (const key of Object.keys(day)) used.add(key);
+    for (const key of Object.keys(t.places)) if (!used.has(key)) delete t.places[key];
+  }
+
+  // Započte unikátního návštěvníka (0) nebo hráče (1) k místu, odkud přišel. IP se neukládá.
+  function place(ip, column) {
+    if (!geo) return;
+    const where = geo.lookup(ip);
+    const date = dayKey();
+    const day = t.geo[date] || (t.geo[date] = {});
+    let key = where ? `${where.cc}|${where.region}|${where.city}` : "";
+    if (!day[key] && Object.keys(day).length >= MAX_PLACES_DAY) key = "";
+    if (key && !t.places[key]) t.places[key] = [where.lat, where.lon, where.country];
+    const row = day[key] || (day[key] = [0, 0]);
+    row[column]++;
   }
 
   const fingerprint = (salt, ip, ua) => crypto.createHash("sha256").update(`${salt}|${ip}|${ua}`).digest("hex").slice(0, 16);
@@ -80,7 +104,10 @@ function createTraffic(store) {
 
     day.views++;
     if (MOBILE_RE.test(ua)) day.mobile++;
-    if (addUnique(seen.visitors, fingerprint(seen.salt, ip, ua))) day.visitors++;
+    if (addUnique(seen.visitors, fingerprint(seen.salt, ip, ua))) {
+      day.visitors++;
+      place(ip, 0);
+    }
     store.save();
   }
 
@@ -90,9 +117,13 @@ function createTraffic(store) {
     day.connections++;
 
     if (user) {
-      if (addUnique(seen.players, user.id)) day.players++;
+      if (addUnique(seen.players, user.id)) {
+        day.players++;
+        place(ip, 1);
+      }
     } else if (addUnique(seen.guests, fingerprint(seen.salt, ip, String(ua || "")))) {
       day.guests++;
+      place(ip, 1);
     }
 
     day.peak = Math.max(day.peak, online);
@@ -161,7 +192,27 @@ function createTraffic(store) {
 
     out.reverse();
     const since = now - Math.min(n, 14) * 86400 * 1000;
-    return { tz: TZ, days: out, samples: t.samples.filter(s => s[0] >= since) };
+    return { tz: TZ, days: out, samples: t.samples.filter(s => s[0] >= since), geo: geoReport(out.map(d => d.date)) };
+  }
+
+  // Součty za období po místech: [{ cc, country, region, city, lat, lon, visitors, players }]; cc "" = neznámo.
+  function geoReport(dates) {
+    const sums = new Map();
+    for (const date of dates) {
+      for (const [key, [visitors, players]] of Object.entries(t.geo[date] || {})) {
+        const row = sums.get(key) || sums.set(key, [0, 0]).get(key);
+        row[0] += visitors;
+        row[1] += players;
+      }
+    }
+
+    const places = [...sums].map(([key, [visitors, players]]) => {
+      const [cc = "", region = "", city = ""] = key.split("|");
+      const [lat = null, lon = null, country = ""] = t.places[key] || [];
+      return { cc, country, region, city, lat, lon, visitors, players };
+    });
+    places.sort((a, b) => b.players + b.visitors - (a.players + a.visitors));
+    return { enabled: !!(geo && geo.info && geo.info()), source: geo && geo.info ? geo.info() : null, places };
   }
 
   today();
