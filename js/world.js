@@ -191,7 +191,7 @@
     return c;
   }
 
-  function buildTerrain(b) {
+  function* buildTerrainSteps(b) {
     const { W, H, zone } = b;
     const rec = b.map.terrain;
     const T = new Pix(W, H);
@@ -234,6 +234,8 @@
 
     const { toneMap, ashMap, rivE } = b;
 
+    yield 0;
+
     // river raster: distance to the nearest river centre line and its half-width there
     const rd = new Float32Array(W * H).fill(1e6);
     const rhw = new Float32Array(W * H);
@@ -266,6 +268,8 @@
         }
       }
     }
+
+    yield 0;
 
     // hory a hradby: nejbližší střed hřebene a jeho šířka, resp. maska korunou zdi
     const mrd = new Float32Array(W * H).fill(1e6);
@@ -356,6 +360,8 @@
       rec.paveX.some(([a, c]) => x >= a && x < c) ||
       rec.pave.some(([px, py, pr]) => Math.hypot(x - px, y - py) < pr);
 
+    yield 0;
+
     // pole pro jemné pečení (art rozlišení, mezi nimi se bilineárně interpoluje)
     const N = W * H;
     const F = {
@@ -374,6 +380,7 @@
     const rightEdge = y => W - 4.5 - 3 * fbm(y / 10, 5.9, 8, 2);
 
     for (let y = 0; y < H; y++) {
+      if ((y & 15) === 15) yield 0.9 * y / H;
       for (let x = 0; x < W; x++) {
         const i = y * W + x;
 
@@ -697,8 +704,11 @@
     }
 
     const canvas = T.toCanvas();
-    if (W * H * 4 <= FINE_MAX) PK.hdLater(canvas, () => bakeFine(b).rawCanvas());
-    else b.F = null;
+    // terén peče world.prepare po kouscích (nebo první vykreslení), ne hromadné hdBakeAll
+    if (W * H * 4 <= FINE_MAX) {
+      b.fine = false;
+      PK.hdLater(canvas, () => { b.fine = true; return drain(bakeFineSteps(b)).rawCanvas(); }, false);
+    } else b.F = null;
     return canvas;
   }
 
@@ -727,7 +737,7 @@
     return tnTex;
   }
 
-  function bakeFine(b) {
+  function* bakeFineSteps(b) {
     const { W, H, zone, ashMap, rivE } = b;
     const rec = b.map.terrain;
     const F = b.F;
@@ -979,6 +989,7 @@
     ];
 
     for (let fy = 0; fy < FH; fy++) {
+      if ((fy & 7) === 7) yield 0.75 * fy / FH;
       r0 = Y0[fy]; r1 = Y1[fy]; wy = WY[fy];
       const Y = fy / 2;
       const ay = fy >> 1;
@@ -1228,6 +1239,8 @@
       }
     }
 
+    yield 0.75;
+
     /* ---- razítka: stébla, oblázky, květy, škvarek ---- */
     const at = (x, y) => (x < 0 || y < 0 || x >= FW || y >= FH ? Z_FRAME : zF[y * FW + x]);
     const getC = (x, y) => d[y * FW + x] & 0xffffff;
@@ -1235,6 +1248,7 @@
     const RS = rng(91);
 
     for (let n = 0; n < deco.length; n += 4) {
+      if ((n & 16383) === 16380) yield 0.75 + 0.1 * n / deco.length;
       const kind = deco[n], x = deco[n + 1], y = deco[n + 2], a = deco[n + 3];
 
       if (kind === 0) {
@@ -1334,13 +1348,14 @@
       }
     }
 
-    b.water = buildWaterChunks(b, zF, bil, (fy) => { r0 = Y0[fy]; r1 = Y1[fy]; wy = WY[fy]; });
+    yield 0.85;
+    b.water = yield* span(buildWaterSteps(b, zF, bil, (fy) => { r0 = Y0[fy]; r1 = Y1[fy]; wy = WY[fy]; }), 0.85, 1);
     b.F = null; // pole z art průchodu už nejsou potřeba
     return P;
   }
 
   /* ---------- voda: 4 animované snímky po dlaždicích 64x64 art px ---------- */
-  function buildWaterChunks(b, zF, bil, row) {
+  function* buildWaterSteps(b, zF, bil, row) {
     const { W, H } = b;
     const FW = W * 2;
     const FH = H * 2;
@@ -1391,6 +1406,7 @@
           frames.push(c);
         }
         out.push({ x: cx / 2, y: cy / 2, w: w / 2, h: h / 2, frames });
+        yield (cy + cx / FW * CS) / FH;
       }
     }
 
@@ -1693,24 +1709,70 @@
   // Teren každé mapy se peče jen jednou; náhled v lobby a samotná hra sdílejí stejný výsledek.
   const bundles = new Map();
 
+  function newBundle(map) {
+    const [w, h] = map.size;
+    return {
+      map, W: w, H: h,
+      zone: new Uint8Array(w * h),
+      toneMap: new Uint8Array(w * h),
+      ashMap: new Uint8Array(w * h),
+      rivE: new Float32Array(w * h)
+    };
+  }
+
+  // doběhne krokové pečení najednou a vrátí jeho výsledek
+  function drain(steps) {
+    for (;;) {
+      const r = steps.next();
+      if (r.done) return r.value;
+    }
+  }
+
+  // průběh dílčího pečení 0..1 přepočtený do úseku lo..hi
+  function* span(steps, lo, hi) {
+    for (;;) {
+      const r = steps.next();
+      if (r.done) return r.value;
+      yield lo + (hi - lo) * r.value;
+    }
+  }
+
   function bundleFor(map) {
     let b = bundles.get(map.id);
 
     if (!b) {
-      const [w, h] = map.size;
-      b = {
-        map, W: w, H: h,
-        zone: new Uint8Array(w * h),
-        toneMap: new Uint8Array(w * h),
-        ashMap: new Uint8Array(w * h),
-        rivE: new Float32Array(w * h)
-      };
-      b.canvas = buildTerrain(b);
+      b = newBundle(map);
+      b.canvas = drain(buildTerrainSteps(b));
       bundles.set(map.id, b);
     }
 
     return b;
   }
+
+  /* Upeče terén mapy (hrubý i jemný) po kouscích, aby načítací obrazovka
+   * mezi nimi stihla překreslit průběh 0..1. Hotová mapa se už nepeče. */
+  function* prepare(map) {
+    let b = bundles.get(map.id);
+
+    if (!b) {
+      b = newBundle(map);
+      b.canvas = yield* span(buildTerrainSteps(b), 0, 0.3);
+      bundles.set(map.id, b);
+    }
+
+    if (b.fine === false) {
+      const P = yield* span(bakeFineSteps(b), 0.3, 0.97);
+      b.fine = true;
+      PK.hdLater(b.canvas, P.rawCanvas());
+    }
+
+    yield 1;
+  }
+
+  const isPrepared = map => {
+    const b = bundles.get(map.id);
+    return !!b && b.fine !== false;
+  };
 
   function activate(b) {
     W = b.W;
@@ -1927,7 +1989,7 @@
   }
 
   Object.assign(world, {
-    build, preview, forget, drawGround, drawClouds, drawMist, drawGrade, light, glow, shadow,
+    build, prepare, isPrepared, preview, forget, drawGround, drawClouds, drawMist, drawGrade, light, glow, shadow,
     zoneAt: (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? Z_FRAME : zone[(y | 0) * W + (x | 0)]),
     Z: { GRASS: Z_GRASS, PATH: Z_PATH, PLAZA: Z_PLAZA, WATER: Z_WATER, FRAME: Z_FRAME, TERRACE: Z_TERRACE, BANK: Z_BANK, ROCK: Z_ROCK, WALL: Z_WALL }
   });

@@ -39,6 +39,19 @@
 <link rel="stylesheet" href="css/charts.css">
 </head>
 <body>
+<div id="loading" class="loading" role="progressbar" aria-label="Načítání hry" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-busy="true">
+  <div class="ld-box">
+    <canvas class="ld-logo" width="1" height="1" aria-hidden="true"></canvas>
+    <div class="ld-road">
+      <canvas class="ld-walker" width="1" height="1" aria-hidden="true"></canvas>
+      <div class="ld-track"><div class="ld-fill"></div></div>
+    </div>
+    <p class="ld-row"><span class="ld-text">Načítám hru…</span><span class="ld-pct">0 %</span></p>
+    <p class="ld-tip"></p>
+  </div>
+  <noscript><p class="ld-tip">Goralia potřebuje zapnutý JavaScript.</p></noscript>
+</div>
+
 <div class="app">
   <main class="stage" id="stage">
     <canvas id="game" width="960" height="620" aria-label="Herní plocha"></canvas>
@@ -318,32 +331,6 @@
   </div>
 </div>
 
-<script src="js/rules.js"></script>
-<script src="js/maps.js"></script>
-<script src="js/nav.js"></script>
-<script src="js/ai.js"></script>
-<script src="js/sim.js"></script>
-<script src="js/audio.js"></script>
-<script src="js/music.js"></script>
-<script src="js/pixel.js"></script>
-<script src="js/font.js"></script>
-<script src="js/keys.js"></script>
-<script src="js/units.js"></script>
-<script src="js/buildings.js"></script>
-<script src="js/props.js"></script>
-<script src="js/icons.js"></script>
-<script src="js/world.js"></script>
-<script src="js/fx.js"></script>
-<script src="js/hud.js"></script>
-<script src="js/net.js"></script>
-<script src="js/menubg.js"></script>
-<script src="js/custommaps.js"></script>
-<script src="js/charts.js"></script>
-<script src="js/matchview.js"></script>
-<script src="js/account.js"></script>
-<script src="js/voice.js"></script>
-<script src="js/chat.js"></script>
-<script src="js/voicechat.js"></script>
-<script src="js/game.js"></script>
+<script src="js/loader.js"></script>
 </body>
 </html>

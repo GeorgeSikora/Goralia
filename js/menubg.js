@@ -693,7 +693,7 @@
 
   function frame(now) {
     requestAnimationFrame(frame);
-    if (menu.hidden || !menu.classList.contains("scene")) { last = 0; return; }
+    if (menu.hidden || !menu.classList.contains("scene") || (PK.loader && PK.loader.covering)) { last = 0; return; }
 
     const dt = last ? Math.min(0.05, (now - last) / 1000) : 0;
     last = now;

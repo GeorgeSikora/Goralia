@@ -563,9 +563,13 @@
    * dvojče, které kontext s hdDraw = true vykreslí místo něj. */
   const HD = 2;
   const hdTwins = new WeakMap();
+  // dvojčata, která se ještě nepekla (načítací obrazovka je upeče předem, ať hra necuká)
+  const hdPending = new Set();
 
-  function hdLater(canvas, build) {
+  function hdLater(canvas, build, track = true) {
     hdTwins.set(canvas, build);
+    if (typeof build === "function" && track) hdPending.add(canvas);
+    else hdPending.delete(canvas);
   }
 
   function hdOf(canvas) {
@@ -573,8 +577,20 @@
     if (typeof t === "function") {
       t = t();
       hdTwins.set(canvas, t);
+      hdPending.delete(canvas);
     }
     return t || null;
+  }
+
+  // Upeče všechna čekající jemná dvojčata; mezi kusy vrací průběh 0..1.
+  function* hdBakeAll() {
+    const total = hdPending.size;
+    let n = 0;
+
+    for (const c of hdPending) {
+      hdOf(c);
+      yield total ? ++n / total : 1;
+    }
   }
 
   if (typeof CanvasRenderingContext2D !== "undefined") {
@@ -622,7 +638,7 @@
   }
 
   Object.assign(PK, {
-    HD, hdLater, hdOf, fine,
+    HD, hdLater, hdOf, hdBakeAll, fine,
     C, TEAM, rgb, mix, css, rng, hash, vnoise, fbm, tnoise, bayer, dither,
     clamp, smooth, makeCanvas, Pix, strokeEllipse,
     // Rozměry bufferu v art px; game.js je mění podle velikosti okna.
