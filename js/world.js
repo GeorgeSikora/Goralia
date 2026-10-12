@@ -360,6 +360,7 @@
     const N = W * H;
     const F = {
       tone: new Float32Array(N), lush: new Float32Array(N),
+      hue: new Float32Array(N), flw: new Float32Array(N),
       riv: new Float32Array(N).fill(1e6), rhw,
       mtn: new Float32Array(N).fill(1e6), mr: new Float32Array(N),
       pla: new Float32Array(N).fill(9), plaId: new Int8Array(N).fill(-1),
@@ -385,6 +386,11 @@
         let tone;
         F.tone[i] = 2.55 + (m - 0.5) * 3.4 + (m2 - 0.5) * 1.1;
         F.lush[i] = lf;
+        // teplota trávy: velké skvrny zlaté louky a chladného stínu, k tomu jemný přechod
+        // od slunného levého horního rohu k chladnějšímu pravému dolnímu
+        F.hue[i] = (fbm(x / 40, y / 40, 11, 3) - 0.5) * 6 + (0.5 - (x / W) * 0.55 - (y / H) * 0.45) * 2;
+        // rozkvetlé paloučky
+        F.flw[i] = fbm(x / 15, y / 15, 13, 2);
 
         if (!ash) {
           let t = 2.55 + (m - 0.5) * 3.4 + (m2 - 0.5) * 1.1;
@@ -963,6 +969,14 @@
     const V = C.v;
     const DA = D.map(c => mix(c, A[3], 0.28));
     const DRY = G.map(c => mix(c, D[2], 0.35));
+    // pět odstínů trávy od chladného modrozeleného stínu po zlatavou louku
+    const GH = [
+      G.map(c => mix(c, C.t[1], 0.45)),
+      G.map(c => mix(c, C.t[2], 0.22)),
+      G,
+      G.map(c => mix(c, C.a[2], 0.2)),
+      G.map((c, k) => mix(c, k > 3 ? C.a[3] : C.d[3], 0.4))
+    ];
 
     for (let fy = 0; fy < FH; fy++) {
       r0 = Y0[fy]; r1 = Y1[fy]; wy = WY[fy];
@@ -992,7 +1006,8 @@
           tone = t0 + relief;
           const k = clamp(dither(tone, fx, fy, 0.5), 1, 5);
           // u popela je tráva vyprahlá
-          col = lush < 0.62 ? DRY[k] : G[k];
+          const hv = clamp(dither(bil(F.hue, fx) + 2, fx, fy, 0.5), 0, 4);
+          col = lush < 0.62 ? DRY[k] : GH[hv][k];
         } else {
           tone = 1.6 + (t0 - 2.55) * 0.94 + relief * 0.8;
           col = A[clamp(dither(tone, fx, fy, 0.5), 0, 4)];
@@ -1202,7 +1217,9 @@
           const h = hash(fx, fy, 11);
           if (!ash) {
             const dens = 0.035 + clamp(tone - 2, 0, 3) * 0.012;
-            if (h < dens) deco.push(0, fx, fy, tone);
+            const fl = bil(F.flw, fx);
+            if (fl > 0.6 && h > 0.982 - (fl - 0.6) * 0.08) deco.push(3, fx, fy, 1 + ((hash((fx / 40) | 0, (fy / 40) | 0, 14) * 4) | 0));
+            else if (h < dens) deco.push(0, fx, fy, tone);
             else if (h > 0.9988) deco.push(3, fx, fy, 0);
             else if (h > 0.9978) deco.push(1, fx, fy, 0);
           } else if (h > 0.9985) deco.push(4, fx, fy, 0);
@@ -1254,7 +1271,7 @@
         for (let xx = 1; xx <= w; xx++) setIf(x + xx, y + h2, S[1], Z_GRASS);
       } else if (kind === 3) {
         // kvítek: čtyři okvětní lístky kolem středu, pod ním stonek
-        const f = RS();
+        const f = a ? (a - 1) * 0.25 + 0.05 + RS() * 0.35 * (RS() < 0.25) : RS();
         const c = f < 0.3 ? C.white : f < 0.55 ? C.a[3] : f < 0.78 ? C.cap[2] : C.m[3];
         const cd = mix(c, C.shade, 0.35);
         if (RS() < 0.5) {
@@ -1655,6 +1672,23 @@
     return PK.fine(P);
   }
 
+  // chladný fialový nádech v protějším (pravém dolním) rohu obrazovky, aby obraz měl přechod světla
+  function buildCool() {
+    const P = new Pix(600, 300);
+
+    for (let y = 0; y < 300; y++) {
+      for (let x = 0; x < 600; x++) {
+        const d = Math.hypot(1 - x / 600, 1 - y / 300);
+        const v = (1 - d) * 5;
+        if (v <= 0) continue;
+        const lv = Math.floor(v + bayer(x, y) - 0.5 + 0.5);
+        if (lv > 0) P.setA(x, y, 0x3c2a6b, Math.min(56, lv * 11));
+      }
+    }
+
+    return PK.fine(P);
+  }
+
   /* ---------- build ---------- */
   // Teren každé mapy se peče jen jednou; náhled v lobby a samotná hra sdílejí stejný výsledek.
   const bundles = new Map();
@@ -1780,7 +1814,7 @@
 
     const R = rng(4242);
     const spots = [];
-    for (let i = 0; i < 26; i++) spots.push([R() * TW, R() * TH, Math.floor(R() * 3)]);
+    for (let i = 0; i < 26; i++) spots.push([R() * TW, R() * TH, PK.props.treeKind(R())]);
     spots.sort((a, b) => a[1] - b[1]);
 
     // stromy přesahující okraj dlaždice se kreslí i na protější straně, aby na sebe navazovaly
@@ -1878,6 +1912,8 @@
     g.globalCompositeOperation = "lighter";
     g.drawImage(world.warmth, 0, 0);
     g.globalCompositeOperation = "source-over";
+    if (!world.cool) world.cool = buildCool();
+    g.drawImage(world.cool, w - 300, h - 150);
     g.drawImage(vignetteFor(w, h), 0, 0);
   }
 

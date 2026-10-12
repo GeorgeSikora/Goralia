@@ -179,10 +179,35 @@
     {
       const { set, done } = surface(layers.ground);
       const GH = (H - GY) * K;
+      // louka: odspodu tma, u obzoru teplý odlesk západu; skvrny zlaté a chladné trávy
+      // (šum se opakuje s periodou vrstvy, aby navazovala)
+      const PW = P * K;
       for (let y = 0; y < GH; y++) {
-        for (let x = 0; x < P * K; x++) {
-          const t = y / GH + (bayer(x, y) - 0.5) * 0.06;
-          set(x, y, mixRGB(0x40602f, 0x15261f, Math.max(0, Math.min(1, t))));
+        const ty = y / GH;
+        for (let x = 0; x < PW; x++) {
+          const t = ty + (bayer(x, y) - 0.5) * 0.06;
+          let c = mixRGB(0x40602f, 0x15261f, Math.max(0, Math.min(1, t)));
+          const n = PK.tnoise(x / 64, y / 26, PW / 64, 21) + (PK.tnoise(x / 18, y / 9, PW / 18, 22) - 0.5) * 0.5;
+          const lv = Math.floor((n - 0.5) * 5 + bayer(x, y) - 0.5);
+          if (lv >= 1) c = mixRGB(c, 0x9a8a3c, Math.min(2, lv) * 0.13 * (1 - ty * 0.6));
+          else if (lv <= -1) c = mixRGB(c, 0x1f3a4d, Math.min(2, -lv) * 0.16);
+          // růžovofialový nádech oblohy těsně pod obzorem
+          if (bayer(x, y) < (0.22 - ty) * 3) c = mixRGB(c, 0x8a4a6a, 0.22);
+          set(x, y, c);
+        }
+      }
+      // kvetoucí trsy: drobné kvítky v hloučcích
+      const FL = [0xf7f1df, 0xffe08a, 0xff8fa0, 0xd0b4ff];
+      for (let k = 0; k < 70; k++) {
+        const cx = Math.random() * PW;
+        const cy = 4 + Math.random() * (GH - 8);
+        const c = FL[k % 4];
+        const dim = mixRGB(c, 0x15261f, 0.35 + (cy / GH) * 0.4);
+        for (let i = 0; i < 9; i++) {
+          const x = Math.floor(cx + (Math.random() - 0.5) * 22) % PW;
+          const y = Math.floor(cy + (Math.random() - 0.5) * 8);
+          set(x, y, cy / GH < 0.5 ? c : dim);
+          set(x, y + 1, 0x2c4a2b);
         }
       }
       // stébla: 1x2 jemné body, světlá špička
@@ -299,7 +324,7 @@
 
   function treeAt(j) {
     if (hash(j + 400) > 0.7) return null;
-    return { x: j * 34 + hash(j + 401) * 30, y: GY + 4 + hash(j + 402) * (H - GY - 6), v: Math.floor(hash(j + 403) * 3), s: hash(j + 404) * 6.28 };
+    return { x: j * 34 + hash(j + 401) * 30, y: GY + 4 + hash(j + 402) * (H - GY - 6), v: PK.props.treeKind(hash(j + 403)), s: hash(j + 404) * 6.28 };
   }
 
   function drawTree(t) {

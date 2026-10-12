@@ -489,7 +489,7 @@
     return { crown: stages, fruit: fruitPos.map(([x, y]) => [ART(x), ART(y)]) };
   }
 
-  function oak(seed) {
+  function oak(seed, ramp) {
     const w = TW * HD;
     const h = TH * HD;
     const trunk = new Pix(w, h);
@@ -517,6 +517,7 @@
     ];
 
     const res = clumpCrown(0, lobes, { x: 36, y: 30, rx: 32, ry: 28 }, branches, seed, {
+      ramp,
       after(P, cut, keep) {
         // visící mech z dolního okraje
         for (const x of [12, 27, 47, 58]) {
@@ -532,7 +533,7 @@
     return { trunk: PK.fine(trunk), ...res };
   }
 
-  function pine(seed) {
+  function pine(seed, ramp = PINE) {
     const w = TW * HD;
     const h = TH * HD;
     const trunk = new Pix(w, h);
@@ -586,7 +587,7 @@
         });
       });
       relight(L, { occ: 1.6, occ2: 0.9, rim: 0.7, under: 0.6 });
-      paintStack(P, L, t => (t > 7.6 ? G[5] : pick(PINE, t)));
+      paintStack(P, L, t => (t > 7.6 ? mix(G[5], ramp[7], 0.4) : pick(ramp, t)));
       P.outline(mix(C.t[0], C.ink, 0.6), 0.5);
       for (const [fx, fy] of fruitPos) if (cut === 0 || (cut < 0.5 && hash(fx, fy, 2) > 0.5)) fruitAt(P, fx, fy);
       stages.push(PK.fine(P));
@@ -646,9 +647,15 @@
     return { trunk: PK.fine(trunk), ...res };
   }
 
+  // barevné obměny korun, aby les nebyl jednolitě zelený
+  const AUTUMN = GX.map((c, i) => mix(c, [C.r[0], C.r[0], C.r[1], C.r[2], C.r[3], C.a[1], C.a[2], C.a[3]][i], 0.6));
+  const SPRING = GX.map((c, i) => mix(c, i > 4 ? C.a[3] : C.d[3], 0.24));
+  const BLUE_PINE = PINE.map((c, i) => mix(c, C.t[Math.min(4, i >> 1)], 0.3));
+
   function treeVariant(kind) {
-    const seed = 40 + kind * 11;
-    const t = kind === 0 ? oak(seed) : kind === 1 ? pine(seed) : willow(seed);
+    const seed = 40 + (kind % 3) * 11 + (kind >= 3 ? 5 : 0);
+    const t = kind === 0 ? oak(seed) : kind === 1 ? pine(seed) : kind === 2 ? willow(seed)
+      : kind === 3 ? oak(seed, AUTUMN) : kind === 4 ? pine(seed, BLUE_PINE) : oak(seed, SPRING);
     return { trunk: t.trunk, crown: t.crown, fruit: t.fruit, w: TW, h: TH, ax: 18, ay: 44 };
   }
 
@@ -1526,14 +1533,18 @@
 
   function init() {
     if (trees.length) return;
-    for (let k = 0; k < 3; k++) trees.push(treeVariant(k));
+    for (let k = 0; k < 6; k++) trees.push(treeVariant(k));
     makeDoodads();
   }
 
   init();
 
+  // výběr obměny stromu podle náhodného čísla 0..1: většina zelených, občas podzimní nebo jarní koruna
+  const treeKind = h => (h < 0.27 ? 0 : h < 0.52 ? 1 : h < 0.72 ? 2 : h < 0.82 ? 4 : h < 0.92 ? 5 : 3);
+
   PK.props = {
     trees,
+    treeKind,
     mine: mine(),
     mineEmpty: mine(true),
     doodads: out,

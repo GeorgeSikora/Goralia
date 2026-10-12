@@ -3084,7 +3084,7 @@
   function drawTree(r) {
     const footX = Math.round(r.x / 2);
     const footY = Math.round(r.y / 2) + 15;
-    const variant = Math.floor(hash3(r.x, r.y, 5) * 3);
+    const variant = PK.props.treeKind(hash3(r.x, r.y, 5));
     const t = PK.props.trees[variant];
     const stage = r.amount > 66 ? 0 : r.amount > 33 ? 1 : 2;
     const sway = Math.sin(clock * 1.3 + r.x * 0.05) > 0.35 ? 1 : 0;
