@@ -13,7 +13,7 @@
   const MAX_RETRIES = 3;
   const DEFAULT_ICE = [{ urls: ["stun:stun.l.google.com:19302"] }];
 
-  const cfg = { enabled: true, key: "KeyV" };
+  const cfg = { enabled: true }; // klávesu pro mluvení drží PK.keys ("ptt")
   try { Object.assign(cfg, JSON.parse(localStorage.getItem(KEY)) || {}); } catch (e) { /* ignore */ }
 
   const state = {
@@ -155,14 +155,14 @@
   const typing = target => target && target.matches && target.matches("input, textarea, select, [contenteditable]");
 
   window.addEventListener("keydown", event => {
-    if (event.code !== cfg.key || capturing) return;
+    if (!PK.keys.is(event, "ptt") || PK.keys.capturing) return;
     if (typing(event.target)) return;
     event.preventDefault();
     if (!event.repeat) press();
   });
 
   window.addEventListener("keyup", event => {
-    if (event.code === cfg.key) release();
+    if (PK.keys.is(event, "ptt")) release();
   });
 
   window.addEventListener("blur", release);
@@ -329,50 +329,8 @@
   window.addEventListener("resize", place);
   setInterval(() => { if (state.where === "game") place(); }, 500);
 
-  /* ---------- nastavení klávesy ---------- */
-  let capturing = null;
-
-  function keyLabel(code) {
-    const m = /^(?:Key|Digit)(.)$/.exec(code);
-    if (m) return m[1];
-    const names = { Space: "Mezerník", CapsLock: "Caps Lock", Backquote: "`", ShiftLeft: "Levý Shift", ShiftRight: "Pravý Shift", ControlLeft: "Levý Ctrl", ControlRight: "Pravý Ctrl", AltLeft: "Levý Alt", AltRight: "Pravý Alt" };
-    return names[code] || code;
-  }
-
   function saveCfg() {
     try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) { /* ignore */ }
-  }
-
-  // Tlačítko v nastavení: po kliknutí čeká na další stisk klávesy (Esc zruší).
-  function bindKeyButton(button, onDone) {
-    const show = () => { button.textContent = capturing === button ? "Stiskni klávesu…" : keyLabel(cfg.key); };
-    show();
-
-    button.addEventListener("click", () => {
-      capturing = capturing === button ? null : button;
-      show();
-    });
-
-    window.addEventListener("keydown", event => {
-      if (capturing !== button) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      capturing = null;
-      // Enter a Esc patří chatu a menu
-      if (event.code !== "Escape" && event.code !== "Enter" && event.code !== "NumpadEnter" && event.code !== "Tab") {
-        cfg.key = event.code;
-        saveCfg();
-      }
-      show();
-      if (onDone) onDone();
-    }, true);
-
-    button.addEventListener("blur", () => {
-      if (capturing === button) {
-        capturing = null;
-        show();
-      }
-    });
   }
 
   function setEnabled(on) {
@@ -409,8 +367,6 @@
     sync,
     reset,
     setEnabled,
-    bindKeyButton,
-    keyLabel: () => keyLabel(cfg.key),
     onVoice,
     onTalk,
     onRtc,

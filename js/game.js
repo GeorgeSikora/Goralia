@@ -1419,10 +1419,10 @@
 
     if (event.repeat) return;
 
-    if (key === "escape" || key === "p") {
+    if (key === "escape" || PK.keys.is(event, "pause")) {
       if (menuOpen) {
         const page = pages.find(p => !p.hidden);
-        if (key === "p" && event.target.matches("input")) return;
+        if (key !== "escape" && event.target.matches("input")) return;
         if (page && page.dataset.page !== "main") goBack(page.dataset.page);
         else if (started) closeMenu();
       } else if (key === "escape" && (placement || spellMode || commandMode)) {
@@ -1444,29 +1444,14 @@
       return;
     }
 
-    const shortcuts = {
-      q: "worker",
-      w: "soldier",
-      e: "archer",
-      h: "hero",
-      t: "tower",
-      f: "barracks",
-      g: "hut",
-      k: "smithy",
-      z: "armor",
-      x: "weapon",
-      a: "fire",
-      s: "heal",
-      m: "command"
-    };
-
-    // zkratka platí jen pro tlačítko, které je ve vybrané nabídce
-    if (shortcuts[key] && PK.hud.cardHas(shortcuts[key])) {
-      keyPress = { type: shortcuts[key], t: 0.14 };
-      action(shortcuts[key]);
+    // zkratky si hráč může přenastavit (PK.keys); platí jen pro tlačítko, které je ve vybrané nabídce
+    const type = PK.hud.types.find(t => PK.keys.is(event, t));
+    if (type && PK.hud.cardHas(type)) {
+      keyPress = { type, t: 0.14 };
+      action(type);
     }
 
-    if (key === "r" && matchOver) {
+    if (PK.keys.is(event, "leave") && matchOver) {
       if (spectator) leaveSpectate();
       else if (mode === "online") returnToRoom();
       else leaveOnline();
@@ -1508,7 +1493,7 @@
   // Zpět z podstránky: z online místnosti se odchází přes server, jinak do hlavního menu.
   function goBack(page) {
     if (page === "lobby" && lobby.online) net.send({ t: "leave" });
-    else showPage("main");
+    else showPage(page === "keys" ? "settings" : "main");
   }
 
   function endReason() {
@@ -2793,8 +2778,9 @@
   $("s-vchat").addEventListener("change", event => {
     PK.vchat.setEnabled(event.target.checked);
   });
-  PK.vchat.bindKeyButton($("s-ptt"), () => { $("h-ptt").textContent = PK.vchat.keyLabel(); });
-  $("h-ptt").textContent = PK.vchat.keyLabel();
+  const keyPage = PK.keys.mount($("k-list"), $("k-msg"), $("k-reset"));
+  $("s-keys").addEventListener("click", () => { keyPage.reset(); showPage("keys"); });
+  PK.keys.fillLabels();
   PK.voice.onLoad = syncSettings;
 
   $("s-shake").addEventListener("change", event => {

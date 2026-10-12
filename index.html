@@ -230,8 +230,8 @@
           <input id="s-vchat" type="checkbox">
         </label>
         <div class="row">
-          <span>Klávesa pro mluvení (push-to-talk)</span>
-          <button id="s-ptt" class="btn" type="button" aria-label="Změnit klávesu pro mluvení">V</button>
+          <span>Klávesové zkratky (i push-to-talk)</span>
+          <button id="s-keys" class="btn" type="button">Změnit</button>
         </div>
         <label class="row">
           <span>Třes obrazovky</span>
@@ -252,6 +252,16 @@
         <button class="btn big" type="button" data-back>Zpět</button>
       </section>
 
+      <section id="panel-keys" class="page" data-page="keys" hidden>
+        <h2>Klávesové zkratky</h2>
+        <p class="goal">Klikni na klávesu u akce a stiskni novou. Jedna klávesa může patřit jen jedné akci.
+          Esc, Enter, Tab, šipky a číslice 1–9 mají pevný význam.</p>
+        <div id="k-list" class="keybinds"></div>
+        <p id="k-msg" class="status" aria-live="polite"></p>
+        <button id="k-reset" class="btn" type="button">Obnovit výchozí</button>
+        <button class="btn big" type="button" data-back>Zpět</button>
+      </section>
+
       <section id="panel-help" class="page" data-page="help" hidden>
         <h2>Ovládání</h2>
         <p class="goal">
@@ -269,28 +279,28 @@
           <li><b>Stavba a kouzla:</b> klepnutím zvolíš cíl, druhým klepnutím ho potvrdíš.</li>
         </ul>
         <ul class="keys">
-          <li><kbd>Q</kbd>dělník</li>
-          <li><kbd>W</kbd>voják</li>
-          <li><kbd>E</kbd>lučištník</li>
-          <li><kbd>H</kbd>hrdina</li>
-          <li><kbd>T</kbd>věž</li>
-          <li><kbd>F</kbd>kasárna</li>
-          <li><kbd>G</kbd>buda (+5 limit)</li>
-          <li><kbd>K</kbd>kovárna</li>
-          <li><kbd>Z</kbd>zbroj (v kovárně)</li>
-          <li><kbd>X</kbd>zbraně (v kovárně)</li>
-          <li><kbd>A</kbd>ohnivá koule</li>
-          <li><kbd>S</kbd>léčení</li>
-          <li><kbd>M</kbd>rozkaz</li>
+          <li><kbd data-key="worker">Q</kbd>dělník</li>
+          <li><kbd data-key="soldier">W</kbd>voják</li>
+          <li><kbd data-key="archer">E</kbd>lučištník</li>
+          <li><kbd data-key="hero">H</kbd>hrdina</li>
+          <li><kbd data-key="tower">T</kbd>věž</li>
+          <li><kbd data-key="barracks">F</kbd>kasárna</li>
+          <li><kbd data-key="hut">G</kbd>buda (+5 limit)</li>
+          <li><kbd data-key="smithy">K</kbd>kovárna</li>
+          <li><kbd data-key="armor">Z</kbd>zbroj (v kovárně)</li>
+          <li><kbd data-key="weapon">X</kbd>zbraně (v kovárně)</li>
+          <li><kbd data-key="fire">A</kbd>ohnivá koule</li>
+          <li><kbd data-key="heal">S</kbd>léčení</li>
+          <li><kbd data-key="command">M</kbd>rozkaz</li>
           <li><kbd>←↑→↓</kbd>kamera</li>
           <li><kbd>Tab</kbd>další typ ve výběru</li>
           <li><kbd>Ctrl</kbd>+<kbd>1–9</kbd>uložit výběr do skupiny (též <kbd>Alt</kbd>)</li>
           <li><kbd>1–9</kbd>vybrat skupinu, dvakrát = kamera na ni</li>
           <li><kbd>Shift</kbd>+<kbd>1–9</kbd>přidat skupinu k výběru</li>
-          <li><kbd>Esc</kbd>menu / zrušit akci</li>
+          <li><kbd>Esc</kbd>menu / zrušit akci (též <kbd data-key="pause">P</kbd>)</li>
           <li><kbd>Enter</kbd>chat místnosti (online)</li>
-          <li><kbd id="h-ptt">V</kbd>držet = mluvit (hlasový chat online)</li>
-          <li><kbd>R</kbd>hlavní menu po konci hry</li>
+          <li><kbd data-key="ptt">V</kbd>držet = mluvit (hlasový chat online)</li>
+          <li><kbd data-key="leave">R</kbd>hlavní menu po konci hry</li>
         </ul>
         <button class="btn big" type="button" data-back>Zpět</button>
       </section>
@@ -307,6 +317,7 @@
 <script src="js/audio.js"></script>
 <script src="js/pixel.js"></script>
 <script src="js/font.js"></script>
+<script src="js/keys.js"></script>
 <script src="js/units.js"></script>
 <script src="js/buildings.js"></script>
 <script src="js/props.js"></script>

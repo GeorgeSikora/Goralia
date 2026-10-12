@@ -32,12 +32,13 @@
   const BW = 28;
   const BH = 28;
 
+  // klávesové zkratky tlačítek jsou v PK.keys (hráč si je může změnit v nastavení)
   const ALL = [
-    ["worker", "Q", "Dělník"], ["soldier", "W", "Voják"], ["archer", "E", "Lučištník"],
-    ["hero", "H", "Hrdina"], ["command", "M", "Rozkaz"],
-    ["tower", "T", "Strážní věž"], ["barracks", "F", "Kasárna"], ["hut", "G", "Buda"], ["smithy", "K", "Kovárna"],
-    ["armor", "Z", "Zbroj"], ["weapon", "X", "Zbraně"],
-    ["fire", "A", "Ohnivá koule"], ["heal", "S", "Léčení"]
+    ["worker", "Dělník"], ["soldier", "Voják"], ["archer", "Lučištník"],
+    ["hero", "Hrdina"], ["command", "Rozkaz"],
+    ["tower", "Strážní věž"], ["barracks", "Kasárna"], ["hut", "Buda"], ["smithy", "Kovárna"],
+    ["armor", "Zbroj"], ["weapon", "Zbraně"],
+    ["fire", "Ohnivá koule"], ["heal", "Léčení"]
   ];
 
   // Tlačítka vpravo dole se mění podle vybrané jednotky nebo budovy; pořadí = pozice na panelu.
@@ -65,8 +66,8 @@
     command: "Klepni na cíl: pohyb, útok, těžba nebo stavba."
   };
 
-  const buttons = ALL.map(([type, key, title]) => ({
-    type, key, title, tip: TIPS[type], slot: -1, visible: false,
+  const buttons = ALL.map(([type, title]) => ({
+    type, title, tip: TIPS[type], slot: -1, visible: false,
     x: 0, y: 0, w: BW, h: BH, lx: 0, ly: 0, lw: BW * 2, lh: BH * 2
   }));
 
@@ -731,10 +732,13 @@
 
     if (off) dim(g, b.x + 2, b.y + 2, BW - 4, BH - 4);
 
-    // hotkey plaque
-    g.fillStyle = "rgba(10,8,20,0.7)";
-    g.fillRect(b.x + 2, b.y + 2, 7, 7);
-    T3(g, b.key, b.x + 4, b.y + 3, active ? 0xffe08a : 0xf0d088, { shadow: null });
+    // hotkey plaque (bez zkratky se nekreslí)
+    const key = PK.keys.get(b.type).toUpperCase();
+    if (key) {
+      g.fillStyle = "rgba(10,8,20,0.7)";
+      g.fillRect(b.x + 2, b.y + 2, 7, 7);
+      T3(g, key, b.x + 4, b.y + 3, active ? 0xffe08a : 0xf0d088, { shadow: null });
+    }
 
     // price tags
     const cost = vm.costs[b.type];
@@ -797,7 +801,8 @@
 
     g.drawImage(frame(w, h, "plaque"), x, y);
     T(g, title, x + 6, y + 6, 0xf0d088);
-    T3(g, `[${b.key}]`, x + w - 6, y + 8, MUTED, { align: "right", shadow: null });
+    const key = PK.keys.get(b.type).toUpperCase();
+    if (key) T3(g, `[${key}]`, x + w - 6, y + 8, MUTED, { align: "right", shadow: null });
 
     let yy = y + 18;
     for (const ln of lines) {
@@ -929,6 +934,6 @@
   }
 
   PK.hud = {
-    buttons, hitButton, selectionHit, setCard, cardHas, minimapHit, relayout, draw, drawEnd, drawLogo, layout: LAYOUT
+    buttons, types: ALL.map(([type]) => type), hitButton, selectionHit, setCard, cardHas, minimapHit, relayout, draw, drawEnd, drawLogo, layout: LAYOUT
   };
 })();
