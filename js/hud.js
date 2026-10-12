@@ -53,7 +53,7 @@
   };
 
   const TIPS = {
-    worker: "Těží zlato a dřevo a staví budovy.",
+    worker: "Těží zlato a dřevo, staví a opravuje budovy.",
     soldier: "Štít a meč. Pevný v boji zblízka.",
     archer: "Střílí z velké dálky, ale snadno padne.",
     hero: "Nese lucernu. Ohnivá koule a léčení. Jen jeden.",
@@ -63,7 +63,7 @@
     smithy: "Vyzkoumá lepší zbroj a zbraně pro vojáky. Staví dělník (14 s).",
     fire: "Hrdina vrhne ohnivou kouli na cíl (10 s).",
     heal: "Hrdina vyléčí spojence v okolí (14 s).",
-    command: "Klepni na cíl: pohyb, útok, těžba nebo stavba."
+    command: "Klepni na cíl: pohyb, útok, těžba, stavba či oprava."
   };
 
   const buttons = ALL.map(([type, title]) => ({

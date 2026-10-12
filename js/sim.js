@@ -22,7 +22,7 @@ const UNIT_TYPES = ["worker", "soldier", "archer", "hero", ...R.UNDEAD.units];
 const BUILDING_TYPES = ["hall", "citadel", "barracks", "tower", "hut", "smithy", ...R.UNDEAD.buildings];
 const HUMAN_UNITS = ["worker", "soldier", "archer", "hero"];
 const RESEARCH_KINDS = ["armor", "weapon"];
-const ORDER_CODES = { move: 1, attack: 2, gather: 3, deliver: 4, build: 5, amove: 6 };
+const ORDER_CODES = { move: 1, attack: 2, gather: 3, deliver: 4, build: 5, amove: 6, repair: 7 };
 const UD = R.UNDEAD;
 const UNIT_RADIUS = 15; // nejmenší odstup středů dvou jednotek
 
@@ -129,7 +129,7 @@ class Match {
       id: this.nextId++, kind: "unit", type, team, x, y,
       hp: s.hp, maxHp: s.hp, speed: s.speed, damage: s.damage, range: s.range,
       attackDelay: s.delay, cooldown: 0, fireCooldown: 0, healCooldown: 0,
-      order: null, harvestTimer: 0, carry: null, working: false, building: false,
+      order: null, harvestTimer: 0, repairTimer: 0, carry: null, working: false, building: false, repairing: false,
       path: null, pathGoal: -1, pathCd: 0, px: 0, py: 0,
       level: 1, xp: 0, facing: this.slotOf(team).facing
     };
@@ -366,6 +366,9 @@ class Match {
     } else if (msg.k === "build") {
       target = this.buildings.find(b => b.id === msg.target && b.team === team && b.progress < 1 && alive(b));
       if (!target) return;
+    } else if (msg.k === "repair") {
+      target = this.buildings.find(b => b.id === msg.target && b.team === team && b.progress >= 1 && b.hp < b.maxHp && alive(b));
+      if (!target) return;
     } else if (msg.k === "move" || msg.k === "amove") {
       if (!isNum(msg.x) || !isNum(msg.y)) return;
     } else {
@@ -384,6 +387,9 @@ class Match {
         unit.order = { type: "gather", target };
       } else if (msg.k === "build" && unit.type === "worker") {
         unit.order = { type: "build", target };
+      } else if (msg.k === "repair" && unit.type === "worker") {
+        unit.order = { type: "repair", target };
+        unit.repairTimer = 0;
       } else if (msg.k === "deliver" && unit.type === "worker") {
         // po vyložení se pokračuje v předchozí těžbě
         const resume = unit.order && unit.order.type === "gather" ? unit.order.target : null;
@@ -716,11 +722,59 @@ class Match {
     return true;
   }
 
+  // Oprava hotové budovy: po krocích, každý krok stojí zlato a dřevo. Když dojdou, dělník přestane.
+  repair(unit, dt) {
+    const b = unit.order.target;
+
+    if (!alive(b) || b.progress < 1 || b.hp >= b.maxHp) {
+      unit.order = null;
+      return false;
+    }
+
+    // opravuje se zepředu (pod budovou), aby dělníka nezakryla; víc dělníků se rozestoupí
+    const spot = { x: b.x + ((unit.id % 3) - 1) * 22, y: b.y + 42 };
+    const reached = this.nav.isBlocked(spot.x, spot.y)
+      ? this.moveTowards(unit, b, dt, 46)
+      : this.moveTowards(unit, spot, dt, 4);
+    if (!reached) return true;
+
+    unit.repairing = true;
+    unit.facing = b.x < unit.x ? -1 : 1;
+    unit.repairTimer += dt;
+
+    const eco = this.econ[unit.team];
+    const step = R.REPAIR;
+
+    while (unit.repairTimer >= step.step) {
+      if (eco.gold < step.gold || eco.wood < step.wood) {
+        const text = "Na opravu chybí zlato nebo dřevo.";
+        if (!this.notes[unit.team].includes(text)) this.note(unit.team, text);
+        unit.order = null;
+        return true;
+      }
+
+      unit.repairTimer -= step.step;
+      eco.gold -= step.gold;
+      eco.wood -= step.wood;
+      this.spend(unit.team, step.gold, step.wood);
+      b.hp = Math.min(b.maxHp, b.hp + step.hp);
+
+      if (b.hp >= b.maxHp) {
+        this.note(b.team, "Budova opravena.");
+        unit.order = null;
+        return true;
+      }
+    }
+
+    return true;
+  }
+
   gather(unit, dt) {
     const order = unit.order;
     if (!order) return false;
     if (order.type === "deliver") return this.deliver(unit, dt);
     if (order.type === "build") return this.construct(unit, dt);
+    if (order.type === "repair") return this.repair(unit, dt);
     if (order.type !== "gather") return false;
 
     const hq = this.hqOf(unit.team);
@@ -830,6 +884,7 @@ class Match {
       unit.healCooldown = Math.max(0, unit.healCooldown - dt);
       unit.working = false;
       unit.building = false;
+      unit.repairing = false;
       unit.pathCd = Math.max(0, unit.pathCd - dt);
 
       if (unit.type === "worker" && this.gather(unit, dt)) continue;
@@ -1092,7 +1147,7 @@ class Match {
   }
 
   /* ---------- state sent to clients ---------- */
-  // Jednotka: [id, typ, tým, x, y, hp, maxHp, facing, nese, úroveň, xp, rozkaz, oheň, léčení, práce, poškození]
+  // Jednotka: [id, typ, tým, x, y, hp, maxHp, facing, nese, úroveň, xp, rozkaz, oheň, léčení, práce (1 těžba, 2 stavba, 3 oprava), poškození]
   // full = false: suroviny jen ty, které se v tomto kroku změnily (stromy se kácejí, ale jinak jsou stále stejné).
   snapshot(team, full = true) {
     const eco = this.econ[team] || { gold: 0, wood: 0 };
@@ -1121,7 +1176,7 @@ class Match {
         u.order ? ORDER_CODES[u.order.type] : 0,
         round1(u.fireCooldown),
         round1(u.healCooldown),
-        u.working ? 1 : u.building ? 2 : 0,
+        u.working ? 1 : u.building ? 2 : u.repairing ? 3 : 0,
         u.damage
       ]),
       // Budova: [id, typ, tým, x, y, hp, maxHp, postup stavby 0..1, výzkum (0 žádný, 1 zbroj, 2 zbraně), postup výzkumu 0..1]
