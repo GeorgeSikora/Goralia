@@ -46,6 +46,8 @@
       b.team === brain.team && b.progress < 1 && alive(b) &&
       !workers.some(w => w.order && w.order.type === "build" && w.order.target === b));
 
+    repairDamaged(match, brain, workers);
+
     for (const worker of workers) {
       if (worker.order || worker.carry) continue;
 
@@ -59,6 +61,27 @@
       const resource = nearestResource(match, hq, type) || nearestResource(match, hq, "gold");
       if (resource) match.command(brain.team, { c: "order", k: "gather", ids: [worker.id], target: resource.id });
     }
+  }
+
+  // Poškozenou budovu opraví jeden dělník, když je klid a zbývá zlato i dřevo na víc než opravu.
+  function repairDamaged(match, brain, workers) {
+    const eco = match.econ[brain.team];
+    if (eco.gold < 60 || eco.wood < 60) return;
+
+    const repairing = workers.filter(w => w.order && w.order.type === "repair");
+    if (repairing.length >= 2) return;
+
+    const damaged = match.buildings.find(b =>
+      b.team === brain.team && alive(b) && b.progress >= 1 && b.hp < b.maxHp * 0.75 &&
+      !repairing.some(w => w.order.target === b) &&
+      !match.units.some(u => alive(u) && !match.friendly(u.team, brain.team) && distance(u, b) < 220));
+    if (!damaged) return;
+
+    const free = workers.filter(w => !w.carry && (!w.order || w.order.type === "gather"));
+    if (!free.length) return;
+
+    const worker = free.reduce((a, b) => (distance(a, damaged) <= distance(b, damaged) ? a : b));
+    match.command(brain.team, { c: "order", k: "repair", ids: [worker.id], target: damaged.id });
   }
 
   function buildNear(match, brain, hq, type, worker) {

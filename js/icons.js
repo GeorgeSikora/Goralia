@@ -917,6 +917,14 @@
     }
   }, "pointer");
 
+  // oprava: kladivo nakřivo, ocelová hlava napříč násadou
+  cursor("repair", 11, 5, P => {
+    P.line(2, 14, 10, 6, C.w[3]);
+    P.line(3, 14, 11, 6, C.w[2]);
+    P.poly([[9.2, 0.9], [15.6, 7.3], [12.8, 10.1], [6.4, 3.7]], (x, y) => (x - y < 5 ? C.s[5] : C.s[3]));
+    P.set(9, 2, C.white);
+  }, "pointer");
+
   cursor("target", 8, 8, P => {
     P.ring(8, 8, 5.5, 5.5, C.a[3], 1);
     for (const [x, y, w, h] of [[8, 0, 1, 3], [8, 13, 1, 3], [0, 8, 3, 1], [13, 8, 3, 1]]) P.rect(x, y, w, h, C.a[4]);

@@ -52,6 +52,10 @@
   // Doba stavby v sekundách (jeden dělník). Nemrtvým budovy rostou samy, bez dělníků.
   const BUILD_TIME = { tower: 10, barracks: 12, hut: 8, smithy: 14, crypt: 22, slaughterhouse: 28, ziggurat: 16, portal: 30 };
 
+  // Oprava hotové budovy dělníkem: každý krok vezme 1 zlato a 1 dřevo a vrátí budově pár životů.
+  // Bez surovin oprava končí. Jeden dělník tak opraví 20 životů za sekundu za 4 zlata a 4 dřeva.
+  const REPAIR = { step: 0.25, hp: 5, gold: 1, wood: 1 };
+
   /*
    * Nemrtví z pekla: AI frakce pro kooperativní mapy (hráči v jednom týmu proti ní).
    * Nemá ekonomiku. Budovy samy chrlí jednotky, Nekropole a zigguraty střílí, pevnost se časem rozrůstá
@@ -109,7 +113,7 @@
   const supplyCap = huts => Math.min(SUPPLY_MAX, SUPPLY_BASE + SUPPLY_PER_HUT * huts);
 
   return {
-    UNDEAD, COSTS, UPGRADES, ARMOR_PER_LEVEL, WEAPON_PER_LEVEL, UNITS, BUILDING_HP, BUILD_TIME, TEAMS, HQ, TEAM_NAMES, MAX_PLAYERS, BASE_GOLD, BASE_WOOD, GOLD_AMOUNT,
+    UNDEAD, COSTS, UPGRADES, ARMOR_PER_LEVEL, WEAPON_PER_LEVEL, UNITS, BUILDING_HP, BUILD_TIME, REPAIR, TEAMS, HQ, TEAM_NAMES, MAX_PLAYERS, BASE_GOLD, BASE_WOOD, GOLD_AMOUNT,
     SUPPLY_BASE, SUPPLY_PER_HUT, SUPPLY_MAX, supplyCap, MAX_BUILDINGS, COUNTDOWN
   };
 });

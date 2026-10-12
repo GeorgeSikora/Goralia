@@ -202,6 +202,21 @@
       }
     },
 
+    // Oprava budovy: třísky od kladiva, jiskra z hřebíku a občas zelený křížek zdraví.
+    repair(x, y) {
+      for (let i = 0; i < 3; i++) {
+        emit("chip", A(x) + rnd(-3, 3), A(y), rnd(-22, 22), rnd(-44, -16), rnd(0.3, 0.55), { c: CHIP, g: 150, size: 1 });
+      }
+
+      for (let i = 0; i < 2; i++) {
+        emit("spark", A(x) + rnd(-2, 2), A(y) - 2, rnd(-30, 30), rnd(-50, -20), rnd(0.2, 0.35), { c: GOLD, g: 170, streak: true });
+      }
+
+      if (R() > 0.6) {
+        emit("plus", A(x) + rnd(-10, 10), A(y) - 10, rnd(-3, 3), rnd(-26, -12), rnd(0.6, 0.9), { c: HEAL, fade: false });
+      }
+    },
+
     mine(x, y) {
       for (let i = 0; i < 7; i++) {
         emit("spark", A(x) + rnd(-3, 3), A(y), rnd(-40, 40), rnd(-60, -20), rnd(0.25, 0.5), { c: GOLD, g: 170, streak: true });

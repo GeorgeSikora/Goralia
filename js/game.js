@@ -129,7 +129,7 @@
 
   const UNIT_TYPES = sim.UNIT_TYPES;
   const BUILDING_TYPES = sim.BUILDING_TYPES;
-  const ORDER_TYPES = [null, "move", "attack", "gather", "deliver", "build", "amove"];
+  const ORDER_TYPES = [null, "move", "attack", "gather", "deliver", "build", "amove", "repair"];
 
   const online = {
     phase: "offline", // offline | connecting | idle | room | countdown | playing | ended
@@ -652,11 +652,17 @@
     );
   }
 
+  // Vlastní dostavěná budova, která potřebuje opravu.
+  function damagedAt(x, y) {
+    return findEntity(x, y, buildings.filter(b => b.team === me && b.progress >= 1 && b.hp < b.maxHp), 46);
+  }
+
   function issueOrder(x, y) {
     const enemy = enemyAt(x, y);
     const resource = resourceAt(x, y);
     let ordered = false;
     let kind = "move";
+    let wreck = null;
 
     const ids = selected
       .filter(unit => unit.kind === "unit" && alive(unit))
@@ -667,15 +673,18 @@
       const free = !enemy && !resource;
       const site = free && hasWorker ? findEntity(x, y, buildings.filter(b => b.team === me && b.progress < 1), 46) : null;
       const base = free && !site ? findEntity(x, y, buildings.filter(b => b.team === me && b.type === R.HQ[me]), 46) : null;
+      // náklad se nejdřív vyloží, teprve prázdní dělníci jdou na poškozenou základnu opravovat
+      const carrying = selected.some(unit => unit.type === "worker" && alive(unit) && unit.carry);
+      wreck = free && hasWorker && !site && !(base && carrying) ? damagedAt(x, y) : null;
 
-      // klik na rozestavěnou budovu: dělník pokračuje ve stavbě; na základnu: vyloží nesený materiál
-      kind = enemy ? "attack" : resource ? "gather" : site ? "build" : base && hasWorker ? "deliver" : "move";
+      // klik na rozestavěnou budovu: dělník pokračuje ve stavbě; na poškozenou: opravuje; na základnu: vyloží nesený materiál
+      kind = enemy ? "attack" : resource ? "gather" : site ? "build" : wreck ? "repair" : base && hasWorker ? "deliver" : "move";
 
       sendCmd({
         c: "order",
         k: kind,
         ids,
-        target: enemy ? enemy.id : resource ? resource.id : site ? site.id : kind === "deliver" ? base.id : 0,
+        target: enemy ? enemy.id : resource ? resource.id : site ? site.id : wreck ? wreck.id : kind === "deliver" ? base.id : 0,
         x: Math.round(x),
         y: Math.round(y)
       });
@@ -686,6 +695,7 @@
     if (ordered) {
       if (kind === "attack") fx.ping(enemy.x, enemy.y + 12, "attack");
       else if (kind === "gather") fx.ping(resource.x, resource.y + (resource.type === "gold" ? 26 : 28), "gather");
+      else if (kind === "repair") fx.ping(wreck.x, wreck.y + 30, "gather");
       else fx.ping(x, y, "move");
       audio.play("order", { x });
       speak(selected, "order");
@@ -1348,8 +1358,8 @@
     const hasWorker = selected.some(e => e.type === "worker" && alive(e));
 
     if (building) {
-      // dělník na rozestavěnou budovu nebo na základnu: pokračuje ve stavbě, vyloží náklad
-      if (hasWorker && (building.progress < 1 || building.type === R.HQ[me])) touchOrder(w.x, w.y);
+      // dělník na rozestavěnou, poškozenou budovu nebo na základnu: pokračuje ve stavbě, opravuje, vyloží náklad
+      if (hasWorker && (building.progress < 1 || building.hp < building.maxHp || building.type === R.HQ[me])) touchOrder(w.x, w.y);
       else selectAt(w.x, w.y, reach);
       return;
     }
@@ -2305,7 +2315,8 @@
       u.fireCooldown = fcd;
       u.healCooldown = hcd;
       u.working = work === 1;
-      u.building = work === 2;
+      u.building = work === 2 || work === 3;
+      u.repairing = work === 3;
       u.damage = dmg;
     }
 
@@ -2399,10 +2410,13 @@
         u.fxT -= dt;
 
         if (u.fxT <= 0) {
-          u.fxT = 0.5;
+          u.fxT = u.repairing ? 0.25 : 0.5;
           const site = nearestSite(u);
 
-          if (site) {
+          if (site && u.repairing) {
+            fx.repair(u.x + u.facing * 9, u.y - 4);
+            audio.play("wood", { x: site.x });
+          } else if (site) {
             fx.chop(site.x, site.y + 14);
             audio.play("wood", { x: site.x });
           }
@@ -2432,13 +2446,13 @@
     if (selected.length) selectedResourceId = 0;
   }
 
-  // Rozestavěná budova nejblíž u stavitele (pro efekty kladiva).
+  // Rozestavěná (nebo při opravě poškozená) budova nejblíž u stavitele (pro efekty kladiva).
   function nearestSite(unit) {
     let best = null;
     let bestDistance = 90;
 
     for (const b of buildings) {
-      if (b.progress >= 1) continue;
+      if (unit.repairing ? b.team !== unit.team || b.progress < 1 : b.progress >= 1) continue;
       const d = distance(unit, b);
 
       if (d < bestDistance) {
@@ -3639,6 +3653,8 @@
     else if (placement || spellMode || commandMode) name = "target";
     else if (hover.enemy && selected.some(s => s.kind === "unit")) name = "attack";
     else if (hover.res && selected.some(s => s.type === "worker")) name = "gather";
+    else if (hover.friend && hover.friend.kind === "building" && hover.friend.progress >= 1 &&
+      hover.friend.hp < hover.friend.maxHp && selected.some(s => s.type === "worker")) name = "repair";
 
     if (name !== cursorName) {
       cursorName = name;

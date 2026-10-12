@@ -158,6 +158,7 @@ function testSimulation() {
   testEconomy();
   testBuilding();
   testSmithy();
+  testRepair();
 }
 
 function testSmithy() {
@@ -193,6 +194,83 @@ function testSmithy() {
   const hp = soldier.hp;
   m.damage(foe, soldier, 20);
   assert.strictEqual(hp - soldier.hp, Math.round(20 * (1 - R.ARMOR_PER_LEVEL)), "zbroj snižuje poškození");
+}
+
+// oprava: dělník přidává životy hotové budově po krocích, každý krok stojí 1 zlato a 1 dřevo
+function testRepair() {
+  const notes = [];
+  const run = (m, seconds) => {
+    for (let t = 0; t < seconds; t += TICK) { m.step(TICK); notes.push(...m.notes.blue); m.endTick(); }
+  };
+  const newMatch = () => new Match(MAPS.get("valley"), [{ name: "A" }, { name: "B" }], { countdown: 0 });
+
+  let m = newMatch();
+  const w = m.units.find(u => u.team === "blue" && u.type === "worker");
+  const hq = m.hqOf("blue");
+  hq.hp = hq.maxHp - 200;
+  m.econ.blue.gold = 500;
+  m.econ.blue.wood = 500;
+
+  m.command("blue", { c: "order", k: "repair", ids: [w.id], target: hq.id });
+  assert.strictEqual(w.order.type, "repair");
+  let t = 0;
+  while (!w.repairing && t < 20) { run(m, TICK); t += TICK; }
+  assert(w.repairing, "dělník dojde k budově a opravuje");
+  const s = m.snapshot("blue").u.find(u => u[0] === w.id);
+  assert.strictEqual(s[14], 3, "snímek hlásí opravu");
+
+  const hp0 = hq.hp;
+  const gold0 = m.econ.blue.gold;
+  const wood0 = m.econ.blue.wood;
+  run(m, 2);
+  const steps = (hq.hp - hp0) / R.REPAIR.hp;
+  assert(steps >= 6 && steps <= 9, `opravuje se po krocích (${steps})`);
+  assert.strictEqual(gold0 - m.econ.blue.gold, steps * R.REPAIR.gold, "každý krok stojí zlato");
+  assert.strictEqual(wood0 - m.econ.blue.wood, steps * R.REPAIR.wood, "každý krok stojí dřevo");
+
+  run(m, 20);
+  assert.strictEqual(hq.hp, hq.maxHp, "budova opravena do plna");
+  assert(!w.order, "po opravě dělník končí");
+  assert(notes.includes("Budova opravena."));
+  m.command("blue", { c: "order", k: "repair", ids: [w.id], target: hq.id });
+  assert(!w.order, "plnou budovu opravit nejde");
+
+  // bez surovin se neopravuje; dojde-li jedna z nich, oprava skončí
+  hq.hp = hq.maxHp - 200;
+  m.econ.blue.gold = 3;
+  m.econ.blue.wood = 100;
+  m.command("blue", { c: "order", k: "repair", ids: [w.id], target: hq.id });
+  run(m, 10);
+  assert.strictEqual(m.econ.blue.gold, 0, "zlato spotřebováno");
+  assert.strictEqual(hq.hp, hq.maxHp - 200 + 3 * R.REPAIR.hp, "opraveno jen za dostupné suroviny");
+  assert(!w.order, "bez zlata dělník přestane");
+  assert(notes.includes("Na opravu chybí zlato nebo dřevo."));
+
+  // rozestavěnou ani cizí budovu opravovat nejde
+  const foe = m.hqOf("red");
+  foe.hp -= 100;
+  m.econ.blue.gold = 100;
+  m.command("blue", { c: "order", k: "repair", ids: [w.id], target: foe.id });
+  assert(!w.order, "cizí budovu neopravíš");
+  const site = m.createBuilding("tower", "blue", hq.x + 200, hq.y, true);
+  m.command("blue", { c: "order", k: "repair", ids: [w.id], target: site.id });
+  assert(!w.order, "rozestavěná budova se staví, ne opravuje");
+
+  // AI pošle dělníka opravit poškozenou budovu, když má na to suroviny
+  m = new Match(MAPS.get("valley"), [{ name: "A", ai: true }, { name: "B", ai: true }], { countdown: 0 });
+  const aiHq = m.hqOf("blue");
+  m.econ.blue.gold = 400;
+  m.econ.blue.wood = 400;
+  run(m, 3);
+  aiHq.hp = Math.round(aiHq.maxHp * 0.5);
+  let sent = false;
+  for (let i = 0; i < 80 && !sent; i++) {
+    run(m, 0.5);
+    sent = m.units.some(u => u.team === "blue" && u.order && u.order.type === "repair");
+  }
+  assert(sent, "AI opravuje");
+  run(m, 30);
+  assert(aiHq.hp > aiHq.maxHp * 0.5 + 100, "AI budova se opravuje");
 }
 
 function testBuilding() {
