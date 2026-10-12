@@ -3327,25 +3327,92 @@
   }
 
   /* ---------- in-world UI ---------- */
-  function drawBar(x, y, w, pct, team) {
-    const fw = Math.max(1, Math.round(w * clamp(pct, 0, 1)));
+  /* Ukazatel zdraví v jemné mřížce (1 jemný px = 0,5 art px): tenký 2 px pruh v tmavém rámečku
+   * se seříznutými rohy. Zdraví neubývá skokem: světlá stopa zásahu chvíli stojí a pak dobíhá,
+   * léčení se plynule doplní a krátce zazáří. Barva jde po paletě od zelené přes jantar k rudé. */
+  const HB_FILL = [
+    [0.5, "#98c76a", "#4a8548"],
+    [0.25, "#ffe08a", "#e0902a"],
+    [0, "#ff8f4a", "#a8323a"]
+  ];
+
+  function hbState(e, pct) {
+    let s = e.hb;
+    if (!s) s = e.hb = { shown: 1, trail: 1, hold: 0, heal: 0, t: clock, seen: 0 }; // dosud skrytý pruh = plné zdraví
+    const dt = clamp(clock - s.t, 0, 0.1);
+    s.t = clock;
+    if (pct < s.shown - 1e-4) { s.hold = 0.35; s.trail = Math.max(s.trail, s.shown); s.shown = pct; }
+    else if (pct > s.shown + 1e-4) { s.heal = 0.5; s.shown = Math.min(pct, s.shown + dt * 0.9); }
+    if (s.hold > 0) s.hold -= dt;
+    else s.trail = Math.max(s.shown, s.trail - dt * 0.8);
+    s.heal = Math.max(0, s.heal - dt);
+    s.seen = Math.min(1, s.seen + dt * 6);
+    return s;
+  }
+
+  function drawBar(x, y, w, pct, team, e) {
+    const p = clamp(pct, 0, 1);
+    const s = e ? hbState(e, p) : { shown: p, trail: p, heal: 0, seen: 1 };
+    const f = 1 / HD;
+    const cur = s.shown;
+    const [, hi, lo] = HB_FILL.find(([t]) => cur > t) || HB_FILL[2];
+    const low = cur <= 0.25;
+
+    g.globalAlpha = s.seen;
+    // rámeček: 1 jemný px kolem pruhu 2 jemné px, seříznuté rohy
     g.fillStyle = "#15121f";
-    g.fillRect(x - 1, y - 1, w + 2, 4);
-    g.fillStyle = "#2a1c26";
-    g.fillRect(x, y, w, 2);
-    g.fillStyle = pct > 0.5 ? "#6fd36f" : pct > 0.25 ? "#ffbf45" : "#ff5a4a";
-    g.fillRect(x, y, fw, 2);
-    g.fillStyle = "rgba(255,255,255,0.4)";
-    g.fillRect(x, y, fw, 1);
-    g.fillStyle = teamCss(team);
-    g.fillRect(x - 2, y - 1, 1, 4);
+    g.fillRect(x - f, y, w + 2 * f, 2 * f);
+    g.fillRect(x, y - f, w, 4 * f);
+    g.fillStyle = "#2a2238";
+    g.fillRect(x, y, w, 2 * f);
+
+    // stopa zásahu (světlá), pod ní aktuální zdraví
+    const tw = Math.round(w * s.trail * HD) / HD;
+    const fw = Math.max(f, Math.round(w * cur * HD) / HD);
+    if (tw > fw) {
+      g.fillStyle = s.hold > 0 ? "#fff6cc" : "#e0b4a0";
+      g.fillRect(x + fw, y, tw - fw, 2 * f);
+    }
+    if (cur > 0) {
+      g.fillStyle = hi;
+      g.fillRect(x, y, fw, f);
+      g.fillStyle = lo;
+      g.fillRect(x, y + f, fw, f);
+      // léčení: zářivá špička pruhu
+      if (s.heal > 0) {
+        g.globalAlpha = s.seen * Math.min(1, s.heal * 2);
+        g.fillStyle = "#cfffe8";
+        g.fillRect(x + fw - 2 * f, y, 2 * f, 2 * f);
+        g.globalAlpha = s.seen;
+      }
+      // málo zdraví: pruh tepe
+      if (low && Math.sin(clock * 9) > 0.2) {
+        g.fillStyle = "rgba(255,246,204,0.35)";
+        g.fillRect(x, y, fw, f);
+      }
+    }
+    // zářezy po čtvrtinách na delších pruzích (budovy)
+    if (w >= 20) {
+      g.fillStyle = "rgba(21,18,31,0.55)";
+      for (let k = 1; k < 4; k++) g.fillRect(x + Math.round(w * k / 4 * HD) / HD, y, f, 2 * f);
+    }
+    // týmová značka: kosočtverec 3x3 jemné px vlevo
+    if (team) {
+      g.fillStyle = "#15121f";
+      g.fillRect(x - 4 * f, y - f, 3 * f, 4 * f);
+      g.fillRect(x - 5 * f, y, 5 * f, 2 * f);
+      g.fillStyle = teamCss(team);
+      g.fillRect(x - 4 * f, y, 3 * f, 2 * f);
+      g.fillRect(x - 3 * f, y - f, f, 4 * f);
+    }
+    g.globalAlpha = 1;
   }
 
   function drawOverlays() {
     for (const u of units) {
-      if (u.hp >= u.maxHp && !selected.includes(u)) continue;
-      const w = u.type === "hero" ? 18 : 14;
-      drawBar(Math.round(u.x / 2) - (w >> 1), Math.round(u.y / 2) + 6 - HB_TOP[u.type] - (u.type === "hero" ? 6 : 0), w, u.hp / u.maxHp, u.team);
+      if (u.hp >= u.maxHp && !selected.includes(u) && !(u.hb && u.hb.trail > u.hb.shown)) { if (u.hb) u.hb.seen = 0; continue; }
+      const w = u.type === "hero" ? 16 : 12;
+      drawBar(Math.round(u.x / 2) - (w >> 1), Math.round(u.y / 2) + 6 - HB_TOP[u.type] - (u.type === "hero" ? 6 : 0), w, u.hp / u.maxHp, u.team, u);
     }
 
     for (const b of buildings) {
@@ -3359,21 +3426,29 @@
         continue;
       }
 
-      if (b.hp >= b.maxHp && !selected.includes(b)) continue;
-      drawBar(bx, by, w, b.hp / b.maxHp, b.team);
+      if (b.hp >= b.maxHp && !selected.includes(b)) { if (b.hb) b.hb.seen = 0; continue; }
+      drawBar(bx, by, w, b.hp / b.maxHp, b.team, b);
     }
   }
 
+  // stavba: stejný tenký pruh, modrá náplň s přebíhajícím leskem
   function drawProgressBar(x, y, w, pct) {
-    const fw = Math.max(1, Math.round(w * clamp(pct, 0, 1)));
+    const f = 1 / HD;
+    const fw = Math.max(f, Math.round(w * clamp(pct, 0, 1) * HD) / HD);
     g.fillStyle = "#15121f";
-    g.fillRect(x - 1, y - 1, w + 2, 4);
+    g.fillRect(x - f, y, w + 2 * f, 2 * f);
+    g.fillRect(x, y - f, w, 4 * f);
     g.fillStyle = "#1c2a46";
-    g.fillRect(x, y, w, 2);
-    g.fillStyle = "#58a6e0";
-    g.fillRect(x, y, fw, 2);
-    g.fillStyle = "rgba(255,255,255,0.4)";
-    g.fillRect(x, y, fw, 1);
+    g.fillRect(x, y, w, 2 * f);
+    g.fillStyle = "#6fb2f0";
+    g.fillRect(x, y, fw, f);
+    g.fillStyle = "#3f7fd0";
+    g.fillRect(x, y + f, fw, f);
+    const sx = Math.round(((clock * 18) % (w + 6)) * HD) / HD - 3;
+    if (sx >= 0 && sx < fw - f) {
+      g.fillStyle = "#e0f2ff";
+      g.fillRect(x + sx, y, f, 2 * f);
+    }
   }
 
   function selectionRing(e) {
