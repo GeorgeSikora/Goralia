@@ -2998,9 +2998,15 @@
     let c = ringCache.get(key);
 
     if (!c) {
-      const P = new PK.Pix(rx * 2 + 3, ry * 2 + 3);
-      P.ring(rx + 1.5, ry + 1.5, rx + 0.5, ry + 0.5, color, 1);
-      c = P.toCanvas();
+      // prstenec v jemné mřížce: 1 jemný px jasný okraj, pod ním průsvitná vnitřní stopa
+      const P = new PK.Pix((rx * 2 + 3) * HD, (ry * 2 + 3) * HD);
+      const cx = (rx + 1.5) * HD;
+      const cy = (ry + 1.5) * HD;
+      P.ring(cx, cy, (rx + 0.5) * HD - 1, (ry + 0.5) * HD - 1, color, 1);
+      const inner = new PK.Pix(P.w, P.h);
+      inner.ring(cx, cy, (rx + 0.5) * HD - 2, (ry + 0.5) * HD - 2, color, 1);
+      for (let i = 0; i < inner.d.length; i++) if (inner.d[i] && !P.d[i]) P.d[i] = ((90 << 24) | color) >>> 0;
+      c = PK.fine(P);
       ringCache.set(key, c);
     }
 
@@ -3049,16 +3055,19 @@
     g.drawImage(img, footX - ox, footY - U.AY);
 
     const meta = rec.meta || {};
-    const cellX = x => footX - ox + (flip ? U.CELL - 1 - (U.AX + x) : U.AX + x);
+    // poloha jemného bodu buňky (art px, může být .5); zrcadlení po jemných px
+    const cellX = x => footX - ox + (flip ? U.CELL - 0.5 - (U.AX + x) : U.AX + x);
 
     if (meta.eye) {
+      // jednotky mají štěrbinu oka nakreslenou samy; tady jen jemný záblesk a slabá záře
       const ex = cellX(meta.eye[0]);
       const ey = footY + meta.eye[1];
-      const flick = Math.sin(clock * 13 + u.id) > 0.2;
-      g.fillStyle = flick ? "#fff6cc" : "#ffbf45";
-      g.fillRect(ex, ey, 1, 1);
-      g.fillRect(ex + (flip ? -1 : 1), ey, 1, 1);
-      world.light(g, ex, ey, 4, 0xff8f4a, 0.35);
+      const flick = Math.sin(clock * 13 + u.id) > 0.6;
+      if (flick) {
+        g.fillStyle = "#fff6cc";
+        g.fillRect(ex, ey, 0.5, 0.5);
+      }
+      world.light(g, ex + 0.25, ey + 0.25, 3, 0xff8f4a, 0.25);
     }
 
     if (meta.lantern) {
@@ -3094,8 +3103,18 @@
     if (stage === 0) {
       const k = Math.floor(clock * 1.6 + r.x) % t.fruit.length;
       const [fx0, fy0] = t.fruit[k];
-      g.fillStyle = (Math.floor(clock * 6 + r.y) & 1) ? "#fff6cc" : "#ffbf45";
-      g.fillRect(footX - t.ax + fx0 + sway, footY - t.ay + fy0, 1, 1);
+      const bright = Math.floor(clock * 6 + r.y) & 1;
+      const px = footX - t.ax + fx0 + sway;
+      const py = footY - t.ay + fy0;
+      g.fillStyle = bright ? "#fff6cc" : "#ffbf45";
+      g.fillRect(px, py, 0.5, 0.5);
+      if (bright) {
+        g.fillStyle = "rgba(255,224,138,0.55)";
+        g.fillRect(px - 0.5, py, 0.5, 0.5);
+        g.fillRect(px + 0.5, py, 0.5, 0.5);
+        g.fillRect(px, py - 0.5, 0.5, 0.5);
+        g.fillRect(px, py + 0.5, 0.5, 0.5);
+      }
     }
   }
 
@@ -3110,15 +3129,26 @@
     m.sparkle.forEach(([sx, sy], i) => {
       const ph = (clock * 1.3 + i * 0.61 + r.x * 0.01) % 2.4;
       if (ph > 0.28) return;
-      const x = footX - m.ax + sx;
-      const y = footY - m.ay + sy;
-      g.fillStyle = "#fff6cc";
-      g.fillRect(x, y, 1, 1);
-      if (ph < 0.18) {
-        g.fillRect(x - 1, y, 3, 1);
-        g.fillRect(x, y - 1, 1, 3);
-      }
+      sparkleAt(footX - m.ax + sx, footY - m.ay + sy, ph < 0.18, "#fff6cc");
     });
+  }
+
+  // jiskřička v jemné mřížce: bod, na vrcholu záblesku křížek s rameny po jemných px
+  function sparkleAt(x, y, big, color) {
+    g.fillStyle = color;
+    g.fillRect(x, y, 0.5, 0.5);
+    if (big) {
+      g.fillRect(x - 1, y, 0.5, 0.5);
+      g.fillRect(x + 1, y, 0.5, 0.5);
+      g.fillRect(x, y - 1, 0.5, 0.5);
+      g.fillRect(x, y + 1, 0.5, 0.5);
+      g.globalAlpha = 0.6;
+      g.fillRect(x - 0.5, y, 0.5, 0.5);
+      g.fillRect(x + 0.5, y, 0.5, 0.5);
+      g.fillRect(x, y - 0.5, 0.5, 0.5);
+      g.fillRect(x, y + 0.5, 0.5, 0.5);
+      g.globalAlpha = 1;
+    }
   }
 
   function flameAt(x, y, seed, size = 1) {
@@ -3129,15 +3159,22 @@
   const blueprints = new Map();
 
   function blueprint(spr) {
+    if (PK.buildings.blueprint) return PK.buildings.blueprint(spr);
     let c = blueprints.get(spr);
 
     if (!c) {
-      const t = PK.makeCanvas(spr.c.width, spr.c.height);
-      t.g.drawImage(spr.c, 0, 0);
-      t.g.globalCompositeOperation = "source-atop";
-      t.g.fillStyle = spr.hell ? "rgba(200,40,30,0.75)" : "rgba(70,150,255,0.7)";
-      t.g.fillRect(0, 0, t.c.width, t.c.height);
-      c = t.c;
+      // obarvené plátno i jeho jemné dvojče
+      const tint = src => {
+        const t = PK.makeCanvas(src.width, src.height);
+        t.g.drawImage(src, 0, 0);
+        t.g.globalCompositeOperation = "source-atop";
+        t.g.fillStyle = spr.hell ? "rgba(200,40,30,0.75)" : "rgba(70,150,255,0.7)";
+        t.g.fillRect(0, 0, t.c.width, t.c.height);
+        return t.c;
+      };
+      c = tint(spr.c);
+      const fine = PK.hdOf(spr.c);
+      if (fine) PK.hdLater(c, () => tint(fine));
       blueprints.set(spr, c);
     }
 
@@ -3173,15 +3210,28 @@
 
       // pekelná budova se vyvolává ze země (žhnoucí čára), ostatní stojí na lešení
       if (!spr.hell) {
+        // lešení: dvě tyče (světlá a stínová hrana) a příčky po 6 art px
+        const hgt = y0 + spr.h - top;
+        for (const px of [x0 - 1, x0 + spr.w]) {
+          g.fillStyle = "#be9660";
+          g.fillRect(px, top, 0.5, hgt);
+          g.fillStyle = "#6c4a35";
+          g.fillRect(px + 0.5, top, 0.5, hgt);
+        }
         g.fillStyle = "#946b45";
-        g.fillRect(x0 - 1, top, 1, y0 + spr.h - top);
-        g.fillRect(x0 + spr.w, top, 1, y0 + spr.h - top);
+        for (let yy = y0 + spr.h - 3; yy > top; yy -= 6) {
+          g.fillRect(x0 - 1.5, yy, 1.5, 0.5);
+          g.fillRect(x0 + spr.w, yy, 1.5, 0.5);
+        }
       }
 
-      for (let x = x0 - 1; x <= x0 + spr.w; x++) {
-        if (((x + Math.floor(clock * 8)) & 1) === 0) {
-          g.fillStyle = spr.hell ? "#ff8f4a" : "#ffe08a";
-          g.fillRect(x, top, 1, 1);
+      // čára růstu: běžící jemné body
+      const step = Math.floor(clock * 16);
+      for (let x = x0 - 1; x <= x0 + spr.w + 0.5; x += 0.5) {
+        const ph = (x * 2 + step) & 3;
+        if (ph < 2) {
+          g.fillStyle = ph === 0 ? (spr.hell ? "#ffd27a" : "#fff6cc") : (spr.hell ? "#ff8f4a" : "#ffe08a");
+          g.fillRect(x, top, 0.5, 0.5);
         }
       }
 
@@ -3233,12 +3283,7 @@
       s.sparkle.forEach(([sx, sy], i) => {
         const ph = (clock * 1.1 + i * 0.7 + d.x * 0.03) % 2.6;
         if (ph > 0.3) return;
-        g.fillStyle = "#e0ffff";
-        g.fillRect(d.x - s.ax + sx, d.y - s.ay + sy, 1, 1);
-        if (ph < 0.2) {
-          g.fillRect(d.x - s.ax + sx - 1, d.y - s.ay + sy, 3, 1);
-          g.fillRect(d.x - s.ax + sx, d.y - s.ay + sy - 1, 1, 3);
-        }
+        sparkleAt(d.x - s.ax + sx, d.y - s.ay + sy, ph < 0.2, "#e0ffff");
       });
     }
   }
@@ -3353,7 +3398,7 @@
 
       for (let k = 0; k < 4; k++) {
         const a = clock * 2 + k * Math.PI / 2;
-        g.fillRect(Math.round(footX + Math.cos(a) * rx), Math.round(footY + Math.sin(a) * ry), 1, 1);
+        g.fillRect(Math.round((footX + Math.cos(a) * (rx + 0.25)) * 2) / 2, Math.round((footY + Math.sin(a) * (ry + 0.25)) * 2) / 2, 0.5, 0.5);
       }
     } else {
       const spr = PK.buildings.get(e.type);
@@ -3373,11 +3418,14 @@
     const k = Math.round(Math.sin(clock * 4) * 0.5 + 0.5);
     const x1 = x0 + spr.w + 1 + k;
     const y1 = y0 + spr.h + 1 + k;
-    g.fillStyle = "#ffe08a";
-
-    for (const [cx, cy, dx, dy] of [[x0 - k, y0 - k, 1, 1], [x1, y0 - k, -1, 1], [x0 - k, y1, 1, -1], [x1, y1, -1, -1]]) {
-      g.fillRect(dx > 0 ? cx : cx - 4, cy, 5, 1);
-      g.fillRect(cx, dy > 0 ? cy : cy - 4, 1, 5);
+    // rohové závorky: jemná světlá linka a pod ní tmavší stín (čitelné na světlém i tmavém)
+    for (const [cx, cy, dx, dy] of [[x0 - k, y0 - k, 1, 1], [x1 + 0.5, y0 - k, -1, 1], [x0 - k, y1 + 0.5, 1, -1], [x1 + 0.5, y1 + 0.5, -1, -1]]) {
+      g.fillStyle = "rgba(21,18,31,0.55)";
+      g.fillRect(dx > 0 ? cx + 0.5 : cx - 4, cy + 0.5 * dy, 4.5, 0.5);
+      g.fillRect(cx + 0.5 * dx, dy > 0 ? cy + 0.5 : cy - 4, 0.5, 4.5);
+      g.fillStyle = "#ffe08a";
+      g.fillRect(dx > 0 ? cx : cx - 4.5, cy, 5, 0.5);
+      g.fillRect(cx, dy > 0 ? cy : cy - 4.5, 0.5, 5);
     }
   }
 
@@ -3391,34 +3439,37 @@
     g.fillStyle = "rgba(255,224,138,0.12)";
     g.fillRect(xa, ya, xb - xa, yb - ya);
 
-    for (let x = xa; x <= xb; x++) {
-      const on = ((x + off) >> 1) & 1;
+    // běžící čárkovaný rámeček z jemných bodů (čárka 3 jemné px světlá, 2 tmavé)
+    for (let k = 0; k <= (xb - xa) * 2; k++) {
+      const x = xa + k / 2;
+      const on = ((k + off) % 5) < 3;
       g.fillStyle = on ? "#fff6cc" : "#15121f";
-      g.fillRect(x, ya, 1, 1);
-      g.fillRect(x, yb, 1, 1);
+      g.fillRect(x, ya, 0.5, 0.5);
+      g.fillRect(x, yb, 0.5, 0.5);
     }
 
-    for (let y = ya; y <= yb; y++) {
-      const on = ((y + off) >> 1) & 1;
+    for (let k = 0; k <= (yb - ya) * 2; k++) {
+      const y = ya + k / 2;
+      const on = ((k + off) % 5) < 3;
       g.fillStyle = on ? "#fff6cc" : "#15121f";
-      g.fillRect(xa, y, 1, 1);
-      g.fillRect(xb, y, 1, 1);
+      g.fillRect(xa, y, 0.5, 0.5);
+      g.fillRect(xb, y, 0.5, 0.5);
     }
   }
 
   function circlePx(cx, cy, r, color, dash = 0) {
     g.fillStyle = color;
-    const steps = Math.ceil(r * 7);
+    const steps = Math.ceil(r * 2 * 7);
     let lx = null;
     let ly = null;
 
     for (let i = 0; i < steps; i++) {
       const a = i / steps * Math.PI * 2;
       if (dash && Math.floor((a + clock * 0.5) / (Math.PI * 2) * dash * 2) % 2) continue;
-      const x = Math.round(cx + Math.cos(a) * r);
-      const y = Math.round(cy + Math.sin(a) * r);
+      const x = Math.round((cx + Math.cos(a) * r) * HD) / HD;
+      const y = Math.round((cy + Math.sin(a) * r) * HD) / HD;
       if (x === lx && y === ly) continue;
-      g.fillRect(x, y, 1, 1);
+      g.fillRect(x, y, 0.5, 0.5);
       lx = x;
       ly = y;
     }
@@ -3466,10 +3517,14 @@
     const col = inRange ? "#ff8f4a" : "#8a8085";
 
     circlePx(ax, ay, 23.5, col, 12);
+    circlePx(ax, ay, 23, inRange ? "rgba(255,143,74,0.4)" : "rgba(138,128,133,0.4)", 12);
     g.fillStyle = inRange ? "#ffd27a" : "#8a8085";
-    g.fillRect(ax, ay, 1, 1);
+    g.fillRect(ax, ay, 0.5, 0.5);
 
-    for (const [dx, dy] of [[0, -4], [0, 4], [-4, 0], [4, 0]]) g.fillRect(ax + dx, ay + dy, 1, 1);
+    // zaměřovací kříž: čtyři krátká ramena z jemných bodů
+    for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+      for (let k = 3; k <= 5; k += 0.5) g.fillRect(ax + dx * k, ay + dy * k, 0.5, 0.5);
+    }
   }
 
   // Pozice kurzoru ve světě (logické jednotky), nebo null, když kurzor není nad mapou.

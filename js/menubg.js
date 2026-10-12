@@ -64,103 +64,162 @@
     return stops[stops.length - 1][1];
   }
 
+  // Vrstvy se pečou v jemné mřížce (2x2 body na art px) a kreslí se v art px přes měřítko kontextu.
+  const K = 2;
+  const q = v => Math.round(v * K) / K;
+
   function makeLayer(h) {
     const c = document.createElement("canvas");
-    c.width = P;
-    c.height = h;
+    c.width = P * K;
+    c.height = h * K;
     return c;
   }
 
-  // vrstva hor s celým počtem period, takže se plynule opakuje
-  function ridge(g, color, amp, k1, k2, phase) {
-    g.fillStyle = color;
-    const w = Math.PI * 2 / P;
-    const h = g.canvas.height;
-    for (let x = 0; x < P; x++) {
-      const y = Math.round(h - amp * (1.1 + 0.6 * Math.sin(x * w * k1 + phase) + 0.4 * Math.sin(x * w * k2 + phase * 2.3)));
-      g.fillRect(x, y, 1, h - y);
+  // zápis do ImageData po jemných bodech
+  function surface(c) {
+    const g = c.getContext("2d");
+    const img = g.createImageData(c.width, c.height);
+    const set = (x, y, col, a = 255) => {
+      if (x < 0 || y < 0 || x >= c.width || y >= c.height) return;
+      const i = (y * c.width + x) * 4;
+      img.data[i] = (col >> 16) & 255; img.data[i + 1] = (col >> 8) & 255; img.data[i + 2] = col & 255; img.data[i + 3] = a;
+    };
+    return { set, done: () => g.putImageData(img, 0, 0) };
+  }
+
+  // vrstva hor s celým počtem period, takže se plynule opakuje; hřeben má světlou hranu zleva
+  function ridge(c, color, amp, k1, k2, phase) {
+    const { set, done } = surface(c);
+    const w = Math.PI * 2 / (P * K);
+    const h = c.height;
+    const lit = mixRGB(color, 0xffb66b, 0.25);
+    const dark = mixRGB(color, 0x140c2e, 0.25);
+    let prev = 0;
+    for (let x = 0; x < P * K; x++) {
+      const y = Math.round(h - amp * K * (1.1 + 0.6 * Math.sin(x * w * k1 + phase) + 0.4 * Math.sin(x * w * k2 + phase * 2.3)));
+      for (let yy = y; yy < h; yy++) {
+        // stoupající svah ke světlu je světlejší, ve spodní třetině dithered přechod do tmy
+        let col = yy < y + 2 ? (y < prev ? lit : color) : color;
+        if (yy > y + 6 && ((x * 7 + yy * 3) % 11) === 0 && y < prev) col = lit;
+        if ((yy - y) > (h - y) * 0.6 && PK.bayer(x, yy) < ((yy - y) / (h - y) - 0.6) * 1.8) col = dark;
+        set(x, yy, col);
+      }
+      prev = y;
     }
+    done();
   }
 
   function build() {
+    const { bayer } = PK;
     sky = document.createElement("canvas");
-    sky.width = W;
-    sky.height = GY + 2;
-    let g = sky.getContext("2d");
+    sky.width = W * K;
+    sky.height = (GY + 2) * K;
+    const sg = surface(sky);
 
-    for (let y = 0; y < GY + 2; y++) {
-      const q = (y / GY) * 18;
-      for (let x = 0; x < W; x += 2) {
-        const d = ((x >> 1) + y) & 1 ? 0.5 : 0;
-        g.fillStyle = hex(skyColor(Math.min(1, Math.floor(q + d) / 18)));
-        g.fillRect(x, y, 2, 1);
+    for (let y = 0; y < sky.height; y++) {
+      const v = (y / K / GY) * 18;
+      for (let x = 0; x < sky.width; x++) {
+        const lv = Math.floor(v + bayer(x, y) - 0.5);
+        sg.set(x, y, skyColor(Math.min(1, Math.max(0, lv) / 18)));
+      }
+    }
+
+    // měsíc s halo (dithered) a krátery
+    const mx = Math.round(W * 0.74) * K;
+    const my = Math.round(GY * 0.3) * K;
+    for (let y = my - 60; y <= my + 60; y++) {
+      for (let x = mx - 60; x <= mx + 60; x++) {
+        const d = Math.hypot(x + 0.5 - mx, y + 0.5 - my);
+        if (d < 26) {
+          const crater = Math.hypot(x - mx + 8, y - my + 4) < 3.5 || Math.hypot(x - mx - 9, y - my - 8) < 4.5 || Math.hypot(x - mx + 2, y - my - 13) < 2.5;
+          const rim = d > 24.5 || (x - mx) + (y - my) > 26;
+          sg.set(x, y, crater ? 0xe8d3a8 : rim ? 0xf0dcb4 : 0xfff1cf);
+        } else if (d < 52 && bayer(x, y) < (1 - (d - 26) / 26) * 0.35) {
+          sg.set(x, y, mixRGB(skyColor(Math.min(1, y / K / GY)), 0xffe6be, 0.35));
+        }
       }
     }
 
     for (let i = 0; i < 80; i++) {
       const sy = Math.random() * GY * 0.55;
-      g.fillStyle = `rgba(255,244,214,${(0.9 - sy / GY).toFixed(2)})`;
-      g.fillRect(Math.floor(Math.random() * W), Math.floor(sy), 1, 1);
+      const x = Math.floor(Math.random() * sky.width);
+      const y = Math.floor(sy * K);
+      const a = Math.round(255 * (0.9 - sy / GY));
+      sg.set(x, y, 0xfff4d6, a);
+      if (Math.random() < 0.15) { sg.set(x - 1, y, 0xfff4d6, a >> 1); sg.set(x + 1, y, 0xfff4d6, a >> 1); sg.set(x, y - 1, 0xfff4d6, a >> 1); sg.set(x, y + 1, 0xfff4d6, a >> 1); }
     }
-
-    const mx = Math.round(W * 0.74);
-    const my = Math.round(GY * 0.3);
-    g.fillStyle = "rgba(255,230,190,0.12)";
-    g.beginPath(); g.arc(mx, my, 26, 0, 7); g.fill();
-    g.fillStyle = "#fff1cf";
-    g.beginPath(); g.arc(mx, my, 13, 0, 7); g.fill();
-    g.fillStyle = "#e8d3a8";
-    g.fillRect(mx - 5, my - 3, 3, 3);
-    g.fillRect(mx + 3, my + 3, 4, 3);
+    sg.done();
 
     layers = {};
     layers.far = makeLayer(70);
-    ridge(layers.far.getContext("2d"), "#6a3f74", 22, 3, 7, 1.1);
+    ridge(layers.far, 0x6a3f74, 22, 3, 7, 1.1);
 
     layers.near = makeLayer(54);
-    ridge(layers.near.getContext("2d"), "#47295f", 17, 5, 11, 4.2);
+    ridge(layers.near, 0x47295f, 17, 5, 11, 4.2);
 
+    // les na obzoru: siluety jehličnanů po jemných řádcích, větve stupňovité
     layers.forest = makeLayer(30);
-    g = layers.forest.getContext("2d");
-    g.fillStyle = "#1d1533";
-    for (let x = 0; x < P; x += 6) {
-      const h = 14 + Math.floor(hash(x) * 14);
-      for (let r = 0; r < h; r++) g.fillRect(x + (r >> 2) - (h >> 3), 30 - r, Math.max(1, 6 - (r >> 2)), 1);
+    {
+      const { set, done } = surface(layers.forest);
+      const H2 = 30 * K;
+      for (let x = 0; x < P * K; x += 11) {
+        const h = (14 + Math.floor(hash(x) * 14)) * K;
+        const cx = x + 4;
+        for (let r = 0; r < h; r++) {
+          const half = Math.max(0.5, (r / h) * 7.5 - ((r % 7) < 3 ? 1.5 : 0));
+          const y = H2 - h + r;
+          for (let xx = Math.round(cx - half); xx <= Math.round(cx + half); xx++) set(((xx % (P * K)) + P * K) % (P * K), y, xx < cx - half + 1 && r > 2 ? 0x2a1f45 : 0x1d1533);
+        }
+      }
+      for (let y = H2 - 6; y < H2; y++) for (let x = 0; x < P * K; x++) set(x, y, 0x1d1533);
+      done();
     }
 
     layers.ground = makeLayer(H - GY);
-    g = layers.ground.getContext("2d");
-    for (let y = 0; y < H - GY; y++) {
-      g.fillStyle = hex(mixRGB(0x40602f, 0x15261f, y / (H - GY)));
-      g.fillRect(0, y, P, 1);
-    }
-    for (let i = 0; i < 1100; i++) {
-      g.fillStyle = Math.random() < 0.5 ? "#5f8a3f" : Math.random() < 0.5 ? "#2c4a2b" : "#6a5236";
-      g.fillRect(Math.floor(Math.random() * P), Math.floor(Math.random() * (H - GY)), 1, 2);
+    {
+      const { set, done } = surface(layers.ground);
+      const GH = (H - GY) * K;
+      for (let y = 0; y < GH; y++) {
+        for (let x = 0; x < P * K; x++) {
+          const t = y / GH + (bayer(x, y) - 0.5) * 0.06;
+          set(x, y, mixRGB(0x40602f, 0x15261f, Math.max(0, Math.min(1, t))));
+        }
+      }
+      // stébla: 1x2 jemné body, světlá špička
+      for (let i = 0; i < 2600; i++) {
+        const x = Math.floor(Math.random() * P * K);
+        const y = Math.floor(Math.random() * GH);
+        const r = Math.random();
+        const c = r < 0.5 ? 0x5f8a3f : r < 0.75 ? 0x2c4a2b : 0x6a5236;
+        set(x, y, c);
+        set(x, y + 1, mixRGB(c, 0x15261f, 0.4));
+        if (r < 0.2) set(x, y - 1, 0x86ae58);
+      }
+      done();
     }
   }
 
-  // Stejná vinjeta jako ve hře: od okrajů tma, která se po pixelech (ordered dithering) ztrácí do středu.
+  // Stejná vinjeta jako ve hře: od okrajů tma, která se po jemných bodech (ordered dithering) ztrácí do středu.
   function buildVignette() {
-    const { bayer, smooth, makeCanvas } = PK;
-    const { c, g } = makeCanvas(W, H);
-    const img = g.createImageData(W, H);
+    const { bayer, smooth } = PK;
+    const c = document.createElement("canvas");
+    c.width = W * K;
+    c.height = H * K;
+    const { set, done } = surface(c);
 
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
-        const dx = (x - W / 2) / (W / 2);
-        const dy = (y - H / 2) / (H / 2);
+    for (let y = 0; y < c.height; y++) {
+      for (let x = 0; x < c.width; x++) {
+        const dx = (x - c.width / 2) / (c.width / 2);
+        const dy = (y - c.height / 2) / (c.height / 2);
         const d = Math.pow(Math.abs(dx), 2.2) * 1.0 + Math.pow(Math.abs(dy), 2.4) * 0.8;
-        const v = smooth(0.18, 1.1, d) * 5;
+        const v = smooth(0.18, 1.1, d) * 7;
         const lv = Math.floor(v + bayer(x, y) - 0.5 + 0.5);
         if (lv <= 0) continue;
-        const i = (y * W + x) * 4;
-        img.data[i] = 0x0a; img.data[i + 1] = 0x08; img.data[i + 2] = 0x16;
-        img.data[i + 3] = Math.min(235, lv * 50);
+        set(x, y, 0x0a0816, Math.min(235, lv * 36));
       }
     }
 
-    g.putImageData(img, 0, 0);
+    done();
     return c;
   }
 
@@ -168,10 +227,13 @@
     const cw = Math.max(1, canvas.clientWidth);
     const ch = Math.max(1, canvas.clientHeight);
     W = Math.max(320, Math.ceil(H * cw / ch));
-    canvas.width = W;
-    canvas.height = H;
+    canvas.width = W * K;
+    canvas.height = H * K;
     GY = Math.round(H * 0.56);
+    // kreslí se v art px, plátno má jemnou hustotu (sprity se vykreslí přes svá jemná dvojčata)
+    ctx.setTransform(K, 0, 0, K, 0, 0);
     ctx.imageSmoothingEnabled = false;
+    ctx.hdDraw = true;
     vignette = buildVignette();
     build();
     clouds = [];
@@ -242,13 +304,22 @@
 
   function drawTree(t) {
     const sp = PK.props.trees[t.v];
-    const x = Math.round(t.x - cam);
+    const x = q(t.x - cam);
     const y = Math.round(t.y) + 14;
-    const sway = Math.sin(clock * 1.3 + t.s) > 0.35 ? 1 : 0;
-    ctx.fillStyle = "rgba(0,0,0,0.3)";
-    ctx.fillRect(x - 8, y - 2, 20, 4);
+    const sway = Math.sin(clock * 1.3 + t.s) > 0.35 ? 0.5 : 0;
+    shadow(x + 2, y, 10, 2);
     ctx.drawImage(sp.trunk, x - sp.ax, y - sp.ay);
     ctx.drawImage(sp.crown[0], x - sp.ax + sway, y - sp.ay);
+  }
+
+  // stín: plochá elipsa z jemných řádků
+  function shadow(cx, cy, rx, ry) {
+    ctx.fillStyle = "rgba(20,12,40,0.32)";
+    for (let r = -ry * K; r < ry * K; r++) {
+      const k = (r + 0.5) / (ry * K);
+      const hw = q(rx * Math.sqrt(1 - k * k));
+      ctx.fillRect(cx - hw, cy + r / K, hw * 2, 1 / K);
+    }
   }
 
   function sceneryAt(i) {
@@ -398,7 +469,7 @@
   /* ---------- kreslení ---------- */
   function tile(img, factor, y) {
     const off = Math.floor(cam * factor) % P;
-    for (let x = -off; x < W; x += P) ctx.drawImage(img, x, y);
+    for (let x = -off; x < W; x += P) ctx.drawImage(img, x, y, P, img.height / K);
   }
 
   function drawScenery() {
@@ -406,17 +477,16 @@
       const s = sceneryAt(i);
       if (!s) continue;
       const spr = PK.buildings.get(s.type, s.team);
-      const x = Math.round(s.x - cam);
+      const x = q(s.x - cam);
       const fy = GY + Math.round(s.dy);
-      ctx.fillStyle = "rgba(0,0,0,0.28)";
-      ctx.fillRect(x - (spr.w >> 1) + 6, fy - 4, spr.w - 12, 7);
+      shadow(x + 4, fy, spr.w / 2 - 4, 3.5);
       ctx.drawImage(spr.c, x - spr.ax, fy - spr.ay);
     }
   }
 
   function drawUnit(u) {
-    const footX = Math.round(u.x - cam);
-    const footY = Math.round(u.y);
+    const footX = q(u.x - cam);
+    const footY = q(u.y);
     const flip = u.face < 0;
 
     if (u.dead) {
@@ -427,8 +497,7 @@
       return;
     }
 
-    ctx.fillStyle = "rgba(0,0,0,0.3)";
-    ctx.fillRect(footX - 6, footY - 1, 12, 3);
+    shadow(footX, footY + 0.5, 6, 1.5);
 
     let anim = "idle";
     let idx = Math.floor(clock * 1.4 + u.id) & 1;
@@ -443,28 +512,33 @@
 
   function draw() {
     ctx.save();
-    if (shake > 0.1) ctx.translate(Math.round(rnd(-shake, shake)), Math.round(rnd(-shake, shake)));
+    if (shake > 0.1) ctx.translate(q(rnd(-shake, shake)), q(rnd(-shake, shake)));
 
-    ctx.drawImage(sky, 0, 0);
+    ctx.drawImage(sky, 0, 0, W, GY + 2);
 
+    // mraky: ploché pruhy po jemných řádcích, spodní hrana tmavší
     for (const c of clouds) {
-      ctx.fillStyle = "rgba(255,190,190,0.18)";
-      for (let dy = -3; dy <= 3; dy++) {
-        const w = c.w * Math.sqrt(1 - (dy / 4) * (dy / 4));
-        ctx.fillRect(Math.round(c.x - w / 2), Math.round(c.y + dy * 2), Math.round(w), 2);
+      for (let r = -6 * K; r <= 6 * K; r++) {
+        const k = r / (7 * K);
+        const w = q(c.w * Math.sqrt(1 - k * k) * (1 + 0.08 * Math.sin(r * 1.7 + c.w)));
+        ctx.fillStyle = r > 3 * K ? "rgba(150,90,140,0.16)" : "rgba(255,190,190,0.16)";
+        ctx.fillRect(q(c.x - w / 2), q(c.y) + r / K, w, 1 / K);
       }
     }
 
+    // ptáci: křídla z jemných bodů, mávají
     ctx.fillStyle = "#2a1c3c";
+    const f = 1 / K;
     for (const b of birds) {
       const up = Math.sin(clock * 9 + b.p) > 0 ? -1 : 1;
-      const x = Math.round(b.x);
-      const y = Math.round(b.y);
-      ctx.fillRect(x, y, 1, 1);
-      ctx.fillRect(x - 1, y + up, 1, 1);
-      ctx.fillRect(x + 1, y + up, 1, 1);
-      ctx.fillRect(x - 2, y + up * 2, 1, 1);
-      ctx.fillRect(x + 2, y + up * 2, 1, 1);
+      const x = q(b.x);
+      const y = q(b.y);
+      ctx.fillRect(x, y, f * 2, f);
+      for (let i = 1; i <= 3; i++) {
+        const dy = up * (i < 3 ? i : 2) * f;
+        ctx.fillRect(x - i * f, y + dy, f, f);
+        ctx.fillRect(x + f + i * f, y + dy, f, f);
+      }
     }
 
     tile(layers.far, 0.08, GY - 70);
@@ -485,62 +559,80 @@
       else drawUnit(it.u);
     }
 
+    // šípy: dřík z jemných bodů, světlý hrot, letka
     for (const a of arrows) {
       const arc = k => a.y0 + (a.y1 - a.y0) * k - Math.sin(k * Math.PI) * 22;
       const k = a.t / a.T;
-      const k2 = Math.min(1, k + 0.05);
-      ctx.strokeStyle = "#f4e2b0";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(Math.round(a.x0 + (a.x1 - a.x0) * k - cam) + 0.5, Math.round(arc(k)) + 0.5);
-      ctx.lineTo(Math.round(a.x0 + (a.x1 - a.x0) * k2 - cam) + 0.5, Math.round(arc(k2)) + 0.5);
-      ctx.stroke();
+      const k2 = Math.min(1, k + 0.02);
+      const x = a.x0 + (a.x1 - a.x0) * k - cam;
+      const y = arc(k);
+      let ux = (a.x1 - a.x0) * (k2 - k) || 1e-3;
+      let uy = arc(k2) - y;
+      const l = Math.hypot(ux, uy) || 1;
+      ux /= l; uy /= l;
+      ctx.fillStyle = "#946b45";
+      for (let i = 1; i <= 8; i++) ctx.fillRect(q(x - ux * i * f), q(y - uy * i * f), f, f);
+      ctx.fillStyle = "#f4e2b0";
+      ctx.fillRect(q(x), q(y), f, f);
+      ctx.fillStyle = "#e8e6e8";
+      ctx.fillRect(q(x - ux * 4 - uy * f), q(y - uy * 4 + ux * f), f, f);
+      ctx.fillRect(q(x - ux * 4 + uy * f), q(y - uy * 4 - ux * f), f, f);
     }
 
     for (const r of rocks) {
       const k = r.t / r.T;
-      const x = Math.round(r.sx + (r.tx - r.sx) * k - cam);
-      const y = Math.round(-20 + (r.ty - 8 + 20) * k * k);
-      ctx.strokeStyle = `rgba(255,90,60,${(0.2 + k * 0.6).toFixed(2)})`;
-      ctx.strokeRect(Math.round(r.tx - cam) - 6 * k - 2, Math.round(r.ty) - 1, 12 * k + 4, 2);
+      const x = q(r.sx + (r.tx - r.sx) * k - cam);
+      const y = q(-20 + (r.ty - 8 + 20) * k * k);
+      // cíl dopadu: jemná rudá elipsa
+      ellipse(q(r.tx - cam), q(r.ty), 2 + 6 * k, 1 + 3 * k, `rgba(255,90,60,${(0.2 + k * 0.6).toFixed(2)})`);
+      // hořící balvan: ohon, kámen se světlou hranou, žhavé jádro
       ctx.fillStyle = "#ffbf45";
-      ctx.fillRect(x - 3, y - 6, 3, 6);
+      ctx.fillRect(x - 2.5, y - 6, 2, 4);
+      ctx.fillStyle = "#ff8f4a";
+      ctx.fillRect(x - 2, y - 7.5, 1, 2);
       ctx.fillStyle = "#3a2c22";
-      ctx.fillRect(x - 3, y - 3, 6, 6);
+      ctx.fillRect(x - 3, y - 2.5, 6, 5);
+      ctx.fillRect(x - 2.5, y - 3, 5, 6);
+      ctx.fillStyle = "#5a463a";
+      ctx.fillRect(x - 2.5, y - 2.5, 2.5, 0.5);
+      ctx.fillRect(x - 2.5, y - 2, 0.5, 2);
       ctx.fillStyle = "#ff7a2c";
-      ctx.fillRect(x - 1, y - 1, 2, 2);
+      ctx.fillRect(x - 0.5, y - 0.5, 1.5, 1.5);
+      ctx.fillStyle = "#ffd27a";
+      ctx.fillRect(x, y, 0.5, 0.5);
     }
 
     for (const r of rings) {
       const k = r.t / 0.5;
-      ctx.strokeStyle = `rgba(255,220,160,${(1 - k).toFixed(2)})`;
-      ctx.beginPath();
-      ctx.ellipse(Math.round(r.x - cam), Math.round(r.y), 6 + k * 30, 3 + k * 14, 0, 0, 7);
-      ctx.stroke();
+      ellipse(q(r.x - cam), q(r.y), 6 + k * 30, 3 + k * 14, `rgba(255,220,160,${(1 - k).toFixed(2)})`);
     }
 
     for (const p of puffs) {
       const k = p.t / p.life;
-      const x = Math.round(p.x - cam);
-      const y = Math.round(p.y);
+      const x = q(p.x - cam);
+      const y = q(p.y);
       if (p.ember) {
         ctx.fillStyle = `rgba(255,${150 + Math.round(80 * (1 - k))},60,${(1 - k).toFixed(2)})`;
-        ctx.fillRect(x, y, 1, 1);
+        ctx.fillRect(x, y, f, f);
       } else if (p.fire) {
         ctx.fillStyle = k < 0.5 ? `rgba(255,200,80,${(1 - k).toFixed(2)})` : `rgba(255,100,40,${(1 - k).toFixed(2)})`;
-        ctx.fillRect(x, y, 2, 2);
+        ctx.fillRect(x, y, 1, 1);
+        ctx.fillRect(x + f, y - f, f, f);
       } else {
-        const r = Math.round(p.r + k * (p.dark ? 8 : 6));
+        // obláček: zaoblený, po jemných bodech
+        const r = q(p.r + k * (p.dark ? 8 : 6));
         ctx.fillStyle = p.dust ? `rgba(150,120,90,${(0.35 * (1 - k)).toFixed(2)})`
           : p.dark ? `rgba(60,50,60,${(0.6 * (1 - k)).toFixed(2)})`
             : `rgba(190,170,190,${(0.4 * (1 - k)).toFixed(2)})`;
-        ctx.fillRect(x - (r >> 1), y, r, Math.max(1, r - 1));
+        const hh = Math.max(f, r - 1);
+        ctx.fillRect(x - r / 2 + f, y, Math.max(f, r - 2 * f), hh);
+        ctx.fillRect(x - r / 2, y + f, r, Math.max(f, hh - 2 * f));
       }
     }
 
     for (const p of sparks) {
       ctx.fillStyle = hex(p.c);
-      ctx.fillRect(Math.round(p.x - cam), Math.round(p.y), 1, 1);
+      ctx.fillRect(q(p.x - cam), q(p.y), f, f);
     }
 
     const gl = ctx.createLinearGradient(0, GY - 20, 0, GY + 20);
@@ -556,7 +648,22 @@
     }
 
     ctx.restore();
-    if (vignette) ctx.drawImage(vignette, 0, 0);
+    if (vignette) ctx.drawImage(vignette, 0, 0, W, H);
+  }
+
+  // elipsa z jemných bodů (rázová vlna, cíl dopadu)
+  function ellipse(cx, cy, rx, ry, color) {
+    ctx.fillStyle = color;
+    const steps = Math.ceil((rx + ry) * 2 * K * 2);
+    let lx = null, ly = null;
+    for (let i = 0; i < steps; i++) {
+      const a = i / steps * Math.PI * 2;
+      const x = q(cx + Math.cos(a) * rx);
+      const y = q(cy + Math.sin(a) * ry);
+      if (x === lx && y === ly) continue;
+      ctx.fillRect(x, y, 1 / K, 1 / K);
+      lx = x; ly = y;
+    }
   }
 
   function frame(now) {
