@@ -3321,6 +3321,7 @@
     }
 
     g.drawImage(spr.c, x0, y0);
+    if (shading) PK.shaders.sheen(x0, y0, x0 + spr.w, y0 + spr.h, 1);
 
     if (b.flashT > 0) {
       g.globalAlpha = 0.45;
@@ -3367,6 +3368,7 @@
     }
 
     g.drawImage(s.c, d.x - s.ax, d.y - s.ay);
+    if (shading && d.name.startsWith("crystal")) PK.shaders.sheen(d.x - s.ax, d.y - s.ay, d.x - s.ax + s.w, d.y - s.ay + s.h, 0);
 
     if (s.flame) flameAt(d.x - s.ax + s.flame.x, d.y - s.ay + s.flame.y + 1, d.x, 1);
 

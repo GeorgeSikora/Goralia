@@ -22,6 +22,7 @@
   const MAXL = 24; // světel v jednom snímku
   const MAXO = 96; // překážek celkem (každé světlo si vezme nejbližší)
   const PER_LIGHT = 6; // překážek na jedno světlo
+  const MAXS = 24; // lesklých ploch (krystaly, okna budov)
   const BANDS = 5; // pásma intenzity světla (na jednotku jasu)
 
   /* Denní doba: během zápasu se pomalu střídá den, soumrak, noc a úsvit (jeden oběh = CYCLE s).
@@ -99,6 +100,14 @@
     });
   };
 
+  // lesklá plocha (art px): kind 0 = krystal, 1 = okna budovy
+  const sheens = [];
+  S.sheen = function (x0, y0, x1, y1, kind) {
+    if (!S.recording || sheens.length >= MAXS) return;
+    if (x1 < vx0 || x0 > vx1 || y1 < vy0 || y0 > vy1) return;
+    sheens.push([x0, y0, x1, y1, kind]);
+  };
+
   // svislý válec: pata (x, y), poloměr r, výška h (art px)
   S.occluder = function (x, y, r, h) {
     if (S.recording && occ.length < 400) occ.push({ x, y, r, h });
@@ -112,6 +121,7 @@
     vy1 = v.y + v.h;
     S.recording = true;
     occ.length = 0;
+    sheens.length = 0;
   };
 
   S.end = function () {
@@ -145,6 +155,12 @@ uniform vec4 uLA[${MAXL}]; // zem x, y, výška, dosah
 uniform vec4 uLB[${MAXL}]; // barva rgb, síla
 uniform vec4 uLC[${MAXL}]; // první překážka, počet
 uniform vec4 uOc[${MAXO}]; // pata x, y, poloměr, výška
+uniform sampler2D uWater; // maska vody po art px: r = voda, g = počet vodních buněk od břehu (vč. této)
+uniform vec2 uMap;
+uniform float uTime;
+uniform int uNS;
+uniform vec4 uSh[${MAXS}]; // lesklá plocha x0, y0, x1, y1
+uniform float uShK[${MAXS}]; // 0 = krystal, 1 = okna budovy
 void main() {
   ivec2 px = ivec2(int(gl_FragCoord.x), int(uH - gl_FragCoord.y));
   vec3 src = texelFetch(uSrc, px, 0).rgb;
@@ -153,6 +169,29 @@ void main() {
   vec2 cell = floor(w * ${HD}.0);
   vec2 wf = (cell + 0.5) / ${HD}.0;
   float dth = bayer4(cell);
+
+  // odraz ve vodě: hladina zrcadlí břeh nad sebou (u břehu nejvíc, dál slábne) a pomalu se vlní
+  vec2 mc = floor(wf);
+  if (mc.x >= 0.0 && mc.y >= 0.0 && mc.x < uMap.x && mc.y < uMap.y && src.b >= src.r) {
+    vec2 wm = texelFetch(uWater, ivec2(mc), 0).rg;
+    if (wm.r > 0.5) {
+      float shore = mc.y + 1.0 - floor(wm.g * 255.0 + 0.5);
+      float dist = wf.y - shore;
+      // u břehu nejsilnější, po pásmech podle vzdálenosti (bez šumu)
+      float fade = dist < 7.0 ? 0.42 : dist < 14.0 ? 0.28 : dist < 22.0 ? 0.14 : 0.0;
+      // vlnka posouvá odraz po celých jemných px, aby zůstal pixelartový
+      float rx = floor(sin(wf.y * 1.7 + uTime * 1.4 + floor(wf.x / 7.0)) * 1.2 + 0.5) / ${HD}.0;
+      vec2 rw = vec2(wf.x + rx, shore - dist);
+      vec2 rp = floor((rw - uCam) * ${HD}.0 * uZoom);
+      vec2 rm = floor(rw);
+      bool dry = rm.y < 0.0 || texelFetch(uWater, ivec2(clamp(rm, vec2(0.0), uMap - 1.0)), 0).r < 0.5;
+      if (fade > 0.0 && dry && rp.x >= 0.0 && rp.y >= 0.0 && rp.x < float(textureSize(uSrc, 0).x) && rp.y < uH) {
+        vec3 rc = texelFetch(uSrc, ivec2(rp), 0).rgb;
+        // odraz přebírá barvu vody, ať hladina zůstane modrá
+        src = mix(src, rc * vec3(0.55, 0.72, 0.95) + src * 0.25, fade);
+      }
+    }
+  }
 
   vec3 acc = vec3(0.0);
   for (int i = 0; i < ${MAXL}; i++) {
@@ -174,8 +213,8 @@ void main() {
     for (int j = 0; j < ${PER_LIGHT}; j++) {
       if (j >= on) break;
       vec4 O = uOc[o0 + j];
-      // vlastní tělo překážky se nezastíní
-      if (abs(wf.x - O.x) < O.z && wf.y <= O.y + O.z * 0.4 && wf.y >= O.y - O.w) continue;
+      // vlastní tělo překážky se nezastíní (sprite bývá vyšší než válec, proto 2× výška)
+      if (abs(wf.x - O.x) < O.z * 1.6 && wf.y <= O.y + O.z * 0.4 && wf.y >= O.y - O.w * 2.0) continue;
       float t = clamp(dot(O.xy - wf, LP) / l2, 0.0, 1.0);
       float dd = length(wf + LP * t - O.xy);
       // paprsek k světlu stoupá: blokuje jen, když je u překážky ještě pod jejím vrcholem
@@ -205,6 +244,21 @@ void main() {
   float e = smoothstep(0.6, 0.82, lum) * smoothstep(0.3, 0.5, sat);
   L = mix(L, max(L, vec3(1.08)), e);
   vec3 lit = src * L;
+
+  // lesk krystalů a oken: tenký odlesk občas pomalu přejede plochou, krystaly navíc odrážejí světla okolo
+  for (int i = 0; i < ${MAXS}; i++) {
+    if (i >= uNS) break;
+    vec4 R = uSh[i];
+    if (wf.x < R.x || wf.x > R.z || wf.y < R.y || wf.y > R.w) continue;
+    bool crystal = uShK[i] < 0.5;
+    bool glass = crystal ? (src.b > 0.45 && src.b >= src.r && src.b >= src.g * 0.85) : (src.r > 0.8 && src.g > 0.55 && src.b < 0.7);
+    if (!glass) continue;
+    float u = (wf.x - R.x) * 0.8 + (wf.y - R.y);
+    float ph = fract(u / 36.0 - uTime / (crystal ? 6.0 : 9.0) + R.x * 0.013 + R.y * 0.007);
+    lit += step(ph, 0.04) * (crystal ? 0.3 : 0.16) * vec3(1.0, 0.98, 0.92);
+    if (crystal) lit += src * acc * 0.2;
+  }
+
   o = vec4(lit, 1.0);
 }`;
 
@@ -308,6 +362,37 @@ void main() {
 
   let P;
   let srcTex;
+  let waterTex;
+  let waterOf = null; // terén, ze kterého je maska vody
+  const mapSize = [1, 1];
+
+  // maska vody po art px z PK.world.zoneAt; staví se jednou pro každou mapu
+  function waterMask() {
+    const world = PK.world;
+    const t = world && world.terrain;
+    if (!t || t === waterOf) return;
+    waterOf = t;
+    const W = t.width;
+    const H = t.height;
+    const WATER = world.Z.WATER;
+    const d = new Uint8Array(W * H * 4);
+    for (let x = 0; x < W; x++) {
+      let run = 0;
+      for (let y = 0; y < H; y++) {
+        const i = (y * W + x) * 4;
+        if (world.zoneAt(x, y) === WATER) {
+          run = Math.min(255, run + 1);
+          d[i] = 255;
+          d[i + 1] = run;
+        } else run = 0;
+        d[i + 3] = 255;
+      }
+    }
+    mapSize[0] = W;
+    mapSize[1] = H;
+    gl.bindTexture(gl.TEXTURE_2D, waterTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, d);
+  }
   let litT;
   let brightT;
   let blurA;
@@ -326,6 +411,8 @@ void main() {
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
     srcTex = texture(gl.NEAREST);
+    waterTex = texture(gl.NEAREST);
+    waterOf = null;
     litT = target(gl.NEAREST);
     brightT = target(gl.LINEAR);
     blurA = target(gl.LINEAR);
@@ -352,6 +439,8 @@ void main() {
   const LB = new Float32Array(MAXL * 4);
   const LC = new Float32Array(MAXL * 4);
   const OC = new Float32Array(MAXO * 4);
+  const SH = new Float32Array(MAXS * 4);
+  const SK = new Float32Array(MAXS);
 
   function pack(view, gain) {
     const vx0 = view.x;
@@ -435,14 +524,17 @@ void main() {
     const nl = pack(view, m.gain);
 
     gl.disable(gl.BLEND);
+    // 1) osvětlení; zdroj má řádek 0 nahoře, framebuffery mají y zdola,
+    // takže výsledek leží ve framebufferech vzpřímeně a plátno ho ukáže správně
+    gl.activeTexture(gl.TEXTURE0);
+    size(litT, W, H); // (váže texturu cíle, proto před vazbou zdroje)
+    waterMask();
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, waterTex);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, srcTex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
 
-    // 1) osvětlení; zdroj má řádek 0 nahoře, framebuffery mají y zdola,
-    // takže výsledek leží ve framebufferech vzpřímeně a plátno ho ukáže správně
-
-    size(litT, W, H);
     gl.bindFramebuffer(gl.FRAMEBUFFER, litT.fb);
     gl.viewport(0, 0, W, H);
     let u = P.light.u;
@@ -457,6 +549,16 @@ void main() {
     gl.uniform4fv(u.uLB, LB);
     gl.uniform4fv(u.uLC, LC);
     gl.uniform4fv(u.uOc, OC);
+    gl.uniform1i(u.uWater, 1);
+    gl.uniform2fv(u.uMap, mapSize);
+    gl.uniform1f(u.uTime, (performance.now() / 1000) % 3600);
+    gl.uniform1i(u.uNS, sheens.length);
+    sheens.forEach((s, i) => {
+      SH.set(s.slice(0, 4), i * 4);
+      SK[i] = s[4];
+    });
+    gl.uniform4fv(u.uSh, SH);
+    gl.uniform1fv(u.uShK, SK);
     quad();
 
     // 2) a 3) bloom ve čtvrtinovém rozlišení
