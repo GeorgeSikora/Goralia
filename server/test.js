@@ -21,6 +21,7 @@ const PORT = 3100 + Math.floor(Math.random() * 500);
 const URL = `ws://localhost:${PORT}`;
 const ADMIN_PASSWORD = "test-admin-heslo";
 
+const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 /* ---------- data map ---------- */
@@ -159,6 +160,74 @@ function testSimulation() {
   testBuilding();
   testSmithy();
   testRepair();
+  testCollisions();
+}
+
+// Budovy nejdou procházet: jednotky je obcházejí, k okraji ale dojdou (těžba, stavba, útok).
+function testCollisions() {
+  const run = (m, seconds, each) => {
+    for (let t = 0; t < seconds; t += TICK) { m.step(TICK); m.endTick(); if (each) each(); }
+  };
+  const newMatch = () => new Match(MAPS.get("valley"), [{ name: "A" }, { name: "B" }], { countdown: 0 });
+  const deep = (u, f, m = 6) => u.x > f.x0 + m && u.x < f.x1 - m && u.y > f.y0 + m && u.y < f.y1 - m;
+
+  let m = newMatch();
+  const hq = m.hqOf("blue");
+  const f = hq.foot;
+  assert(f && m.nav.isBlocked(hq.x, hq.y + 10), "půdorys budovy blokuje průchod");
+  assert(!m.terrain.isBlocked(hq.x, hq.y + 10), "mapový terén zůstává beze změny");
+  for (const u of m.units) for (const b of m.buildings) assert(!deep(u, b.foot), "jednotky nezačínají v budově");
+
+  // přímý pochod přes radnici: jednotka ji obejde a dojde
+  const midY = (f.y0 + f.y1) / 2;
+  const s = m.createUnit("soldier", "blue", f.x0 - 30, midY);
+  m.command("blue", { c: "order", k: "move", ids: [s.id], x: f.x1 + 30, y: midY });
+  let inside = false;
+  run(m, 15, () => { if (deep(s, f)) inside = true; });
+  assert(!inside, "voják neprojde radnicí");
+  assert(!s.order && Math.abs(s.x - (f.x1 + 30)) < 8, "voják budovu obešel a došel");
+
+  // rozkaz do středu budovy: jednotka zastaví vedle ní
+  m.command("blue", { c: "order", k: "move", ids: [s.id], x: hq.x, y: hq.y });
+  run(m, 10);
+  assert(!s.order && !deep(s, f, 0), "jednotka poslaná do budovy zastaví u ní");
+
+  // dělníci dál těží a vykládají v radnici
+  m = newMatch();
+  const gold0 = m.econ.blue.gold;
+  const workers = m.units.filter(u => u.team === "blue" && u.type === "worker");
+  const mine = m.resources.filter(r => r.type === "gold").sort((a, b) => distance(a, m.hqOf("blue")) - distance(b, m.hqOf("blue")))[0];
+  m.command("blue", { c: "order", k: "gather", ids: workers.map(u => u.id), target: mine.id });
+  run(m, 40);
+  assert(m.econ.blue.gold >= gold0 + 60, `dělníci vozí zlato do radnice (${m.econ.blue.gold - gold0})`);
+
+  // vojáci na blízko i lučištníci poškodí nepřátelskou budovu
+  const foe = m.hqOf("red");
+  const attackers = ["soldier", "archer", "hero"].map(type => m.createUnit(type, "blue", foe.x, foe.foot.y1 + 140));
+  for (const a of attackers) m.command("blue", { c: "order", k: "attack", ids: [a.id], target: foe.id });
+  const hp0 = foe.hp;
+  run(m, 12);
+  assert(foe.hp < hp0 - 150, "útok na budovu funguje");
+  for (const a of attackers) assert(!deep(a, foe.foot, 0), "útočník stojí u zdi, ne v budově");
+
+  // stavba nesmí zasahovat do jiné budovy a nová budova vystrčí jednotky ven
+  m = newMatch();
+  const own = m.hqOf("blue");
+  assert(m.placementProblem("blue", own.x + 95, own.y, "barracks"), "kasárna nejdou postavit přes radnici");
+  const z = m.slotOf("blue").zone;
+  let spot = null;
+  for (let y = z.y0 + 60; y < z.y1 - 60 && !spot; y += 20) {
+    for (let x = z.x0 + 60; x < z.x1 - 60 && !spot; x += 20) if (!m.placementProblem("blue", x, y, "tower")) spot = { x, y };
+  }
+  assert(spot, "na vlastní části mapy je místo na věž");
+  const stand = m.createUnit("soldier", "blue", spot.x, spot.y + 10);
+  const tower = m.createBuilding("tower", "blue", spot.x, spot.y, true);
+  assert(!deep(stand, tower.foot, 0), "jednotku na staveništi stavba odsune");
+
+  // zbořená budova uvolní místo
+  tower.hp = 0;
+  run(m, TICK);
+  assert(!m.nav.isBlocked(spot.x, spot.y + 10), "po zboření jde místem projít");
 }
 
 function testSmithy() {
@@ -292,7 +361,7 @@ function testBuilding() {
         const x = Math.round(hq.x + Math.cos(a) * r);
         const y = Math.round(hq.y + Math.sin(a) * r);
         if (from && Math.hypot(x - from.x, y - from.y) < minDist) continue;
-        if (!m.placementProblem("blue", x, y)) return { x, y };
+        if (!m.placementProblem("blue", x, y, "barracks")) return { x, y };
       }
     }
     return null;

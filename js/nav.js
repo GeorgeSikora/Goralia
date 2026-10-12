@@ -82,6 +82,39 @@
       for (const m of rec.mountains || []) paint(m.pts, m.hw - 1, blocked);
     }
 
+    // Vrstva pro jeden zápas: terén zůstává sdílený s mapou, navíc blokují půdorysy budov.
+    // Pomocná pole A* se sdílí s mapou (hledání cesty je synchronní), počítadlo seq taky.
+    forMatch() {
+      const base = this;
+      const layer = Object.create(Nav.prototype);
+      Object.assign(layer, this);
+      Object.defineProperty(layer, "seq", { get: () => base.seq, set: v => { base.seq = v; } });
+      layer.terrain = this.blocked;
+      layer.blocked = this.blocked.slice();
+      layer.solid = new Uint8Array(this.w * this.h); // kolik budov buňku zakrývá
+      return layer;
+    }
+
+    // Přidá (+1) nebo odebere (-1) obdélník budovy; blokují buňky, jejichž střed leží uvnitř.
+    footprint(rect, add) {
+      const cx0 = Math.max(0, Math.ceil(rect.x0 / CELL - 0.5));
+      const cx1 = Math.min(this.w - 1, Math.floor(rect.x1 / CELL - 0.5));
+      const cy0 = Math.max(0, Math.ceil(rect.y0 / CELL - 0.5));
+      const cy1 = Math.min(this.h - 1, Math.floor(rect.y1 / CELL - 0.5));
+
+      for (let cy = cy0; cy <= cy1; cy++) {
+        for (let cx = cx0; cx <= cx1; cx++) {
+          const i = cy * this.w + cx;
+          this.solid[i] = Math.max(0, this.solid[i] + add);
+          this.blocked[i] = this.terrain[i] || this.solid[i] ? 1 : 0;
+        }
+      }
+    }
+
+    isSolid(x, y) {
+      return !!this.solid && this.solid[this.index(x, y)] > 0;
+    }
+
     index(x, y) {
       const cx = Math.max(0, Math.min(this.w - 1, Math.floor(x / CELL)));
       const cy = Math.max(0, Math.min(this.h - 1, Math.floor(y / CELL)));
