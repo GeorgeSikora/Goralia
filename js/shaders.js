@@ -26,19 +26,20 @@
   const BANDS = 5; // pásma intenzity světla (na jednotku jasu)
 
   /* Denní doba: během zápasu se pomalu střídá den, soumrak, noc a úsvit (jeden oběh = CYCLE s).
-   * amb = barva šera (násobí obraz), gain = síla světel, bloom = síla prozáření.
+   * amb = barva šera (násobí obraz), gain = síla světel, bloom = síla prozáření,
+   * rays = barva a síla šikmých paprsků slunce (měsíce).
    * Ve dne je obraz skoro jako bez shaderů a světla jen lehce dýchají; v noci je svět
    * tmavší a modravý, lucerny a ohně ho drží čitelný. Přechody trvají desítky sekund. */
   const CYCLE = 480;
   const MOOD = [
-    // fáze, šero r g b, síla světel, bloom
-    [0.0, [1.0, 0.98, 0.95], 0.4, 0.55], // dopoledne
-    [0.34, [1.0, 0.97, 0.92], 0.45, 0.6], // odpoledne
-    [0.46, [0.9, 0.74, 0.66], 0.85, 0.9], // soumrak, zlatá hodinka
-    [0.56, [0.56, 0.6, 0.8], 1.2, 1.15], // noc
-    [0.8, [0.58, 0.62, 0.82], 1.2, 1.15], // pozdní noc
-    [0.9, [0.82, 0.78, 0.88], 0.8, 0.8], // úsvit
-    [1.0, [1.0, 0.98, 0.95], 0.4, 0.55]
+    // fáze, šero r g b, síla světel, bloom, paprsky r g b × síla
+    [0.0, [1.0, 0.98, 0.95], 0.4, 0.55, [0.15, 0.14, 0.1]], // dopoledne
+    [0.34, [1.0, 0.97, 0.92], 0.45, 0.6, [0.16, 0.14, 0.09]], // odpoledne
+    [0.46, [0.9, 0.74, 0.66], 0.85, 0.9, [0.22, 0.15, 0.07]], // soumrak, zlatá hodinka
+    [0.56, [0.56, 0.6, 0.8], 1.2, 1.15, [0.03, 0.04, 0.06]], // noc, slabý měsíc
+    [0.8, [0.58, 0.62, 0.82], 1.2, 1.15, [0.03, 0.04, 0.06]], // pozdní noc
+    [0.9, [0.82, 0.78, 0.88], 0.8, 0.8, [0.16, 0.12, 0.12]], // úsvit
+    [1.0, [1.0, 0.98, 0.95], 0.4, 0.55, [0.15, 0.14, 0.1]]
   ];
   const MENU_PHASE = 0.47; // menu a lobby v soumraku
   const START_PHASE = 0.05; // zápas začíná dopoledne
@@ -47,12 +48,12 @@
     const p = S.phase != null ? S.phase : time == null ? MENU_PHASE : ((START_PHASE + time / CYCLE) % 1 + 1) % 1;
     let i = 0;
     while (i < MOOD.length - 2 && p >= MOOD[i + 1][0]) i++;
-    const [p0, a0, g0, b0] = MOOD[i];
-    const [p1, a1, g1, b1] = MOOD[i + 1];
+    const [p0, a0, g0, b0, r0] = MOOD[i];
+    const [p1, a1, g1, b1, r1] = MOOD[i + 1];
     let t = (p - p0) / (p1 - p0);
     t = t * t * (3 - 2 * t);
     const mix = (x, y) => x + (y - x) * t;
-    return { amb: [mix(a0[0], a1[0]), mix(a0[1], a1[1]), mix(a0[2], a1[2])], gain: mix(g0, g1), bloom: mix(b0, b1) };
+    return { amb: [mix(a0[0], a1[0]), mix(a0[1], a1[1]), mix(a0[2], a1[2])], gain: mix(g0, g1), bloom: mix(b0, b1), rays: [mix(r0[0], r1[0]), mix(r0[1], r1[1]), mix(r0[2], r1[2])] };
   }
 
   const canvas = document.createElement("canvas");
@@ -156,6 +157,7 @@ uniform vec4 uLB[${MAXL}]; // barva rgb, síla
 uniform vec4 uLC[${MAXL}]; // první překážka, počet
 uniform vec4 uOc[${MAXO}]; // pata x, y, poloměr, výška
 uniform float uTime;
+uniform vec3 uRays;
 uniform int uNS;
 uniform vec4 uSh[${MAXS}]; // lesklá plocha x0, y0, x1, y1
 uniform float uShK[${MAXS}]; // 0 = krystal, 1 = okna budovy
@@ -219,6 +221,35 @@ void main() {
   float e = smoothstep(0.6, 0.82, lum) * smoothstep(0.3, 0.5, sat);
   L = mix(L, max(L, vec3(1.08)), e);
   vec3 lit = src * L;
+
+  // paprsky světla: šikmé pásy ukotvené ve světě, pomalu se posouvají, začínají a končí;
+  // po třech pásmech s ditheringem na jemné mřížce, aby to byl pixelart, ne rozmazaný gradient
+  if (uRays.r + uRays.g + uRays.b > 0.002) {
+    // slunce vpravo nahoře: paprsky padají šikmo doleva dolů
+    float tt = uTime;
+    float a = dot(wf, vec2(0.89, 0.45)) + tt * 0.35; // napříč paprsky, pomalu se posouvají
+    float al = dot(wf, vec2(-0.45, 0.89)); // podél paprsku
+    float band = 0.0;
+    for (int k = 0; k < 2; k++) {
+      // každá buňka napříč má jeden paprsek s vlastní polohou, šířkou a sílou
+      float cw = k == 0 ? 90.0 : 57.0;
+      float c = floor(a / cw);
+      float h1 = fract(sin(c * 12.9898 + float(k) * 4.1) * 43758.5453);
+      float h2 = fract(sin(c * 78.233 + float(k) * 2.3) * 24634.6345);
+      float h3 = fract(sin(c * 39.425 + float(k) * 7.7) * 15731.743);
+      float wdt = 5.0 + h2 * 16.0;
+      float x = abs(a - (c + 0.2 + h1 * 0.6) * cw) / wdt;
+      float on = step(0.35, h3); // ne každá buňka má paprsek
+      // paprsek začíná a končí, pomalu dýchá
+      float len = 0.5 + 0.5 * sin(al * 0.009 + h1 * 6.28 + tt * 0.05);
+      float b = (1.0 - smoothstep(0.55, 1.0, x)) * smoothstep(0.2, 0.7, len) * on * (0.55 + 0.45 * h2);
+      band = max(band, b);
+    }
+    float q = floor(band * 3.0 + dth * 0.95) / 3.0;
+    // tmavá místa (koruny, stíny) dostanou paprsek o něco víc, ať je vidět i skrz stromy
+    float dark = 1.0 - smoothstep(0.15, 0.6, dot(lit, vec3(0.3, 0.59, 0.11)));
+    lit += uRays * q * (1.0 + 0.6 * dark);
+  }
 
   // lesk krystalů a oken: tenký odlesk občas pomalu přejede plochou, krystaly navíc odrážejí světla okolo
   for (int i = 0; i < ${MAXS}; i++) {
@@ -488,6 +519,7 @@ void main() {
     gl.uniform4fv(u.uLC, LC);
     gl.uniform4fv(u.uOc, OC);
     gl.uniform1f(u.uTime, (performance.now() / 1000) % 3600);
+    gl.uniform3fv(u.uRays, m.rays);
     gl.uniform1i(u.uNS, sheens.length);
     sheens.forEach((s, i) => {
       SH.set(s.slice(0, 4), i * 4);
