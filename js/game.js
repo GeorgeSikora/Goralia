@@ -3247,6 +3247,13 @@
       g.drawImage(banner[Math.floor(clock * 4.5 + i * 1.7 + b.id) & 3], x0 + bx, y0 + by);
     });
 
+    if (spr.flags) {
+      const flag = PK.buildings.flag(b.team);
+      spr.flags.forEach(([fxx, fyy], i) => {
+        g.drawImage(flag[Math.floor(clock * 9 + i * 3 + b.id * 1.3) % flag.length], x0 + fxx, y0 + fyy);
+      });
+    }
+
     if (spr.flames) spr.flames.forEach(([fxx, fyy], i) => flameAt(x0 + fxx, y0 + fyy, i * 2 + b.id));
 
     // wounded buildings burn
