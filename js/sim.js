@@ -256,6 +256,7 @@ class Match {
 
   // Limit jednotek roste s každou dostavěnou chatrčí.
   supplyCap(team) {
+    if (this.cheats && this.cheats.nocap.has(team)) return 999; // příkaz správce /nocap
     return R.supplyCap(this.buildings.filter(b => b.team === team && b.type === "hut" && b.progress >= 1 && alive(b)).length);
   }
 
@@ -743,6 +744,7 @@ class Match {
 
   damage(attacker, target, amount, opts = {}) {
     if (!alive(target)) return;
+    if (this.cheats && this.cheats.god.has(target.team)) return; // příkaz správce /god
 
     if (target.kind === "unit" && R.MELEE.includes(target.type)) {
       const armor = this.upgrades[target.team].armor;

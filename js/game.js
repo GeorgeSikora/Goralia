@@ -323,7 +323,7 @@
   function pumpSim(dt) {
     if (!simMatch || matchOver) return;
 
-    simAcc += dt;
+    simAcc += dt * (simMatch.speed || 1); // příkaz správce /speed
     let stepped = false;
 
     while (simAcc >= sim.TICK && simMatch.phase !== "ended") {
@@ -337,6 +337,19 @@
       simMatch.endTick();
     }
   }
+
+  // Příkazový řádek správce (js/adminbar.js): jen pro přihlášeného admina během zápasu, ve kterém hraje.
+  PK.adminbar.ready = () => !!(account.user && account.user.role === "admin" && started && !menuOpen && !spectator && me);
+  PK.adminbar.exec = text => {
+    if (mode === "online") return net.send({ t: "admin", text });
+    if (!simMatch) return;
+    const result = PK.admincmd.run(simMatch, me, text);
+    PK.adminbar.receive(result);
+    if (result.changed) {
+      applySnapshot(simMatch.snapshot(me));
+      simMatch.endTick();
+    }
+  };
 
   // Rozkazy jdou stejnou cestou v obou režimech: na server, nebo přímo do místní simulace.
   function sendCmd(cmd) {
@@ -380,7 +393,8 @@
       audio.play(state === "win" ? "win" : "lose");
     }
 
-    if (mode === "ai") {
+    // zápas změněný příkazem správce se do statistik nepočítá
+    if (mode === "ai" && !(simMatch && simMatch.cheated)) {
       reportAi("end", { result: state === "win" ? "win" : state === "draw" ? "draw" : "loss", duration: simMatch ? Math.round(simMatch.elapsed) : 0 });
     }
 
@@ -2657,6 +2671,10 @@
 
       case "chat":
         PK.chat.receive(m);
+        break;
+
+      case "admin":
+        PK.adminbar.receive(m);
         break;
 
       case "chatlog":
