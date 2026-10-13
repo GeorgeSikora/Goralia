@@ -17,11 +17,11 @@
     hq: "zničená hlavní budova", surrender: "vzdal se", disconnect: "odpojení", abandoned: "všichni odešli", defeat: "porážka lidí"
   };
   const UNITS = {
-    worker: "dělníci", soldier: "vojáci", archer: "lučištníci", hero: "hrdina",
+    worker: "dělníci", soldier: "vojáci", archer: "lučištníci", hero: "hrdina", monk: "mniši", knight: "rytíři", catapult: "katapulty",
     ghoul: "ghúlové", skeleton: "kostlivci", abomination: "zrůdy", banshee: "přízraky", lich: "lich"
   };
   const BUILDINGS = {
-    barracks: "kasárna", tower: "věže", hut: "budy", smithy: "kovárny",
+    barracks: "kasárna", tower: "věže", hut: "budy", smithy: "kovárny", stable: "stáje", workshop: "dílny",
     crypt: "krypty", slaughterhouse: "jatka", ziggurat: "zikkuraty", portal: "pekelné brány"
   };
 
@@ -135,7 +135,8 @@
       for (const [key, label] of Object.entries(BUILDINGS)) row(`· ${label}`, p => num((p.builtBy || {})[key] || 0), true);
     }
     if (players.some(p => p.upgrades)) {
-      row("Kovárna (zbroj / zbraně)", p => `${(p.upgrades || {}).armor || 0} / ${(p.upgrades || {}).weapon || 0}`);
+      row("Kovárna (zbroj / zbraně / střelba)", p => { const u = p.upgrades || {}; return `${u.armor || 0} / ${u.weapon || 0} / ${u.archery || 0}`; });
+      row("Gmina (nástroje / opevnění)", p => { const u = p.upgrades || {}; return `${u.tools || 0} / ${u.masonry || 0}`; });
     }
     row("Úroveň hrdiny", p => p.heroLevel || "–");
     if (players.some(p => p.cmds != null)) {

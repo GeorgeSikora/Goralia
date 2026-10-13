@@ -35,19 +35,22 @@
   // klávesové zkratky tlačítek jsou v PK.keys (hráč si je může změnit v nastavení)
   const ALL = [
     ["worker", "Dělník"], ["soldier", "Voják"], ["archer", "Lučištník"],
-    ["hero", "Hrdina"], ["command", "Rozkaz"],
+    ["hero", "Hrdina"], ["monk", "Mnich"], ["knight", "Rytíř"], ["catapult", "Katapult"], ["command", "Rozkaz"],
     ["tower", "Strážní věž"], ["barracks", "Kasárna"], ["hut", "Buda"], ["smithy", "Kovárna"],
-    ["armor", "Zbroj"], ["weapon", "Zbraně"],
+    ["stable", "Stáj"], ["workshop", "Dílna"],
+    ["armor", "Zbroj"], ["weapon", "Zbraně"], ["archery", "Střelba"], ["tools", "Nástroje"], ["masonry", "Opevnění"],
     ["fire", "Ohnivá koule"], ["heal", "Léčení"]
   ];
 
   // Tlačítka vpravo dole se mění podle vybrané jednotky nebo budovy; pořadí = pozice na panelu.
   const CARDS = {
     none: [],
-    hq: ["worker"],
-    barracks: ["soldier", "archer", "hero"],
-    worker: ["command", "tower", "barracks", "hut", "smithy"],
-    smithy: ["armor", "weapon"],
+    hq: ["worker", "tools", "masonry"],
+    barracks: ["soldier", "archer", "hero", "monk"],
+    stable: ["knight"],
+    workshop: ["catapult"],
+    worker: ["command", "tower", "barracks", "hut", "smithy", "stable", "workshop"],
+    smithy: ["armor", "weapon", "archery"],
     hero: ["command", "fire", "heal"],
     army: ["command"]
   };
@@ -60,7 +63,12 @@
     tower: "Střílí na nepřátele v dosahu. Staví dělník (10 s).",
     barracks: "Cvičí vojáky, lučištníky a hrdinu. Staví dělník (12 s).",
     hut: "Zvýší limit jednotek o 5. Staví dělník (8 s).",
-    smithy: "Vyzkoumá lepší zbroj a zbraně pro vojáky. Staví dělník (14 s).",
+    smithy: "Vyzkoumá zbroj, zbraně a střelbu. Staví dělník (14 s).",
+    monk: "Léčí zraněné spojence v okolí. Sám nebojuje.",
+    knight: "Rychlý jezdec s kopím. Po rozjezdu udeří náporem.",
+    catapult: "Kámen na velkou dálku, zraní i okolí. Ničí budovy, zblízka nestřílí.",
+    stable: "Cvičí rytíře. Potřebuje kasárna. Staví dělník (14 s).",
+    workshop: "Staví katapulty. Potřebuje kasárna. Staví dělník (16 s).",
     fire: "Hrdina vrhne ohnivou kouli na cíl (10 s).",
     heal: "Hrdina vyléčí spojence v okolí (14 s).",
     command: "Klepni na cíl: pohyb, útok, těžba, stavba či oprava."
@@ -631,11 +639,13 @@
       }
 
       const detail = {
-        hall: "Výcvik dělníků.",
+        hall: "Dělníci, nástroje, opevnění.",
         barracks: "Výcvik armády a hrdiny.",
         tower: "Automatická obrana.",
         hut: "Limit jednotek +5.",
-        smithy: "Zbroj a zbraně vojáků.",
+        smithy: "Zbroj, zbraně a střelba.",
+        stable: "Výcvik rytířů.",
+        workshop: "Stavba katapultů.",
         citadel: own ? "Výcvik dělníků." : "Cíl tvého útoku.",
         necropolis: "Srdce pekla. Znič ji a vyhraješ.",
         crypt: "Chrlí ghúly a kostlivce.",
@@ -645,8 +655,8 @@
       }[e.type];
 
       if (e.type === "tower") {
-        stat(PK.icons.small.sword, 20, x0);
-        stat(PK.icons.small.range, 155, x0 + 40);
+        stat(PK.icons.small.sword, PK.rules.TOWER.damage, x0);
+        stat(PK.icons.small.range, PK.rules.TOWER.range, x0 + 40);
       }
 
       const def = PK.rules.UNDEAD.defense[e.type];
@@ -656,7 +666,7 @@
       }
 
       if (e.research) {
-        const label = e.research.kind === "armor" ? "V\u00ddZKUM ZBROJE" : "V\u00ddZKUM ZBRAN\u00cd";
+        const label = `V\u00ddZKUM: ${(PK.rules.UPGRADES[e.research.kind] || { name: "" }).name.toUpperCase()}`;
         T(g, `${label} ${Math.round(e.research.frac * 100)} %`, x0, L.y + 38, 0xf0d088);
         bar(g, x0, L.y + 49, iw, 4, e.research.frac, css(0xf0a040), 8);
         return;

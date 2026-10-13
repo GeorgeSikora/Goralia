@@ -162,6 +162,8 @@ function testSimulation() {
   testRepair();
   testFireball();
   testCollisions();
+  testNewTroops();
+  testNewResearch();
 }
 
 // Budovy nejdou procházet: jednotky je obcházejí, k okraji ale dojdou (těžba, stavba, útok).
@@ -229,6 +231,170 @@ function testCollisions() {
   tower.hp = 0;
   run(m, TICK);
   assert(!m.nav.isBlocked(spot.x, spot.y + 10), "po zboření jde místem projít");
+}
+
+// rytíř (nápor), katapult (plocha, nejmenší dostřel, budovy), mnich (léčení), stáj a dílna až po kasárnách
+function testNewTroops() {
+  const run = (m, seconds) => { for (let t = 0; t < seconds; t += TICK) { m.step(TICK); m.endTick(); } };
+  const fresh = () => {
+    const m = new Match(MAPS.get("valley"), [{ name: "A" }, { name: "B" }], { countdown: 0 });
+    m.econ.blue.gold = 3000;
+    m.econ.blue.wood = 3000;
+    return m;
+  };
+
+  // stáj potřebuje dostavěná kasárna
+  const m = fresh();
+  const hq = m.hqOf("blue");
+  const worker = m.units.find(u => u.team === "blue" && u.type === "worker");
+  let spot = null;
+  for (let i = 0; i < 200 && !spot; i++) {
+    const p = [hq.x + Math.cos(i) * (120 + i * 2), hq.y + Math.sin(i) * (120 + i * 2)].map(Math.round);
+    if (!m.placementProblem("blue", p[0], p[1], "stable")) spot = p;
+  }
+  m.command("blue", { c: "build", type: "stable", x: spot[0], y: spot[1], ids: [worker.id] });
+  assert(!m.buildings.some(b => b.type === "stable"), "bez kasáren stáj nejde");
+  assert.strictEqual(m.econ.blue.gold, 3000, "a nic se nezaplatí");
+  m.createBuilding("barracks", "blue", 100, 100, false);
+  m.command("blue", { c: "build", type: "stable", x: spot[0], y: spot[1], ids: [worker.id] });
+  assert(m.buildings.some(b => b.type === "stable" && b.progress < 1), "s kasárnami se stáj staví");
+
+  m.command("blue", { c: "train", type: "knight" });
+  assert(!m.units.some(u => u.type === "knight"), "rytíř jen z dostavěné stáje");
+  m.createBuilding("stable", "blue", 100, 400, false);
+  m.command("blue", { c: "train", type: "knight" });
+  const knight = m.units.find(u => u.type === "knight");
+  assert(knight, "rytíř vycvičen");
+  assert.strictEqual(m.econ.blue.gold, 3000 - R.COSTS.stable.gold - R.COSTS.knight.gold);
+
+  // nápor: první rána po rozjezdu je silnější, další už ne
+  const dummy = m.createUnit("abomination", "red", knight.x + 20, knight.y);
+  dummy.speed = 0;
+  dummy.damage = 0;
+  knight.order = { type: "attack", target: dummy };
+  const hits = [];
+  for (let t = 0; t < 3 && hits.length < 2; t += TICK) {
+    m.step(TICK);
+    for (const e of m.events) if (e.e === "hit" && e.a === knight.id) hits.push(e);
+    m.endTick();
+  }
+  assert.strictEqual(hits[0].n, R.UNITS.knight.damage + R.KNIGHT.bonus, "nápor");
+  assert(hits[0].c, "nápor je vidět v události");
+  assert.strictEqual(hits[1].n, R.UNITS.knight.damage, "bez rozjezdu obyčejná rána");
+
+  // katapult: plošné poškození, budovám víc, zblízka nestřílí
+  const c = fresh();
+  const cat = c.createUnit("catapult", "blue", 400, 500);
+  const a = c.createUnit("soldier", "red", 560, 500);
+  const b = c.createUnit("soldier", "red", 575, 505);
+  const far = c.createUnit("soldier", "red", 700, 500);
+  for (const u of [a, b, far]) { u.speed = 0; u.damage = 0; }
+  c.strike(cat, a);
+  assert.strictEqual(a.hp, a.maxHp, "kámen ještě letí");
+  run(c, R.CATAPULT.flight + 0.05);
+  assert.strictEqual(a.maxHp - a.hp, R.UNITS.catapult.damage, "cíl dostane plnou ránu");
+  assert.strictEqual(b.maxHp - b.hp, Math.round(R.UNITS.catapult.damage * R.CATAPULT.splash), "soused dostane část");
+  assert.strictEqual(far.hp, far.maxHp, "vzdálený nic");
+  const tower = c.createBuilding("tower", "red", 560, 300, false);
+  c.strike(cat, tower);
+  run(c, R.CATAPULT.flight + 0.05);
+  assert.strictEqual(tower.maxHp - tower.hp, Math.round(R.UNITS.catapult.damage * R.CATAPULT.building), "budovy dostanou násobek");
+
+  const near = c.createUnit("soldier", "red", 430, 500);
+  near.speed = 0;
+  near.damage = 0;
+  cat.order = { type: "attack", target: near };
+  cat.cooldown = 0;
+  const x0 = cat.x;
+  run(c, 0.5);
+  assert.strictEqual(near.hp, near.maxHp, "zblízka katapult nestřílí");
+  assert(cat.x < x0, "a couvá na dostřel");
+
+  // mnich léčí zraněné spojence v dosahu, sám se do boje nehrne
+  const h = fresh();
+  const monk = h.createUnit("monk", "blue", 400, 500);
+  const hurt = h.createUnit("soldier", "blue", 450, 500);
+  hurt.hp = 40;
+  run(h, R.UNITS.monk.delay * 2 + 0.1);
+  assert(hurt.hp >= 40 + R.MONK.heal * 2, "mnich léčí");
+  const enemy = h.createUnit("soldier", "red", 470, 520);
+  enemy.damage = 0;
+  enemy.speed = 0;
+  hurt.hp = hurt.maxHp;
+  hurt.damage = 0; // ať nebojuje voják vedle
+  run(h, 2);
+  assert.strictEqual(enemy.hp, enemy.maxHp, "mnich neútočí");
+
+  // dílna, mnich a katapult se cvičí z pravých budov
+  const w = fresh();
+  w.createBuilding("barracks", "blue", 100, 100, false);
+  w.command("blue", { c: "train", type: "catapult" });
+  assert(!w.units.some(u => u.type === "catapult"), "katapult chce dílnu");
+  w.createBuilding("workshop", "blue", 100, 400, false);
+  w.command("blue", { c: "train", type: "catapult" });
+  w.command("blue", { c: "train", type: "monk" });
+  assert(w.units.some(u => u.type === "catapult") && w.units.some(u => u.type === "monk"));
+  w.command("red", { c: "train", type: "knight" });
+  assert(!w.units.some(u => u.team === "red" && u.type === "knight"), "cizí stáj nepomůže");
+}
+
+// střelba (lučištníci), nástroje (rychlejší těžba) a opevnění (zdraví budov, věže) ve snímku i v simulaci
+function testNewResearch() {
+  const run = (m, seconds) => { for (let t = 0; t < seconds; t += TICK) { m.step(TICK); m.endTick(); } };
+  const m = new Match(MAPS.get("valley"), [{ name: "A" }, { name: "B" }], { countdown: 0 });
+  m.econ.blue.gold = 5000;
+  m.econ.blue.wood = 5000;
+  m.createBuilding("smithy", "blue", 300, 300, false);
+  const archer = m.createUnit("archer", "blue", 320, 330);
+
+  m.command("blue", { c: "research", kind: "archery" });
+  run(m, R.UPGRADES.archery.levels[0].time + 0.2);
+  assert.strictEqual(m.upgrades.blue.archery, 1);
+  assert.strictEqual(archer.damage, R.UNITS.archer.damage + R.ARCHERY.damage);
+  assert.strictEqual(archer.range, R.UNITS.archer.range + R.ARCHERY.range);
+  assert.strictEqual(m.createUnit("archer", "blue", 100, 100).range, R.UNITS.archer.range + R.ARCHERY.range, "noví lučištníci také");
+
+  // výzkum v gmině běží souběžně s kovárnou
+  const hall = m.hqOf("blue");
+  m.command("blue", { c: "research", kind: "tools" });
+  m.command("blue", { c: "research", kind: "masonry" });
+  assert.strictEqual(hall.research.kind, "tools", "gmina zkoumá jedno po druhém");
+  m.command("blue", { c: "research", kind: "weapon" });
+  assert(m.buildings.some(b => b.type === "smithy" && b.research && b.research.kind === "weapon"), "kovárna zkoumá zároveň");
+  run(m, R.UPGRADES.tools.levels[0].time + 0.2);
+  assert.strictEqual(m.upgrades.blue.tools, 1);
+
+  const worker = m.units.find(u => u.team === "blue" && u.type === "worker");
+  const tree = m.resources.find(r => r.type === "wood");
+  worker.x = tree.x + 20;
+  worker.y = tree.y;
+  worker.order = { type: "gather", target: tree };
+  worker.carry = null;
+  let t = 0;
+  while (!worker.carry && t < 2) { m.step(TICK); m.endTick(); t += TICK; }
+  assert(t < 0.9 * (1 - R.TOOLS_PER_LEVEL) + 0.15, `nástroje zrychlí těžbu (${t.toFixed(2)} s)`);
+
+  const tower = m.createBuilding("tower", "blue", 300, 600, false);
+  tower.hp -= 50;
+  m.command("blue", { c: "research", kind: "masonry" });
+  run(m, R.UPGRADES.masonry.levels[0].time + 0.2);
+  assert.strictEqual(m.upgrades.blue.masonry, 1);
+  const boosted = Math.round(R.BUILDING_HP.tower * (1 + R.MASONRY.hp));
+  assert.strictEqual(tower.maxHp, boosted, "opevnění přidá budovám zdraví");
+  assert.strictEqual(tower.hp, boosted - 50, "poškození zůstane");
+  assert.strictEqual(m.createBuilding("hut", "blue", 700, 700, true).maxHp, Math.round(R.BUILDING_HP.hut * (1 + R.MASONRY.hp)), "i nové stavby");
+
+  const foe = m.createUnit("ghoul", "red", tower.x + 40, tower.y);
+  foe.speed = 0;
+  tower.cooldown = 0;
+  m.step(TICK);
+  const shot = m.events.find(e => e.e === "hit" && e.a === tower.id);
+  assert.strictEqual(shot.n, R.TOWER.damage + R.MASONRY.tower, "věž střílí silněji");
+  m.endTick();
+
+  const snap = m.snapshot("blue");
+  assert.strictEqual(snap.up.length, Object.keys(R.UPGRADES).length, "snímek nese všechny výzkumy");
+  assert.strictEqual(snap.up[Object.keys(R.UPGRADES).indexOf("masonry")], 1);
 }
 
 function testSmithy() {

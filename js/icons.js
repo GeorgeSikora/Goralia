@@ -615,6 +615,213 @@
     for (const [x, y, c] of [[22, 16, C.a[3]], [25, 13, C.a[4]], [19, 20, C.a[2]], [27, 18, C.a[2]], [24, 21, C.r[4]]]) P.set(x, y, c);
   };
 
+  /* Mnich: hnědá kápě, tonzura, šedý vous, hůl s rozlomeným prstenem. */
+  make.monk = P => {
+    const HAB = [C.w[0], C.w[1], C.w[2], C.w[3]];
+    // hůl vpravo
+    P.rect(25, 9, 2, 23, C.w[3]);
+    P.rect(26, 9, 1, 23, C.w[1]);
+    ringMark(P, 25.5, 5.5, 4.6, C.gold[1], 1.6);
+    P.set(23, 3, C.a[4]);
+    // ramena v kutně, štóla
+    part(P, L => L.disc(14.5, 31, 12, 9, sph(HAB, 11, 25, 12, 9, 0.05)));
+    P.poly([[15, 23], [19, 23], [20, 32], [16, 32]], (x) => (x < 17 ? T.l : x > 18 ? T.s : T.m));
+    // kápě spadlá na ramena
+    part(P, L => L.disc(12, 22, 8, 3.2, sph(HAB, 10, 21, 8, 3, 0.15)), 0.3, 0.3);
+    // hlava
+    part(P, L => L.disc(15, 13, 6, 6.6, sph(SKIN, 14, 11, 6, 6, 0.12)), 0.15, 0.25);
+    // věnec vlasů kolem tonzury
+    for (let x = 9; x <= 21; x++) {
+      if (x > 17) continue;
+      P.set(x, 10 + (x < 11 ? 1 : 0), S[4]);
+      P.set(x, 11 + (x < 11 ? 1 : 0), S[3]);
+    }
+    P.rect(9, 12, 2, 4, S[3]);
+    P.set(13, 8, mix(C.skin[0], C.white, 0.5));
+    // oko, nos, vous
+    P.set(18, 13, EYE);
+    P.set(18, 14, EYE);
+    P.set(21, 15, C.skin[1]);
+    part(P, L => L.poly([[14, 16], [21, 16], [20, 20], [16, 21]], sph([S[3], S[4], S[5], S[6]], 16, 16, 4, 3)), 0.2, 0.25);
+    // ruka na holi
+    part(P, L => L.disc(25, 21, 2.2, 2.2, sph(SKIN, 24, 20, 2, 2)), 0.2, 0.3);
+  };
+
+  /* Rytíř: koňská hlava v týmové uzdě, nad ní velká přilba, šikmé kopí s praporcem. */
+  make.knight = P => {
+    const HORSE = [C.w[1], C.w[2], C.w[3], mix(C.w[4], C.d[4], 0.3)];
+    // kopí
+    P.line(25, 31, 29, 4, C.w[3]);
+    P.line(26, 31, 30, 4, C.w[1]);
+    P.line(29, 3, 30, 1, S[5]);
+    P.set(30, 0, C.white);
+    P.poly([[29, 6], [29, 11], [22, 10], [23, 7]], (x, y) => (y < 8 ? T.l : y > 9 ? T.s : T.m));
+    // koňská hlava a krk
+    part(P, L => {
+      L.poly([[6, 32], [16, 32], [17, 22], [22, 26], [25, 24], [19, 15], [13, 14], [8, 20]], (x, y) => pick(HORSE, tone(x, y, 13, 19, 9, 9) + 0.05));
+    }, 0.3, 0.35);
+    P.poly([[13, 14], [15, 14], [13, 10]], () => HORSE[2]);
+    P.set(17, 18, EYE);
+    P.set(24, 25, C.w[0]);
+    P.line(19, 16, 24, 24, mix(C.d[5], C.white, 0.5));
+    P.line(8, 20, 13, 14, C.w[0]);
+    P.line(7, 22, 12, 16, C.w[0]);
+    P.line(17, 22, 23, 23, T.d);
+    P.line(16, 21, 18, 26, C.w[1]);
+    // přilba jezdce
+    part(P, L => {
+      L.rect(3, 4, 9, 10, S[3]);
+      L.disc(7.5, 4.5, 4.5, 2.5, S[4]);
+    }, 0.35, 0.35);
+    P.rect(7, 8, 5, 1, C.ink);
+    P.rect(7, 1, 1, 12, S[5]);
+    P.rect(3, 13, 9, 1, C.gold[0]);
+    P.set(4, 3, C.white);
+    P.poly([[2, 2], [6, 0.5], [3, 6]], (x) => (x < 4 ? T.l : T.m));
+  };
+
+  /* Katapult: kolo, podvozek, zvednuté rameno s kamenem. */
+  make.catapult = P => {
+    const TIM = [C.w[1], C.w[2], C.w[3], C.w[4]];
+    // rameno a stojan
+    P.line(9, 22, 14, 10, C.w[3]);
+    P.line(10, 22, 15, 10, C.w[1]);
+    P.line(19, 22, 14, 10, C.w[2]);
+    part(P, L => L.rect(11, 8, 8, 3, C.w[2]), 0.3, 0.3);
+    P.rect(11, 7, 8, 1, T.m);
+    P.line(8, 20, 25, 4, C.w[3]);
+    P.line(9, 21, 26, 5, C.w[1]);
+    part(P, L => L.disc(25.5, 4.5, 3.5, 3.5, sph([S[2], S[3], S[4], S[5]], 24.5, 3.5, 3.5, 3.5)), 0.3, 0.35);
+    // podvozek
+    part(P, L => L.poly([[2, 20], [30, 20], [30, 24], [2, 24]], (x, y) => (y === 20 ? TIM[3] : x % 7 === 0 ? TIM[0] : TIM[2])), 0.3, 0.35);
+    // kola
+    for (const cx of [8, 24]) {
+      part(P, L => L.disc(cx, 26, 5.2, 5.2, (x, y) => {
+        const d = Math.hypot(x + 0.5 - cx, y + 0.5 - 26);
+        if (d > 4) return x < cx ? TIM[2] : TIM[1];
+        if (d < 1.4) return S[3];
+        const a = Math.atan2(y + 0.5 - 26, x + 0.5 - cx);
+        return Math.abs(Math.sin(a * 2)) < 0.3 ? TIM[2] : C.w[0];
+      }), 0.25, 0.3);
+    }
+    // štítek
+    P.poly([[14, 21], [19, 21], [19, 24], [16.5, 26], [14, 24]], (x) => (x < 16 ? T.l : x > 17 ? T.s : T.m));
+  };
+
+  /* Stáj: došková střecha, prkna, kůň v půldveřích. */
+  make.stable = P => {
+    for (let x = 3; x < 29; x++) {
+      const c = x % 4 === 3 ? C.w[0] : x < 7 ? C.w[3] : x > 24 ? C.w[1] : C.w[2];
+      P.rect(x, 16, 1, 13, c);
+    }
+    stones(P, 2, 28, 30, 31, [S[1], S[2], S[3], S[4]], 4, 3, 41);
+    // stání s koněm
+    P.rect(7, 18, 11, 10, C.ink);
+    P.rect(7, 23, 11, 5, C.w[2]);
+    P.rect(7, 23, 11, 1, C.w[4]);
+    const HORSE = [C.w[1], C.w[2], C.w[3], mix(C.w[4], C.d[4], 0.3)];
+    P.poly([[9, 23], [13, 23], [13, 19], [16, 20], [18, 23], [16, 23]], (x) => pick(HORSE, 0.9 - (x - 9) / 12));
+    P.set(13, 20, EYE);
+    P.set(11, 17, HORSE[2]);
+    // podkova na týmovém štítu
+    P.poly([[20, 18], [27, 18], [27, 23], [23.5, 26], [20, 23]], (x) => (x < 22 ? T.l : x > 25 ? T.s : T.m));
+    for (let a = 0.4; a < Math.PI * 2 - 0.4; a += 0.2) P.set(Math.round(23.5 + Math.sin(a) * 2.2), Math.round(21.5 - Math.cos(a) * 2.4), C.s[5]);
+    // došky
+    const STRAW = [C.d[1], C.d[2], C.d[3], C.d[4], C.d[5]];
+    P.poly([[0, 17], [32, 17], [26, 5], [6, 5]], (x, y) => {
+      const t = 1 - (x / 32) * 0.7 - (y - 5) / 12 * 0.2;
+      const streak = hash(x, Math.floor(y / 3), 41);
+      let v = t + (streak < 0.2 ? -0.18 : streak > 0.85 ? 0.12 : 0);
+      if ((y - 5) % 4 === 3) v -= 0.22;
+      return pick(STRAW, v);
+    });
+    for (let x = 1; x < 31; x += 2) P.set(x, 17, C.d[2]);
+    P.rect(6, 4, 20, 1, C.w[3]);
+  };
+
+  /* Dílna: hrázděný štít s vraty, kolo a kladivo. */
+  make.workshop = P => {
+    const PL = [C.d[2], C.d[3], C.d[4], C.d[5]];
+    P.rect(3, 15, 26, 14, PL[2]);
+    for (let x = 3; x < 29; x++) for (let y = 15; y < 29; y++) if (hash(x, y, 51) > 0.8) P.set(x, y, PL[1]);
+    P.rect(3, 15, 2, 14, C.w[1]);
+    P.rect(27, 15, 2, 14, C.w[0]);
+    P.line(5, 27, 11, 17, C.w[1]);
+    stones(P, 2, 28, 30, 31, [S[1], S[2], S[3], S[4]], 4, 3, 52);
+    // vrata
+    P.rect(12, 18, 12, 10, C.ink);
+    P.rect(12, 17, 12, 1, C.w[3]);
+    P.line(14, 27, 18, 20, C.w[3]);
+    P.line(22, 27, 18, 20, C.w[2]);
+    P.set(18, 22, C.a[3]);
+    // šindele
+    tiles(P, [[0, 16], [32, 16], [25, 5], [7, 5]], [C.w[0], C.w[1], C.w[2], C.w[3]], 4, 3, 53);
+    P.rect(7, 4, 18, 1, C.w[4]);
+    // kladivo přes roh
+    part(P, L => {
+      L.poly([[22, 0], [30, 0], [30, 4], [22, 4]], (x) => (x < 25 ? S[5] : S[3]));
+      L.poly([[25, 4], [27, 4], [27, 12], [25, 12]], C.w[3]);
+    }, 0.3, 0.35);
+  };
+
+  /* Střelba: luk napnutý šípem s týmovými letkami. */
+  make.archery = P => {
+    // luk
+    for (let i = -13; i <= 13; i++) {
+      const t = i / 13;
+      const x = Math.round(9 + 6 * (1 - t * t));
+      P.set(x, 16 + i, Math.abs(i) < 3 ? C.w[1] : C.w[3]);
+      P.set(x + 1, 16 + i, C.w[1]);
+    }
+    P.set(9, 3, C.bone[0]);
+    P.set(9, 29, C.bone[0]);
+    // tětiva
+    P.line(9, 3, 4, 16, mix(C.bone[0], C.white, 0.3));
+    P.line(4, 16, 9, 29, mix(C.bone[0], C.white, 0.3));
+    // šíp
+    P.line(4, 16, 27, 16, C.w[4]);
+    P.line(4, 17, 26, 17, C.w[2]);
+    part(P, L => L.poly([[26, 13], [31, 16.5], [26, 20]], (x, y) => (y < 16 ? S[6] : S[3])), 0.3, 0.3);
+    P.poly([[3, 13], [8, 14], [8, 16], [2, 16]], (x) => (x < 5 ? T.l : T.m));
+    P.poly([[2, 17], [8, 17], [8, 19], [3, 20]], (x) => (x < 5 ? T.m : T.s));
+    for (const [x, y, c] of [[20, 10, C.a[3]], [23, 22, C.a[2]], [16, 8, C.a[4]]]) P.set(x, y, c);
+  };
+
+  /* Nástroje: zkřížený krumpáč a sekera. */
+  make.tools = P => {
+    // násady
+    P.line(4, 29, 25, 8, C.w[3]);
+    P.line(5, 29, 26, 8, C.w[1]);
+    P.line(27, 29, 8, 10, C.w[3]);
+    P.line(28, 29, 9, 10, C.w[1]);
+    // hlava krumpáče
+    part(P, L => {
+      L.poly([[17, 4], [24, 5], [30, 11], [29, 13], [23, 9], [16, 7]], (x, y) => (x + y < 30 ? S[5] : S[3]));
+    }, 0.3, 0.35);
+    P.set(29, 12, C.white);
+    // sekera
+    part(P, L => {
+      L.poly([[4, 6], [10, 4], [13, 9], [9, 15], [3, 13]], (x, y) => (x < 7 ? S[6] : x > 10 ? S[3] : S[4]));
+    }, 0.3, 0.35);
+    P.line(3, 7, 3, 12, C.white);
+    for (const [x, y, c] of [[16, 20, C.gold[1]], [15, 21, C.gold[2]], [17, 19, C.gold[0]]]) P.set(x, y, c);
+  };
+
+  /* Opevnění: kamenná hradba s cimbuřím a týmový štít. */
+  make.masonry = P => {
+    stones(P, 2, 10, 30, 31, [S[1], S[2], S[3], S[4]], 6, 4, 61);
+    for (let x = 2; x < 30; x += 8) {
+      stones(P, x, 4, x + 5, 10, [S[1], S[2], S[3], S[4]], 5, 3, x);
+      P.rect(x, 4, 5, 1, S[5]);
+    }
+    P.rect(2, 10, 28, 1, S[5]);
+    part(P, L => {
+      L.poly([[11, 13], [22, 13], [22, 21], [16.5, 27], [11, 21]], (x, y) => (x < 14 || y < 15 ? T.l : x > 19 ? T.s : T.m));
+    }, 0.3, 0.35);
+    ringMark(P, 16.5, 18.5, 3, C.gold[1], 1.2);
+    P.set(12, 14, C.white);
+  };
+
   /* Ohnivá koule: žhnoucí jádro, ohon k levému hornímu rohu. */
   make.fire = P => {
     const FIRE = [C.r[1], C.r[2], C.r[3], C.r[4], C.a[2], C.a[3], C.a[4]];

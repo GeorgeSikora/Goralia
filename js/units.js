@@ -1612,6 +1612,365 @@
     k.meta.head = [hx / HD, hy / HD];
   }
 
+  /* ================= MNICH ================= */
+  // hnědá kutna, týmová štóla, hůl se zlomeným prstenem (znak říše), který při požehnání zazáří
+  const HABIT = ramp(C.w[3], C.w[2], C.w[1], C.w[0]);
+  const HABIT_D = ramp(C.w[2], C.w[1], C.w[0], mix(C.w[0], C.ink, 0.3));
+
+  function drawMonk(k) {
+    const { T, pose: p } = k;
+    const dy = p.dy;
+    const lx = p.lx;
+    const hipY = -12 + dy;
+    const sh = -24 + dy;
+    const sway = Math.round((p.swing || 0) * 1.5);
+    const bless = p.sw === "strike" || p.sw === "low";
+
+    // hůl: úchop (od ramene), úhel násady (k prstenu)
+    const ST = {
+      idle: [8, 11, -1.57], back: [7, 4, -1.75], strike: [11, 6, -1.15], low: [10, 9, -1.35]
+    };
+    const st = posed(ST, p);
+    const sgx = lx + st[0];
+    const sgy = sh + st[1];
+    const sdx = Math.cos(st[2]);
+    const sdy = Math.sin(st[2]);
+    const sTop = [sgx + sdx * 17, sgy + sdy * 17];
+    const sBot = [sgx - sdx * 14, Math.min(-1, sgy - sdy * 14)];
+
+    // vzdálená paže: dlaň před hrudí (modlitba), při chůzi se kývá
+    arm(k, lx - 1, sh + 2, lx + 3 - (p.swing || 0) * 2, sh + 9, { ramp: HABIT_D, r0: 2, r1: 1.7, hand: R.skin, len: 5.2 });
+
+    // sandály pod kutnou
+    leg(k, lx - 2, hipY, lx + p.fb[0], p.fb[1], { ramp: HABIT_D, boot: R.leather, bootH: 2, len: 5.2, bare: true });
+    leg(k, lx + 2, hipY, lx + p.ff[0], p.ff[1], { ramp: HABIT, boot: R.leather, bootH: 2, len: 5.2, bare: true });
+
+    // kutna až ke kotníkům, lem se při kroku vlní
+    const hem = -3 - Math.max(p.ff[1], p.fb[1]) * 0.5;
+    const robe = k.mask().poly([
+      [lx - 5, sh - 1], [lx + 4, sh - 1], [lx + 6, sh + 5], [lx + 7 + sway, hem], [lx + 2, hem + 1], [lx - 3, hem + 1], [lx - 8 + sway, hem - 1], [lx - 6, sh + 4]
+    ]);
+    k.paint(robe, HABIT, { tex: (x, y, t, c) => ((x - lx + 40) % 4 === 1 && y > hipY && t === 1 ? HABIT[2] : c) });
+    k.L(lx - 2, hipY + 2, lx - 3 + sway, hem - 1, HABIT[3]);
+    k.L(lx + 3, hipY + 3, lx + 4 + sway, hem, HABIT[2]);
+    // štóla v barvě týmu, zlatá třásněmi
+    const stole = k.mask().poly([[lx + 1, sh], [lx + 4, sh], [lx + 5, hipY + 6], [lx + 2, hipY + 6]]);
+    k.paint(stole, teamR(T), { dir: "h", occ: 0.3 });
+    k.L(lx + 2, hipY + 7, lx + 5, hipY + 7, C.gold[1]);
+    k.ring(lx + 3, sh + 5, 1.6, T.accent, false);
+    // provazový pás s uzly
+    k.R(lx - 6, hipY - 1, 13, 1, C.d[4]);
+    k.R(lx - 6, hipY, 13, 1, C.d[2]);
+    k.L(lx - 4, hipY + 1, lx - 5 + sway, hipY + 6, C.d[3]);
+    k.px(lx - 5 + sway, hipY + 6, C.d[4]);
+    k.px(lx - 4, hipY + 3, C.d[4]);
+
+    // kápě spadlá na ramena
+    const cowl = k.mask().ell(lx - 1, sh + 0.5, 6, 2.6).ell(lx - 5, sh - 2, 2.6, 3);
+    k.paint(cowl, HABIT, { occ: 0.35 });
+
+    // hlava s tonzurou a krátkým šedým vousem
+    const hx = lx + 1;
+    const hy = sh - 6;
+    k.paint(k.mask().ell(hx, hy, 4.4, 4.9), R.skin, { occ: 0.3 });
+    const fringe = k.mask().ell(hx - 0.5, hy - 1.5, 4.8, 3.2, (x, y) => y >= hy - 2 && x < hx + 2);
+    k.paint(fringe, ramp(S[5], S[4], S[3], S[2]), { occ: 0.2 });
+    k.paint(k.mask().ell(hx, hy - 3, 3.2, 1.6), R.skin, { occ: 0 });
+    k.px(hx - 1, hy - 4, mix(C.skin[0], C.white, 0.5));
+    eye(k, hx + 2, hy, S[3]);
+    k.px(hx + 5, hy + 1, C.skin[1]);
+    const beard = k.mask().poly([[hx, hy + 2], [hx + 5, hy + 2], [hx + 4, hy + 5], [hx + 1, hy + 6]]);
+    k.paint(beard, ramp(S[6], S[5], S[4], S[3]), { occ: 0.25 });
+    k.px(hx + 3, hy + 3, C.skin[2]);
+
+    // hůl a prsten
+    k.L(sBot[0], sBot[1], sTop[0], sTop[1], C.w[3]);
+    k.L(sBot[0] + 1, sBot[1], sTop[0] + 1, sTop[1], C.w[1]);
+    k.px(sBot[0], sBot[1], C.w[0]);
+    const rx = sTop[0] + sdx * 3.5;
+    const ry = sTop[1] + sdy * 3.5;
+    k.ring(rx + 0.5, ry + 0.5, 3.6, mix(C.gold[0], C.ink, 0.4));
+    k.ring(rx, ry, 3.6, bless ? C.a[4] : C.gold[1]);
+    k.ring(rx, ry, 2.6, bless ? C.a[3] : C.gold[0]);
+    k.px(rx - 2, ry - 2, C.white);
+    if (bless) {
+      // požehnání: jiskry kolem prstenu
+      for (const [ox, oy, c] of [[-6, -1, C.a[3]], [5, -5, C.a[4]], [6, 2, C.a[2]], [0, -7, C.a[4]], [-4, 5, C.a[2]]]) k.px(rx + ox, ry + oy, c);
+    }
+    k.meta.halo = [rx / HD, ry / HD, bless ? 1 : 0];
+
+    // přední paže drží hůl
+    arm(k, lx + 2, sh + 2, sgx, sgy, { ramp: HABIT, r0: 2.1, r1: 1.8, hand: R.skin, len: 5.4 });
+
+    k.meta.head = [hx / HD, hy / HD];
+  }
+
+  /* ================= RYTÍŘ NA KONI ================= */
+  // kaštanový kůň v týmovém čabraku, rytíř ve velké přilbě s kopím; útok = sklopené kopí (nápor)
+  const HORSE = ramp(mix(C.w[4], C.d[4], 0.3), C.w[3], C.w[2], C.w[1]);
+  const HORSE_D = ramp(C.w[3], C.w[2], C.w[1], C.w[0]);
+  const MANE = ramp(C.w[1], C.w[0], mix(C.w[0], C.ink, 0.35), C.ink);
+
+  function drawKnight(k) {
+    const { T, pose: p } = k;
+    const anim = p.anim;
+    const walk = anim === "walk";
+    const ph = walk ? (p.i / 6) * Math.PI * 2 : 0;
+    const lunge = anim === "attack" ? Math.round((p.lx || 0) * 0.6) : 0;
+    const bx = -1 + lunge;
+    const by = -21 + (walk ? Math.round(Math.sin(ph * 2 + 0.6)) : anim === "idle" ? p.dy : 0);
+    const flick = walk ? Math.round(Math.sin(ph) * 1.5) : p.cape || 0;
+
+    // nohy: [kyčel x, fáze, přední?, vzdálená?]
+    const LEGS = [[bx - 9, Math.PI, false, true], [bx + 8, 0, true, true], [bx - 11, 0, false, false], [bx + 10, Math.PI, true, false]];
+    const horseLeg = ([hx, off, front, far]) => {
+      const s = Math.sin(ph + off);
+      const c = Math.cos(ph + off);
+      const fx = hx + (walk ? s * 6 : front ? 1 : -1) + (anim === "attack" && front ? 2 : 0);
+      const lift = walk ? Math.max(0, c) * 4 : 0;
+      const top = by + 3;
+      const [kx, ky] = ik(hx, top, fx, -2 - lift, 8, 8, front ? 1 : -1);
+      const rp = far ? HORSE_D : HORSE;
+      const m = k.mask().cap(hx, top - 1, kx, ky, front ? 3 : 3.6, 1.6).cap(kx, ky, fx, -2 - lift, 1.5, 1.3);
+      k.paint(m, rp, { dir: "h", occ: 0.35 });
+      // kopyto se spěnkou
+      const hfx = Math.round(fx);
+      k.paint(k.mask().rect(hfx - 2, -2 - Math.round(lift), 4, 2), ramp(S[3], C.b[3], C.b[2], C.b[1]), { dir: "v", occ: 0.3 });
+      k.px(hfx - 2, -3 - Math.round(lift), far ? MANE[1] : mix(C.w[4], C.white, 0.3));
+    };
+
+    // vzdálené nohy a ohon za tělem
+    horseLeg(LEGS[0]);
+    horseLeg(LEGS[1]);
+    const tail = k.mask().cap(bx - 13, by - 3, bx - 17, by + 2 + flick, 2.2, 1.8).cap(bx - 17, by + 2 + flick, bx - 18 - flick, by + 10, 1.8, 0.9);
+    k.paint(tail, MANE, { occ: 0.3, tex: (x, y, t, c) => ((x + y) % 3 === 0 && t === 1 ? MANE[0] : c) });
+
+    // trup koně, hruď a krk s hlavou
+    const body = k.mask().ell(bx, by, 13, 6).ell(bx - 9, by - 1, 6.5, 6.3).ell(bx + 8, by - 0.5, 6.3, 6.5);
+    k.paint(body, HORSE, { occ: 0.3 });
+    const neckTop = [bx + 15, by - 13];
+    const neck = k.mask().cap(bx + 8, by - 2, neckTop[0], neckTop[1], 5.6, 3.9);
+    k.paint(neck, HORSE, { occ: 0.35 });
+    const head = k.mask().cap(neckTop[0], neckTop[1] - 1, bx + 22, by - 6, 3.7, 2.4);
+    k.paint(head, HORSE, { occ: 0.35 });
+    // ucho, oko, nozdra, lysina
+    k.paint(k.mask().poly([[neckTop[0] - 2, neckTop[1] - 3], [neckTop[0], neckTop[1] - 3], [neckTop[0] - 2, neckTop[1] - 7]]), HORSE, { occ: 0.3 });
+    k.px(neckTop[0] + 1, neckTop[1] - 1, EYE);
+    k.px(bx + 22, by - 6, MANE[2]);
+    k.L(neckTop[0] + 2, neckTop[1] - 3, bx + 21, by - 7, mix(C.d[5], C.white, 0.5));
+    // hříva
+    const mane = k.mask().cap(neckTop[0] - 1, neckTop[1] - 2, bx + 7, by - 6 - flick * 0.5, 1.7, 1.4);
+    k.paint(mane, MANE, { occ: 0.3 });
+    // uzda v barvě týmu
+    k.L(neckTop[0] + 1, neckTop[1] + 1, bx + 19, by - 5, T.d);
+    k.L(neckTop[0] - 1, neckTop[1] - 2, neckTop[0] + 1, neckTop[1] + 2, C.w[1]);
+    k.px(bx + 19, by - 5, C.gold[1]);
+
+    // čabrak: týmové sukno přes trup se zubatým lemem a znakem
+    const capar = k.mask().poly([
+      [bx - 12, by - 6], [bx + 7, by - 6], [bx + 9, by + 1], [bx + 8, by + 8], [bx - 13, by + 8], [bx - 14, by]
+    ]);
+    k.paint(capar, teamR(T), { dir: "v", occ: 0.3, tex: (x, y, t, c) => ((x - bx + 40) % 6 === 0 && y > by && t === 1 ? T.s : c) });
+    for (let x = bx - 13; x <= bx + 8; x++) {
+      const tooth = ((x - bx + 40) % 4) < 2;
+      k.px(x, by + 8, tooth ? T.accent : T.d);
+      if (tooth) k.px(x, by + 9, mix(T.accent, C.ink, 0.35));
+    }
+    k.ring(bx - 3, by + 1, 3, T.accent);
+    k.ring(bx - 2.5, by + 1.5, 3, mix(T.accent, C.ink, 0.55));
+    k.ring(bx - 3, by + 1, 3, T.accent);
+
+    // blízké nohy před čabrakem
+    horseLeg(LEGS[2]);
+    horseLeg(LEGS[3]);
+
+    // sedlo
+    k.paint(k.mask().ell(bx - 1, by - 6, 5, 1.6), R.leather, { occ: 0.3 });
+    k.px(bx - 5, by - 7, C.w[4]);
+
+    // kopí: úchop, úhel; vzadu přečnívá ratiště
+    const LANCE = {
+      idle: [bx + 5, by - 12, -1.2], back: [bx + 3, by - 14, -1.35],
+      strike: [bx + 7, by - 11, 0.02], low: [bx + 6, by - 10, 0.18]
+    };
+    const [gx, gy, ga] = posed(LANCE, p);
+    const ldx = Math.cos(ga);
+    const ldy = Math.sin(ga);
+    const tip = [gx + ldx * 23, gy + ldy * 23];
+    const butt = [gx - ldx * 7, gy - ldy * 7];
+    k.L(butt[0], butt[1], tip[0], tip[1], C.w[3]);
+    k.L(butt[0] + (ldy > -0.5 ? 0 : 1), butt[1] + (ldy > -0.5 ? 1 : 0), tip[0] - ldx * 4 + (ldy > -0.5 ? 0 : 1), tip[1] - ldy * 4 + (ldy > -0.5 ? 1 : 0), C.w[1]);
+    // hrot a vamplát (kuželová ochrana ruky)
+    k.L(tip[0] - ldx * 3, tip[1] - ldy * 3, tip[0], tip[1], S[5]);
+    k.px(tip[0], tip[1], C.white);
+    const vx = gx + ldx * 3;
+    const vy = gy + ldy * 3;
+    k.paint(k.mask().cap(vx - ldx * 1.5, vy - ldy * 1.5, vx + ldx * 2, vy + ldy * 2, 2.6, 1), R.steel, { occ: 0.3 });
+    // praporec pod hrotem vlaje dozadu
+    const px0 = tip[0] - ldx * 5;
+    const py0 = tip[1] - ldy * 5;
+    const wave = walk ? Math.round(Math.sin(ph * 2)) : 0;
+    const flagM = k.mask().poly([
+      [px0, py0], [px0 - ldx * 5, py0 - ldy * 5], [px0 - ldx * 2 - 7, py0 - ldy * 2 + 2 + wave], [px0 - 8, py0 + wave - 1]
+    ]);
+    k.paint(flagM, teamR(T), { occ: 0.3 });
+    if (p.sw === "strike") {
+      // nápor: řídká stopa vzduchu nad a pod hrotem
+      for (let i = 0; i < 8; i += 2) {
+        k.px(tip[0] - 4 - i, tip[1] - 2, mix(C.white, T.l, 0.3));
+        k.px(tip[0] - 7 - i, tip[1] + 2, mix(C.white, T.l, 0.5));
+      }
+    }
+
+    // jezdec: vzdálená (pravá) paže s kopím
+    const rsh = [bx + 1, by - 15];
+    arm(k, rsh[0], rsh[1], gx, gy, { ramp: R.steelD, r0: 2, r1: 1.7, hand: R.leather, len: 5.4 });
+
+    // trup: kroužková košile a tabard
+    const sY = by - 17;
+    const wY = by - 6;
+    const torso = k.mask().poly([[bx - 5, sY], [bx + 4, sY], [bx + 5, sY + 4], [bx + 4, wY], [bx - 4, wY], [bx - 6, sY + 3]]);
+    k.paint(torso, R.steelD, { tex: (x, y, t, c) => (y % 2 === 0 ? mix(c, C.shade, 0.25) : (x + (y >> 1)) % 2 ? c : mix(c, S[5], 0.2)) });
+    const tab = k.mask().poly([[bx - 3, sY + 2], [bx + 4, sY + 2], [bx + 5, wY + 2], [bx - 4, wY + 2]]);
+    k.paint(tab, teamR(T), { dir: "h", occ: 0.3 });
+    k.R(bx - 4, wY - 1, 10, 1, C.w[1]);
+    k.px(bx + 1, wY - 1, C.gold[1]);
+
+    // blízká noha ve třmenu
+    const hip = [bx + 1, wY];
+    const knee = [bx + 5, by - 3];
+    const foot = [bx + 3, by + 4];
+    k.paint(k.mask().cap(hip[0], hip[1], knee[0], knee[1], 2.4, 2).cap(knee[0], knee[1], foot[0], foot[1], 2, 1.7), R.steel, { occ: 0.35 });
+    k.paint(k.mask().rect(foot[0] - 1, foot[1] - 1, 5, 2), R.leather, { dir: "v", occ: 0.3 });
+    k.px(knee[0] + 1, knee[1] - 1, S[6]);
+    k.L(foot[0] - 1, foot[1] + 1, foot[0] + 3, foot[1] + 1, C.gold[0]);
+
+    // štít (blízká levá paže): kosočtverečný týmový štít
+    const sx = bx - 3;
+    const sy = by - 8;
+    const shield = k.mask().poly([[sx - 4, sy - 4], [sx + 4, sy - 4], [sx + 4, sy + 1], [sx, sy + 6], [sx - 4, sy + 1]]);
+    k.paint(shield, teamR(T), {
+      occ: 0.45,
+      tex: (x, y, t, c) => (shield.has(x - 1, y) && shield.has(x + 1, y) && shield.has(x, y - 1) && shield.has(x, y + 1) ? c : (x < sx ? S[5] : S[2]))
+    });
+    k.ring(sx, sy - 0.5, 2, T.accent);
+    k.px(sx - 3, sy - 3, C.white);
+
+    // hlava ve velké přilbě s týmovým chocholem
+    const hx = bx;
+    const hy = sY - 5;
+    const fl = p.cape || 0;
+    const plume = k.mask().cap(hx, hy - 5, hx - 4, hy - 6 + fl, 1.6, 1.2).cap(hx - 4, hy - 6 + fl, hx - 8, hy - 2 + fl + flick, 1.2, 0.7);
+    k.paint(plume, teamR(T), { occ: 0.3 });
+    const helm = k.mask().rect(hx - 3, hy - 3, 7, 7).ell(hx + 0.5, hy - 3, 3.5, 2.2);
+    k.paint(helm, R.steel, { occ: 0.3, dir: "h" });
+    k.L(hx + 1, hy - 1, hx + 3, hy - 1, C.ink);
+    k.px(hx + 2, hy + 1, S[2]);
+    k.px(hx + 3, hy + 2, S[2]);
+    k.L(hx + 1, hy - 5, hx + 1, hy + 3, S[5]);
+    k.px(hx - 2, hy - 4, C.white);
+    k.R(hx - 3, hy + 3, 7, 1, C.gold[0]);
+
+    k.meta.head = [hx / HD, hy / HD];
+  }
+
+  /* ================= KATAPULT ================= */
+  // dřevěný vůz se čtyřmi koly, torzní rameno s miskou na kámen, týmový praporec a štítek
+  const TIMBER = ramp(C.w[4], C.w[3], C.w[2], C.w[1]);
+  const TIMBER_D = ramp(C.w[3], C.w[2], C.w[1], C.w[0]);
+  const ROCK = ramp(S[5], S[4], S[3], S[2]);
+
+  function drawCatapult(k) {
+    const { T, pose: p } = k;
+    const anim = p.anim;
+    const walk = anim === "walk";
+    const spin = walk ? (p.i / 6) * (Math.PI / 2) : 0;
+    const shake = p.sw === "back" ? 1 : 0;
+    const bob = walk ? (Math.floor(p.i * 2) % 3 === 0 ? -1 : 0) : 0;
+    const base = -9 + bob;
+
+    const wheel = (cx, cy, r, far) => {
+      const rp = far ? TIMBER_D : TIMBER;
+      const rim = k.mask().ell(cx, cy, r, r);
+      k.paint(rim, rp, { occ: 0.35 });
+      const hole = k.mask().ell(cx, cy, r - 1.6, r - 1.6);
+      k.paint(hole, far ? ramp(C.w[1], C.w[0], C.w[0], C.ink) : ramp(C.w[2], C.w[1], C.w[0], C.w[0]), { occ: 0 });
+      for (let s = 0; s < 4; s++) {
+        const a = spin + s * Math.PI / 2;
+        k.L(cx, cy, cx + Math.cos(a) * (r - 1), cy + Math.sin(a) * (r - 1), rp[1]);
+      }
+      // železná obruč a náboj
+      for (let a = 0; a < Math.PI * 2; a += 0.35) k.px(cx + Math.cos(a) * r, cy + Math.sin(a) * r, (a > 2.4 && a < 5.5) ? S[3] : S[2]);
+      k.paint(k.mask().ell(cx, cy, 1.4, 1.4), R.iron, { occ: 0 });
+    };
+
+    // vzdálená kola
+    wheel(-11, -6 + bob, 5.4, true);
+    wheel(14, -6 + bob, 5.4, true);
+
+    // rameno: čep, úhel (od čepu k misce)
+    const ARM = { idle: [Math.PI + 0.22], back: [Math.PI + 0.08], strike: [Math.PI * 2 - 1.28], low: [Math.PI * 2 - 1.62] };
+    const [aa] = posed(ARM, p);
+    const pivot = [-5, base - 3];
+    const adx = Math.cos(aa);
+    const ady = Math.sin(aa);
+    const cup = [pivot[0] + adx * 20, pivot[1] + ady * 20];
+    const loaded = p.sw === "idle" || p.sw === "back" || anim !== "attack";
+
+    // podvozek: dva trámy s příčkami
+    const chassis = k.mask().rect(-21, base - 2, 41, 4);
+    k.paint(chassis, TIMBER, { dir: "v", occ: 0.3, tex: (x, y, t, c) => ((x + 40) % 9 === 0 ? TIMBER[3] : c) });
+    k.R(-21, base + 2, 41, 1, C.w[0]);
+    for (const x of [-18, 16]) k.paint(k.mask().rect(x, base - 4, 3, 7), TIMBER_D, { occ: 0.3 });
+
+    // stojan (A) s příčným dorazem, polstrovaným týmovým suknem
+    const frame = k.mask().cap(-1, base - 1, 4, base - 21, 1.6, 1.4).cap(9, base - 1, 4, base - 21, 1.6, 1.4);
+    k.paint(frame, TIMBER, { occ: 0.35, dir: "h" });
+    k.L(1, base - 10, 7, base - 10, C.w[1]);
+    k.paint(k.mask().rect(0, base - 24, 9, 3), TIMBER_D, { occ: 0.3 });
+    k.paint(k.mask().ell(4.5, base - 25, 4.4, 1.6), teamR(T), { occ: 0.3 });
+
+    // rameno s miskou
+    k.paint(k.mask().cap(pivot[0], pivot[1], cup[0], cup[1], 1.9, 1.3), TIMBER, { occ: 0.35 });
+    const cupM = k.mask().ell(cup[0] + adx * 1.5, cup[1] + ady * 1.5, 3.4, 3.4, (x, y) => (x + 0.5 - cup[0]) * -ady + (y + 0.5 - cup[1]) * adx <= 1.2);
+    k.paint(cupM, R.iron, { occ: 0.35 });
+    if (loaded) {
+      k.paint(k.mask().ell(cup[0] + adx * 1.5 + ady * 1.6, cup[1] + ady * 1.5 - adx * 1.6, 2.6, 2.4), ROCK, { occ: 0.35 });
+    } else if (p.sw === "strike") {
+      // kámen právě vylétá dopředu
+      const rx = cup[0] + 6;
+      const ry = cup[1] - 2;
+      k.paint(k.mask().ell(rx, ry, 2.8, 2.6), ROCK, { occ: 0.35 });
+      k.L(rx - 6, ry + 2, rx - 3, ry + 1, mix(S[5], C.white, 0.4));
+      k.L(rx - 7, ry - 1, rx - 4, ry - 1, mix(S[5], C.white, 0.2));
+    }
+    // torzní svazek lan na čepu
+    const coil = k.mask().ell(pivot[0], pivot[1], 3.2, 3.2);
+    k.paint(coil, R.straw, { occ: 0.35, tex: (x, y, t, c) => ((x + y) % 2 === 0 ? R.straw[2] : c) });
+    k.px(pivot[0], pivot[1], C.w[0]);
+
+    // naviják vzadu s klikou
+    k.paint(k.mask().ell(-17, base - 6, 2.4, 2.4), TIMBER_D, { occ: 0.3 });
+    k.L(-17, base - 6, -20 + shake, base - 9, S[4]);
+    k.L(-17, base - 6, pivot[0] + adx * 9, pivot[1] + ady * 9, C.d[4]);
+
+    // týmový štítek na boku a praporec vpředu
+    k.paint(k.mask().poly([[-4, base - 2], [3, base - 2], [3, base + 2], [-0.5, base + 5], [-4, base + 2]]), teamR(T), { occ: 0.4 });
+    k.ring(-0.5, base + 0.5, 1.6, T.accent, false);
+    k.L(17, base - 3, 17, base - 21, C.w[3]);
+    k.L(18, base - 3, 18, base - 21, C.w[1]);
+    const wave = walk ? Math.round(Math.sin(p.i * 2.1)) : p.cape || 0;
+    const flagM = k.mask().poly([[17, base - 21], [17, base - 15], [10, base - 16 + wave], [8, base - 19 + wave]]);
+    k.paint(flagM, teamR(T), { occ: 0.3 });
+    k.px(17, base - 22, C.gold[2]);
+
+    // blízká kola
+    wheel(-13, -5 + bob, 5.8, false);
+    wheel(12, -5 + bob, 5.8, false);
+
+    k.meta.head = [1 / HD, (base - 12) / HD];
+  }
+
   const RIGS = {
     soldier: drawSoldier,
     worker: drawWorker,
@@ -1622,7 +1981,10 @@
     skeleton: drawSkeleton,
     abomination: drawAbomination,
     banshee: drawBanshee,
-    lich: drawLich
+    lich: drawLich,
+    monk: drawMonk,
+    knight: drawKnight,
+    catapult: drawCatapult
   };
 
   /* ---------- atlas ---------- */
@@ -1759,7 +2121,8 @@
    * na 40x40 art px, takže jeden jemný bod spritu = jeden art px UI. */
   const PORTRAIT_OFF = {
     worker: [-1, 3], soldier: [-1, 4], archer: [0, 4], hero: [-1, 5], raider: [-1, 4],
-    ghoul: [-4, 6], skeleton: [0, 4], abomination: [-4, 8], banshee: [-2, 5], lich: [-1, 3]
+    ghoul: [-4, 6], skeleton: [0, 4], abomination: [-4, 8], banshee: [-2, 5], lich: [-1, 3],
+    monk: [-1, 4], knight: [2, 8], catapult: [0, 2]
   };
 
   const portraitCache = {};

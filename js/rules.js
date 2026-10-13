@@ -18,16 +18,44 @@
     tower:    { gold: 90,  wood: 55 },
     barracks: { gold: 125, wood: 70 },
     hut:      { gold: 70,  wood: 40 },
-    smithy:   { gold: 120, wood: 80 }
+    smithy:   { gold: 120, wood: 80 },
+    monk:     { gold: 75,  wood: 25 },
+    knight:   { gold: 135, wood: 45 },
+    catapult: { gold: 150, wood: 110 },
+    stable:   { gold: 140, wood: 90 },
+    workshop: { gold: 150, wood: 95 }
   };
 
-  // Výzkum v kovárně: tři stupně, cena a doba výzkumu (s) pro každý. Platí pro všechny vojáky týmu.
+  // Kde se co cvičí. Dělníka cvičí hlavní budova týmu (R.HQ).
+  const TRAINED_AT = { soldier: "barracks", archer: "barracks", hero: "barracks", monk: "barracks", knight: "stable", catapult: "workshop" };
+  // Stáj a dílna potřebují dostavěná kasárna.
+  const REQUIRES = { stable: "barracks", workshop: "barracks" };
+
+  // Výzkumy: stupně s cenou a dobou výzkumu (s). at = budova, kde se zkoumá (jedna budova = jeden výzkum najednou).
+  // Platí pro celý tým, i pro jednotky vycvičené později.
   const UPGRADES = {
-    armor:  { name: "Zbroj",  levels: [{ gold: 90,  wood: 40,  time: 20 }, { gold: 140, wood: 70,  time: 30 }, { gold: 200, wood: 100, time: 40 }] },
-    weapon: { name: "Zbraně", levels: [{ gold: 100, wood: 30,  time: 20 }, { gold: 150, wood: 60,  time: 30 }, { gold: 210, wood: 90,  time: 40 }] }
+    armor:   { name: "Zbroj",    at: "smithy", levels: [{ gold: 90,  wood: 40,  time: 20 }, { gold: 140, wood: 70,  time: 30 }, { gold: 200, wood: 100, time: 40 }] },
+    weapon:  { name: "Zbraně",   at: "smithy", levels: [{ gold: 100, wood: 30,  time: 20 }, { gold: 150, wood: 60,  time: 30 }, { gold: 210, wood: 90,  time: 40 }] },
+    archery: { name: "Střelba",  at: "smithy", levels: [{ gold: 90,  wood: 60,  time: 20 }, { gold: 140, wood: 90,  time: 30 }, { gold: 190, wood: 95,  time: 40 }] },
+    tools:   { name: "Nástroje", at: "hall",   levels: [{ gold: 100, wood: 50,  time: 25 }, { gold: 170, wood: 90,  time: 35 }] },
+    masonry: { name: "Opevnění", at: "hall",   levels: [{ gold: 120, wood: 90,  time: 30 }, { gold: 180, wood: 95,  time: 40 }] }
   };
-  const ARMOR_PER_LEVEL = 0.12; // část poškození, kterou voják za stupeň zbroje neutrpí
-  const WEAPON_PER_LEVEL = 3;   // bonus k poškození vojáka za stupeň zbraní
+  const ARMOR_PER_LEVEL = 0.12; // část poškození, kterou voják nebo rytíř za stupeň zbroje neutrpí
+  const WEAPON_PER_LEVEL = 3;   // bonus k poškození vojáka a rytíře za stupeň zbraní
+  const MELEE = ["soldier", "knight"]; // na koho platí zbroj a zbraně z kovárny
+  const ARCHERY = { damage: 2, range: 10 }; // lučištník za stupeň střelby
+  const TOOLS_PER_LEVEL = 0.18;  // o kolik rychleji dělník natěží náklad za stupeň nástrojů
+  const MASONRY = { hp: 0.15, tower: 4 }; // budovy +15 % zdraví, věže +4 poškození za stupeň opevnění
+
+  // Strážní věž: poškození, dosah, prodleva.
+  const TOWER = { damage: 20, range: 155, delay: 0.85 };
+
+  // Rytíř: nápor. Po rozjezdu (aspoň charge jednotek dráhy od posledního úderu) první rána přidá bonus.
+  const KNIGHT = { charge: 70, bonus: 14 };
+  // Katapult: kámen dopadne na plochu (radius), budovám ubere násobek, blíž než min neumí střílet.
+  const CATAPULT = { min: 70, radius: 30, splash: 0.5, building: 2.5, flight: 0.8 };
+  // Mnich: léčí zraněné spojence v dosahu (range jednotky), hp za jedno požehnání.
+  const MONK = { heal: 12 };
 
   // [hp, rychlost, poškození, dosah, prodleva mezi útoky]
   const UNITS = {
@@ -35,6 +63,9 @@
     soldier: { hp: 110, speed: 45, damage: 15, range: 25,  delay: 0.72 },
     archer:  { hp: 70,  speed: 49, damage: 11, range: 110, delay: 1.04 },
     hero:    { hp: 210, speed: 53, damage: 23, range: 34,  delay: 0.68 },
+    monk:     { hp: 60,  speed: 48, damage: 4,  range: 90,  delay: 1.4 },
+    knight:   { hp: 190, speed: 72, damage: 18, range: 27,  delay: 0.85 },
+    catapult: { hp: 130, speed: 30, damage: 34, range: 200, delay: 3.6 },
     // nemrtví z pekla (jen AI na kooperativních mapách)
     ghoul:       { hp: 90,  speed: 60, damage: 11, range: 24,  delay: 0.62 },
     skeleton:    { hp: 55,  speed: 47, damage: 10, range: 105, delay: 1.1 },
@@ -45,7 +76,7 @@
 
   // Všechny základny mají stejné zdraví, aby byl souboj férový.
   const BUILDING_HP = {
-    hall: 1500, citadel: 1500, barracks: 290, tower: 175, hut: 200, smithy: 260,
+    hall: 1500, citadel: 1500, barracks: 290, tower: 175, hut: 200, smithy: 260, stable: 320, workshop: 300,
     necropolis: 5000, crypt: 850, slaughterhouse: 950, ziggurat: 550, portal: 1000
   };
 
@@ -53,7 +84,7 @@
   // Přední hrana leží FOOT_FRONT pod středem budovy (tam, kde stojí nohy jednotky před zdí),
   // obdélník sahá od ní o hloubku dozadu. Rozměry odpovídají spodku sprajtu v buildings.js.
   const FOOTPRINT = {
-    hall: [64, 58], citadel: [78, 64], barracks: [60, 50], tower: [24, 20], hut: [24, 20], smithy: [34, 28],
+    hall: [64, 58], citadel: [78, 64], barracks: [60, 50], tower: [24, 20], hut: [24, 20], smithy: [34, 28], stable: [52, 40], workshop: [46, 38],
     necropolis: [82, 70], crypt: [46, 36], slaughterhouse: [50, 40], ziggurat: [34, 28], portal: [52, 40]
   };
   const FOOT_FRONT = 24;
@@ -76,7 +107,7 @@
   };
 
   // Doba stavby v sekundách (jeden dělník). Nemrtvým budovy rostou samy, bez dělníků.
-  const BUILD_TIME = { tower: 10, barracks: 12, hut: 8, smithy: 14, crypt: 22, slaughterhouse: 28, ziggurat: 16, portal: 30 };
+  const BUILD_TIME = { tower: 10, barracks: 12, hut: 8, smithy: 14, stable: 14, workshop: 16, crypt: 22, slaughterhouse: 28, ziggurat: 16, portal: 30 };
 
   // Oprava hotové budovy dělníkem: každý krok vezme 1 zlato a 1 dřevo a vrátí budově pár životů.
   // Bez surovin oprava končí. Jeden dělník tak opraví 20 životů za sekundu za 4 zlata a 4 dřeva.
@@ -139,7 +170,8 @@
   const supplyCap = huts => Math.min(SUPPLY_MAX, SUPPLY_BASE + SUPPLY_PER_HUT * huts);
 
   return {
-    UNDEAD, COSTS, UPGRADES, ARMOR_PER_LEVEL, WEAPON_PER_LEVEL, UNITS, BUILDING_HP, FOOTPRINT, footRect, footFree, BUILD_TIME, REPAIR, TEAMS, HQ, TEAM_NAMES, MAX_PLAYERS, BASE_GOLD, BASE_WOOD, GOLD_AMOUNT,
+    UNDEAD, COSTS, TRAINED_AT, REQUIRES, UPGRADES, ARMOR_PER_LEVEL, WEAPON_PER_LEVEL, MELEE, ARCHERY, TOOLS_PER_LEVEL, MASONRY,
+    TOWER, KNIGHT, CATAPULT, MONK, UNITS, BUILDING_HP, FOOTPRINT, footRect, footFree, BUILD_TIME, REPAIR, TEAMS, HQ, TEAM_NAMES, MAX_PLAYERS, BASE_GOLD, BASE_WOOD, GOLD_AMOUNT,
     SUPPLY_BASE, SUPPLY_PER_HUT, SUPPLY_MAX, supplyCap, MAX_BUILDINGS, COUNTDOWN
   };
 });

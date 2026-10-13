@@ -11,6 +11,7 @@
   const alive = e => !!e && e.hp > 0;
   const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
   const WORKERS_WANTED = 7;
+  const WORKERS_LATE = 10; // po čtyřech minutách víc dělníků, ať je na dražší jednotky
   const FIRST_WAVE = 10;
   const FIRST_WAVE_AT = 240;
   const MAX_WAVE = 20;
@@ -61,6 +62,20 @@
       const resource = nearestResource(match, hq, type) || nearestResource(match, hq, "gold");
       if (resource) match.command(brain.team, { c: "order", k: "gather", ids: [worker.id], target: resource.id });
     }
+
+    rebalance(match, brain, hq, workers);
+  }
+
+  // Dělník jednou poslaný na dřevo by ho jinak sekal pořád: když se jedné suroviny hromadí moc, jeden prázdný přejde na druhou.
+  function rebalance(match, brain, hq, workers) {
+    const eco = match.econ[brain.team];
+    const on = type => workers.filter(w => !w.carry && w.order && w.order.type === "gather" && w.order.target.type === type);
+    const from = eco.wood > eco.gold * 2 + 250 ? "wood" : eco.gold > eco.wood * 3 + 300 ? "gold" : null;
+    if (!from) return;
+
+    const busy = on(from);
+    const to = nearestResource(match, hq, from === "wood" ? "gold" : "wood");
+    if (busy.length > 1 && to) match.command(brain.team, { c: "order", k: "gather", ids: [busy[0].id], target: to.id });
   }
 
   // Poškozenou budovu opraví jeden dělník, když je klid a zbývá zlato i dřevo na víc než opravu.
@@ -100,17 +115,21 @@
     return false;
   }
 
+  // Technologie se staví postupně: [budova, od kdy (s), kolik vojáků už musí být]. Na další z nich se šetří.
+  const TECH = [["smithy", 150, 4], ["stable", 260, 6], ["workshop", 380, 8]];
+
   function produce(match, brain, hq, workers, army) {
     const team = brain.team;
     const eco = match.econ[team];
-    const barracks = match.buildings.filter(b => b.team === team && b.type === "barracks" && alive(b));
+    const own = type => match.buildings.filter(b => b.team === team && b.type === type && alive(b));
+    const barracks = own("barracks");
     const ready = barracks.filter(b => b.progress >= 1);
-    const towers = match.buildings.filter(b => b.team === team && b.type === "tower" && alive(b));
-    const huts = match.buildings.filter(b => b.team === team && b.type === "hut" && alive(b));
+    const towers = own("tower");
+    const huts = own("hut");
     const hasHero = army.some(u => u.type === "hero");
     const builder = workers.find(w => !w.order || w.order.type !== "build") || workers[0];
 
-    if (workers.length < WORKERS_WANTED && canPay(eco, "worker")) {
+    if (workers.length < (match.elapsed > 240 ? WORKERS_LATE : WORKERS_WANTED) && canPay(eco, "worker")) {
       match.command(team, { c: "train", type: "worker" });
     }
 
@@ -128,26 +147,57 @@
 
     if (!ready.length) return;
 
-    const smithies = match.buildings.filter(b => b.team === team && b.type === "smithy" && alive(b));
+    // další technologie: když na ni zrovna není, šetří se a armáda chvíli počká (pokud nehrozí útok)
+    let saving = false;
 
-    if (builder && !smithies.length && army.length >= 4 && match.elapsed > 150 && canPay(eco, "smithy")) {
-      buildNear(match, brain, hq, "smithy", builder);
+    for (const [type, from, minArmy] of TECH) {
+      if (own(type).length) continue;
+      if (match.elapsed < from || army.length < minArmy || !builder) break;
+      if (canPay(eco, type)) buildNear(match, brain, hq, type, builder);
+      else saving = true;
+      break;
     }
 
-    if (smithies.some(s => s.progress >= 1) && eco.gold > 260) {
-      match.command(team, { c: "research", kind: brain.flip % 2 ? "armor" : "weapon" });
+    const threat = match.units.some(u => alive(u) && !match.friendly(u.team, team) && u.type !== "worker" && distance(u, hq) < 420);
+    if (saving && !threat) return;
+
+    // výzkum: nástroje v gmině brzy, v kovárně střídavě, opevnění později
+    if (match.elapsed > 100 && workers.length >= 5 && eco.gold > 200 && eco.wood > 90) {
+      match.command(team, { c: "research", kind: "tools" });
     }
+    if (own("smithy").some(s => s.progress >= 1) && eco.gold > 260) {
+      match.command(team, { c: "research", kind: ["weapon", "armor", "archery"][brain.flip % 3] });
+    }
+    if (match.elapsed > 420 && eco.gold > 320 && eco.wood > 200) match.command(team, { c: "research", kind: "masonry" });
+
     if (!hasHero && canPay(eco, "hero")) match.command(team, { c: "train", type: "hero" });
 
+    const count = type => army.filter(u => u.type === type).length;
+    const can = {
+      knight: own("stable").some(b => b.progress >= 1),
+      catapult: own("workshop").some(b => b.progress >= 1) && count("catapult") < 3,
+      monk: count("monk") < Math.min(3, Math.floor(army.length / 6))
+    };
+
     for (let i = 0; i < 2; i++) {
-      const type = brain.flip++ % 3 === 2 ? "archer" : "soldier";
-      if (canPay(eco, type)) match.command(team, { c: "train", type });
+      const n = brain.flip++;
+      let type = n % 3 === 2 ? "archer" : "soldier";
+      if (can.monk && n % 5 === 4) type = "monk";
+      else if (can.catapult && n % 7 === 3) type = "catapult";
+      else if (can.knight && n % 2 === 1) type = "knight";
+      // na dražší jednotku se počká, jinak by ji levní vojáci vždycky předběhli
+      if (!canPay(eco, type)) {
+        brain.flip--;
+        break;
+      }
+      match.command(team, { c: "train", type });
     }
 
     if (workers.length && army.length >= 5 && towers.length < 2 && eco.wood >= 120 && canPay(eco, "tower")) {
       buildNear(match, brain, hq, "tower", builder);
     }
   }
+
 
   function nearestEnemyHq(match, team, from) {
     let best = null;
