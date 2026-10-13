@@ -756,10 +756,14 @@
     if (cost) {
       const ok = st.afford !== false;
       const gold = String(cost.gold);
-      T3(g, gold, b.x + 3, b.y + 21, ok ? 0xffe08a : BAD);
+      const wood = cost.wood ? String(cost.wood) : "";
+      // dvě trojciferné ceny by s okrajem 3 px splynuly, tak se roztáhnou až na rámeček
+      const tight = wood && PK.textWidth(gold, "3") + PK.textWidth(wood, "3") + 3 > BW - 6;
+      const pad = tight ? 1 : 3;
+      T3(g, gold, b.x + pad, b.y + 21, ok ? 0xffe08a : BAD);
 
-      if (cost.wood) {
-        T3(g, String(cost.wood), b.x + BW - 3, b.y + 21, ok ? 0xe0b070 : BAD, { align: "right" });
+      if (wood) {
+        T3(g, wood, b.x + BW - pad, b.y + 21, ok ? 0xe0b070 : BAD, { align: "right" });
       }
     } else if (st.cd > 0) {
       // clockwise pixel wipe over the icon
