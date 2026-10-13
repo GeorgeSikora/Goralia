@@ -25,6 +25,7 @@ const RESEARCH_KINDS = ["armor", "weapon"];
 const ORDER_CODES = { move: 1, attack: 2, gather: 3, deliver: 4, build: 5, amove: 6, repair: 7 };
 const UD = R.UNDEAD;
 const UNIT_RADIUS = 15; // nejmenší odstup středů dvou jednotek
+const EDGE_STOP = 10; // jak blízko k okraji budovy dojde dělník nebo voják na blízko
 
 const alive = entity => !!entity && entity.hp > 0;
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -44,7 +45,8 @@ class Match {
     this.map = map;
     this.LW = map.size[0] * 2;
     this.LH = map.size[1] * 2;
-    this.nav = NAV.forMap(map);
+    this.terrain = NAV.forMap(map);
+    this.nav = this.terrain.forMatch(); // terén + půdorysy budov
     this.players = map.slots.map((_, i) => players[i] || null);
     this.nextId = 1;
     this.units = [];
@@ -120,7 +122,83 @@ class Match {
       cooldown: 0, fresh, progress: fresh ? 0 : 1, research: null
     };
     this.buildings.push(building);
+    this.place(building);
     return building;
+  }
+
+  // Budova se nedá procházet: její půdorys blokuje pohyb i hledání cesty.
+  place(building) {
+    building.foot = R.footRect(building);
+    this.nav.footprint(building.foot, 1);
+    for (const u of this.units) if (alive(u)) this.eject(u, building);
+  }
+
+  unplace(building) {
+    if (!building.foot) return;
+    this.nav.footprint(building.foot, -1);
+    building.foot = null;
+  }
+
+  // Jednotku, která stojí v půdorysu (nová stavba, zrod u budovy), vystrčí k nejbližší hraně.
+  eject(unit, building) {
+    const list = building ? [building] : this.buildings;
+
+    for (const b of list) {
+      const f = b.foot;
+      if (!f || unit.x <= f.x0 || unit.x >= f.x1 || unit.y <= f.y0 || unit.y >= f.y1) continue;
+
+      const out = [
+        [f.x0 - 4, unit.y, unit.x - f.x0],
+        [f.x1 + 4, unit.y, f.x1 - unit.x],
+        [unit.x, f.y0 - 4, unit.y - f.y0],
+        [unit.x, f.y1 + 4, f.y1 - unit.y]
+      ].filter(([x, y]) => x >= 12 && x <= this.LW - 12 && y >= 38 && y <= this.LH - 14 && !this.nav.isBlocked(x, y))
+        .sort((a, b) => a[2] - b[2])[0];
+
+      if (out) {
+        unit.x = out[0];
+        unit.y = out[1];
+        unit.path = null;
+      }
+    }
+  }
+
+  // Vzdálenost k cíli; u budovy se měří k okraji půdorysu, ne ke středu.
+  gap(unit, target) {
+    const f = target.kind === "building" && target.foot;
+    if (!f) return distance(unit, target);
+    return Math.hypot(Math.max(f.x0 - unit.x, 0, unit.x - f.x1), Math.max(f.y0 - unit.y, 0, unit.y - f.y1));
+  }
+
+  // Kam dojít: u budovy nejbližší bod před jejím okrajem, u bodu v budově místo těsně vedle ní.
+  goalOf(unit, target, stop) {
+    const f = target.kind === "building" ? target.foot : this.nav.isSolid(target.x, target.y) && this.footAt(target.x, target.y);
+    if (!f) return target;
+
+    if (target.kind !== "building") {
+      // cíl uvnitř budovy: posunout na nejbližší hranu
+      const sides = [[f.x0 - 6, target.y, target.x - f.x0], [f.x1 + 6, target.y, f.x1 - target.x],
+        [target.x, f.y0 - 6, target.y - f.y0], [target.x, f.y1 + 6, f.y1 - target.y]];
+      const [x, y] = sides.sort((a, b) => a[2] - b[2])[0];
+      return { x, y };
+    }
+
+    const cx = clamp(unit.x, f.x0, f.x1);
+    const cy = clamp(unit.y, f.y0, f.y1);
+    const dx = unit.x - cx;
+    const dy = unit.y - cy;
+    const d = Math.hypot(dx, dy);
+    const off = Math.max(2, Math.min(stop, 12) * 0.5);
+    if (d < 0.001) return { x: cx, y: f.y1 + off };
+    return { x: cx + dx / d * off, y: cy + dy / d * off };
+  }
+
+  footAt(x, y) {
+    for (const b of this.buildings) {
+      const f = b.foot;
+      if (f && x > f.x0 - 8 && x < f.x1 + 8 && y > f.y0 - 8 && y < f.y1 + 8) return f;
+    }
+    return null;
   }
 
   createUnit(type, team, x, y) {
@@ -134,6 +212,7 @@ class Match {
       level: 1, xp: 0, facing: this.slotOf(team).facing
     };
     this.units.push(unit);
+    this.eject(unit);
     if (type === "soldier") unit.damage += R.WEAPON_PER_LEVEL * this.upgrades[team].weapon;
     return unit;
   }
@@ -300,7 +379,7 @@ class Match {
     this.events.push({ e: "upg", t: teamIndex(team), k: kind === "armor" ? 0 : 1, l: level });
   }
 
-  placementProblem(team, x, y) {
+  placementProblem(team, x, y, type) {
     const zone = this.slotOf(team).zone;
 
     if (x < zone.x0 || x > zone.x1 || y < zone.y0 || y > zone.y1) {
@@ -309,11 +388,12 @@ class Match {
 
     const spot = { x, y };
 
-    if (this.nav.isBlockedArea(x, y, 28)) return "Na tomto místě je voda.";
+    if (this.terrain.isBlockedArea(x, y, 28)) return "Na tomto místě je voda.";
 
     const blocked =
       this.buildings.some(b => alive(b) && distance(b, spot) < 90) ||
-      this.resources.some(r => (r.type === "gold" || r.amount > 0) && distance(r, spot) < 48);
+      this.resources.some(r => (r.type === "gold" || r.amount > 0) && distance(r, spot) < 48) ||
+      (type && !R.footFree(type, x, y, this.buildings, this.resources));
 
     return blocked ? "Na tomto místě není dost prostoru." : null;
   }
@@ -335,7 +415,7 @@ class Match {
 
     const x = Math.round(msg.x);
     const y = Math.round(msg.y);
-    const problem = this.placementProblem(team, x, y);
+    const problem = this.placementProblem(team, x, y, type);
 
     if (problem) return this.note(team, problem);
     if (!this.pay(team, type)) return;
@@ -474,14 +554,17 @@ class Match {
     return unit.path.length ? unit.path[0] : target;
   }
 
+  // U budovy je stop vzdálenost od okraje půdorysu, jinak od cíle.
   moveTowards(unit, target, dt, stop = 0) {
-    const length = distance(unit, target);
+    const solid = target.kind === "building";
+    const goal = this.goalOf(unit, target, stop);
+    const length = solid ? this.gap(unit, target) : distance(unit, goal);
     if (length <= stop || length < 0.001) return true;
 
-    let aim = target;
+    let aim = goal;
 
-    if (this.nav.clear(unit.x, unit.y, target.x, target.y)) unit.path = null;
-    else aim = this.pathAim(unit, target);
+    if (this.nav.clear(unit.x, unit.y, goal.x, goal.y)) unit.path = null;
+    else aim = this.pathAim(unit, goal);
 
     const dx = aim.x - unit.x;
     const dy = aim.y - unit.y;
@@ -489,7 +572,7 @@ class Match {
     if (toAim < 0.001) return false;
     if (Math.abs(dx) > 0.4) unit.facing = dx < 0 ? -1 : 1;
 
-    const step = Math.min(unit.speed * dt, aim === target ? Math.max(0, toAim - stop) : toAim);
+    const step = Math.min(unit.speed * dt, aim === goal && !solid ? Math.max(0, toAim - stop) : toAim);
     const nx = clamp(unit.x + dx / toAim * step, 12, this.LW - 12);
     const ny = clamp(unit.y + dy / toAim * step, 38, this.LH - 14);
 
@@ -505,7 +588,7 @@ class Match {
       unit.y = ny;
     }
 
-    return distance(unit, target) <= stop + 0.5;
+    return (solid ? this.gap(unit, target) : distance(unit, goal)) <= stop + 0.5;
   }
 
   // Měkké odtlačení překrývajících se jednotek, aby nestočily do jednoho bodu.
@@ -686,7 +769,7 @@ class Match {
       return false;
     }
 
-    if (!this.moveTowards(unit, hq, dt, 48)) return true;
+    if (!this.moveTowards(unit, hq, dt, EDGE_STOP)) return true;
 
     if (unit.carry) this.dropOff(unit);
 
@@ -703,7 +786,7 @@ class Match {
       return false;
     }
 
-    if (!this.moveTowards(unit, b, dt, 46)) return true;
+    if (!this.moveTowards(unit, b, dt, EDGE_STOP)) return true;
 
     unit.building = true;
     unit.facing = b.x < unit.x ? -1 : 1;
@@ -734,7 +817,7 @@ class Match {
     // opravuje se zepředu (pod budovou), aby dělníka nezakryla; víc dělníků se rozestoupí
     const spot = { x: b.x + ((unit.id % 3) - 1) * 22, y: b.y + 42 };
     const reached = this.nav.isBlocked(spot.x, spot.y)
-      ? this.moveTowards(unit, b, dt, 46)
+      ? this.moveTowards(unit, b, dt, EDGE_STOP)
       : this.moveTowards(unit, spot, dt, 4);
     if (!reached) return true;
 
@@ -781,7 +864,7 @@ class Match {
 
     if (unit.carry) {
       if (!hq) return true;
-      if (this.moveTowards(unit, hq, dt, 48)) this.dropOff(unit);
+      if (this.moveTowards(unit, hq, dt, EDGE_STOP)) this.dropOff(unit);
       return true;
     }
 
@@ -909,9 +992,10 @@ class Match {
 
       if (!target) continue;
 
-      const reach = unit.range + (target.kind === "building" ? 24 : 0);
+      // na budovu se útočí od okraje půdorysu: zblízka těsně u zdi, střelci ze své vzdálenosti
+      const reach = target.kind === "building" && unit.range < 60 ? EDGE_STOP : unit.range;
 
-      if (distance(unit, target) > reach) {
+      if (this.gap(unit, target) > reach) {
         // Bez rozkazu se bojové jednotky samy pustí do nepřátel v dosahu; dělníci zůstávají stát.
         const hunting = unit.order
           ? unit.order.type === "attack" || amove
@@ -926,6 +1010,7 @@ class Match {
     this.separate(dt);
 
     this.units = this.units.filter(alive);
+    for (const b of this.buildings) if (!alive(b)) this.unplace(b);
     this.buildings = this.buildings.filter(alive);
     this.resources = this.resources.filter(r => r.type === "gold" || r.amount > 0);
 
@@ -955,6 +1040,7 @@ class Match {
     this.out.add(team);
     this.events.push({ e: "out", t: teamIndex(team), why });
     this.units = this.units.filter(u => u.team !== team);
+    for (const b of this.buildings) if (b.team === team) this.unplace(b);
     this.buildings = this.buildings.filter(b => b.team !== team);
   }
 
@@ -1114,7 +1200,7 @@ class Match {
           const x = Math.round(necro.x + Math.cos(a) * d);
           const y = Math.round(necro.y + Math.sin(a) * d);
 
-          if (!this.placementProblem(team, x, y)) {
+          if (!this.placementProblem(team, x, y, type)) {
             this.createBuilding(type, team, x, y, true);
             break;
           }

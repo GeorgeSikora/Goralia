@@ -49,6 +49,32 @@
     necropolis: 5000, crypt: 850, slaughterhouse: 950, ziggurat: 550, portal: 1000
   };
 
+  // Půdorys budovy, kterým jednotky neprojdou: [polovina šířky, hloubka] v logických jednotkách.
+  // Přední hrana leží FOOT_FRONT pod středem budovy (tam, kde stojí nohy jednotky před zdí),
+  // obdélník sahá od ní o hloubku dozadu. Rozměry odpovídají spodku sprajtu v buildings.js.
+  const FOOTPRINT = {
+    hall: [64, 58], citadel: [78, 64], barracks: [60, 50], tower: [24, 20], hut: [24, 20], smithy: [34, 28],
+    necropolis: [82, 70], crypt: [46, 36], slaughterhouse: [50, 40], ziggurat: [34, 28], portal: [52, 40]
+  };
+  const FOOT_FRONT = 24;
+  const footRect = b => {
+    const [hx, depth] = FOOTPRINT[b.type] || [20, 20];
+    return { x0: b.x - hx, x1: b.x + hx, y0: b.y + FOOT_FRONT - depth, y1: b.y + FOOT_FRONT };
+  };
+
+  // Nová stavba nesmí půdorysem zasahovat do jiné budovy ani k surovině; mezi budovami zůstane aspoň úzký průchod.
+  const FOOT_GAP = 10;
+  const footFree = (type, x, y, buildings, resources) => {
+    const f = footRect({ type, x, y });
+    const clash = buildings.some(b => {
+      if (!(b.hp > 0)) return false;
+      const o = footRect(b);
+      return f.x0 < o.x1 + FOOT_GAP && f.x1 > o.x0 - FOOT_GAP && f.y0 < o.y1 + FOOT_GAP && f.y1 > o.y0 - FOOT_GAP;
+    });
+    return !clash && !resources.some(r => (r.type === "gold" || r.amount > 0) &&
+      r.x > f.x0 - 16 && r.x < f.x1 + 16 && r.y > f.y0 - 16 && r.y < f.y1 + 16);
+  };
+
   // Doba stavby v sekundách (jeden dělník). Nemrtvým budovy rostou samy, bez dělníků.
   const BUILD_TIME = { tower: 10, barracks: 12, hut: 8, smithy: 14, crypt: 22, slaughterhouse: 28, ziggurat: 16, portal: 30 };
 
@@ -113,7 +139,7 @@
   const supplyCap = huts => Math.min(SUPPLY_MAX, SUPPLY_BASE + SUPPLY_PER_HUT * huts);
 
   return {
-    UNDEAD, COSTS, UPGRADES, ARMOR_PER_LEVEL, WEAPON_PER_LEVEL, UNITS, BUILDING_HP, BUILD_TIME, REPAIR, TEAMS, HQ, TEAM_NAMES, MAX_PLAYERS, BASE_GOLD, BASE_WOOD, GOLD_AMOUNT,
+    UNDEAD, COSTS, UPGRADES, ARMOR_PER_LEVEL, WEAPON_PER_LEVEL, UNITS, BUILDING_HP, FOOTPRINT, footRect, footFree, BUILD_TIME, REPAIR, TEAMS, HQ, TEAM_NAMES, MAX_PLAYERS, BASE_GOLD, BASE_WOOD, GOLD_AMOUNT,
     SUPPLY_BASE, SUPPLY_PER_HUT, SUPPLY_MAX, supplyCap, MAX_BUILDINGS, COUNTDOWN
   };
 });

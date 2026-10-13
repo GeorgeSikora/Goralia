@@ -91,7 +91,7 @@
       const x = Math.round(hq.x + Math.cos(a) * d);
       const y = Math.round(hq.y + Math.sin(a) * d);
 
-      if (!match.placementProblem(brain.team, x, y)) {
+      if (!match.placementProblem(brain.team, x, y, type)) {
         match.command(brain.team, { c: "build", type, x, y, ids: [worker.id] });
         return true;
       }
