@@ -15,6 +15,8 @@
 "use strict";
 
 const TICK = 0.05;
+// Jak dlouho letí ohnivá koule (stejně jako fx.fireball v js/fx.js); poškození přijde až po dopadu.
+const FIRE_FLIGHT = 0.3;
 const MAX_IDS = 40;
 
 // Pořadí určuje číslo typu ve snímku: nové typy jen na konec.
@@ -68,6 +70,7 @@ class Match {
     this.reason = null;
     this.winners = [];
     this.events = [];
+    this.blasts = []; // ohnivé koule v letu: poškození se započítá až při dopadu
     this.coop = map.coop || null;
     this.side = {};    // tým -> strana; spojenci mají stejnou stranu
     this.faction = {}; // tým -> "human" | "undead"
@@ -500,20 +503,27 @@ class Match {
     hero.facing = point.x < hero.x ? -1 : 1;
     this.events.push({ e: "fire", h: hero.id, x: round1(point.x), y: round1(point.y) });
 
+    this.blasts.push({
+      t: FIRE_FLIGHT, by: hero, team, x: point.x, y: point.y,
+      unitR: 47, buildingR: 70, amount: 42 + hero.level * 10, report: true
+    });
+  }
+
+  // Dopad ohnivé koule: zásah se počítá podle toho, kdo v místě stojí teď, ne při výstřelu.
+  land(blast) {
     let hits = 0;
 
     for (const enemy of [...this.units, ...this.buildings]) {
-      if (!alive(enemy) || this.friendly(enemy.team, team)) continue;
+      if (!alive(enemy) || this.friendly(enemy.team, blast.team)) continue;
 
-      const radius = enemy.kind === "building" ? 70 : 47;
+      const building = enemy.kind === "building";
+      if (distance(enemy, blast) > (building ? blast.buildingR : blast.unitR)) continue;
 
-      if (distance(enemy, point) <= radius) {
-        this.damage(hero, enemy, 42 + hero.level * 10, { silent: true, delay: 0.3 });
-        hits++;
-      }
+      this.damage(blast.by, enemy, building ? blast.buildingAmount || blast.amount : blast.amount, { silent: true });
+      hits++;
     }
 
-    this.note(team, hits ? `Ohnivá koule zasáhla ${hits} cílů!` : "Ohnivá koule minula.");
+    if (blast.report) this.note(blast.team, hits ? `Ohnivá koule zasáhla ${hits} cílů!` : "Ohnivá koule minula.");
   }
 
   heal(team) {
@@ -909,6 +919,14 @@ class Match {
 
     this.elapsed += dt;
 
+    if (this.blasts.length) {
+      const landed = this.blasts.filter(b => (b.t -= dt) <= 1e-9);
+      if (landed.length) {
+        this.blasts = this.blasts.filter(b => b.t > 1e-9);
+        for (const blast of landed) this.land(blast);
+      }
+    }
+
     for (const team of this.active) {
       const brain = this.brains[team];
       if (!brain || this.out.has(team)) continue;
@@ -1137,7 +1155,10 @@ class Match {
         lich.fireCooldown = UD.novaEvery;
         this.events.push({ e: "fire", h: lich.id, x: round1(lich.x), y: round1(lich.y), nova: 1 });
         const dmg = Math.round(35 + this.elapsed / 40);
-        for (const e of near) this.damage(lich, e, e.kind === "building" ? Math.round(dmg * 0.6) : dmg, { silent: true, delay: 0.25 });
+        this.blasts.push({
+          t: FIRE_FLIGHT, by: lich, team, x: lich.x, y: lich.y,
+          unitR: UD.novaRadius, buildingR: UD.novaRadius + 20, amount: dmg, buildingAmount: Math.round(dmg * 0.6)
+        });
       }
     }
 
