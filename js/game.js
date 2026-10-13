@@ -772,7 +772,7 @@
       distance(resource, { x, y }) < 48
     );
 
-    if (collidesWithBuilding || collidesWithResource) {
+    if (collidesWithBuilding || collidesWithResource || (placement && !R.footFree(placement, x, y, buildings, resources))) {
       return "Na tomto místě není dost prostoru.";
     }
 
