@@ -6,13 +6,15 @@
  *   npm run voices -- --eleven-voices       vypíše hlasy z tvé ElevenLabs knihovny (id a název) k výběru
  *   npm run voices -- --engine=say          macOS: příkaz `say` (nejlepší nainstalovaný český hlas) + ffmpeg
  *   npm run voices -- --engine=openai       OpenAI TTS, potřebuje OPENAI_API_KEY
- *   npm run voices -- --only=hero           přegeneruje jen jednu postavu (worker | soldier | archer | hero)
+ *   npm run voices -- --only=hero           přegeneruje jen vybrané postavy, víc jich odděl čárkou (--only=knight,catapult,monk)
+ *                                           postavy: worker | soldier | archer | hero | knight | catapult | monk
  *   npm run voices -- --list                vypíše dostupné české hlasy v systému
  *
  * Nejlépe znějí hlasy "Premium" nebo "Enhanced": Nastavení > Zpřístupnění > Mluvený obsah > Systémový hlas >
  * Spravovat hlasy > čeština. Hlas jde vynutit proměnnou SAY_VOICE="Zuzana (Premium)".
  *
- * ElevenLabs: každé postavě přiřaď hlas proměnnou ELEVEN_VOICE_WORKER / _SOLDIER / _ARCHER / _HERO (id hlasu z knihovny),
+ * ElevenLabs: každé postavě přiřaď hlas proměnnou ELEVEN_VOICE_WORKER / _SOLDIER / _ARCHER / _HERO / _KNIGHT / _CATAPULT / _MONK
+ * (id hlasu z knihovny); bez ní se hlas vybere z knihovny sám.
  * Používá model Eleven v3 (umí češtinu a hraje emoce podle značek v hranatých závorkách, např. [excited] Jdu na to!).
  * Jiný model: ELEVEN_MODEL=eleven_multilingual_v2 (značky se pak před odesláním odstraní). Stabilita v3: ELEVEN_STABILITY
  * (0 = Creative, nejvíc emocí; 0.5 = Natural, výchozí; 1 = Robust, nejklidnější).
@@ -183,6 +185,90 @@ const CHARACTERS = {
       "[serious] Soustřeďme se na nepřítele, ne na má slova.",
       ["[sighs] Trpělivost, veliteli. [calm] Meč se nebrousí v jednom tahu.", { rate: 0.96 }]
     ]
+  },
+  knight: {
+    // rytíř: urozený, sebevědomý jezdec, který se rád žene do útoku
+    say: { rate: 158, pitch: 0.86, eq: "equalizer=f=160:t=q:w=1:g=2.2,equalizer=f=2600:t=q:w=1:g=1.3" },
+    eleven: { stability: 0.4, style: 0.65 },
+    openai: "echo",
+    select: [
+      "[confident] Rytíř ve službách Goralie.",
+      "[calm] Kůň je osedlaný, kopí nabité.",
+      "[serious] Na tvůj povel, pane.",
+      "[confident] Čest a ocel. Co si přeješ?",
+      "[determined] Stačí ukázat směr a vyrazím.",
+      ["[calm] Klid... [chuckles] můj kůň je netrpělivější než já.", { rate: 0.96 }]
+    ],
+    order: [
+      "[shouting] Do útoku! Nikdo nás nezastaví!",
+      "[confident] Jak poroučíš.",
+      "[determined] Kopí vpřed!",
+      "[shouting] Hyjé! Vpřed!",
+      "[serious] Rozpráším jejich řady.",
+      ["[dramatic tone] Ať se země třese pod kopyty!", { rate: 0.95, pitch: 0.98 }]
+    ],
+    annoyed: [
+      "[annoyed] Rytíř nemá čas na zbytečné povely.",
+      "[sarcastic] Mám snad jezdit dokola, dokud se nerozhodneš?",
+      "[sighs] I můj kůň už začíná ztrácet trpělivost.",
+      ["[annoyed] Šlechtic se nevolá jako pasák, veliteli!", { rate: 1.04 }]
+    ]
+  },
+  catapult: {
+    // obsluha katapultu: drsný a praktický mistr obléhání, mluví přes vrzání trámů
+    say: { rate: 164, pitch: 0.9, eq: "equalizer=f=220:t=q:w=1:g=1.8,equalizer=f=2000:t=q:w=1:g=1" },
+    eleven: { stability: 0.35, style: 0.55 },
+    openai: "ballad",
+    select: [
+      "[calm] Katapult je napnutý.",
+      "[curious] Co dneska rozbijeme?",
+      "[confident] Balvany máme nachystané.",
+      "[serious] Obsluha katapultu hlásí připravenost.",
+      "[mischievously] Na zeď nebo na věž? Obojí jde dolů.",
+      ["[sighs] Trámy vrzou, ale vydrží.", { rate: 0.95 }]
+    ],
+    order: [
+      "[serious] Zaměřujeme.",
+      "[shouting] Pozor, pouštím!",
+      "[calm] Už ho tlačíme.",
+      "[excited] Tohle bude rána!",
+      "[confident] Až dopadne, nezůstane kámen na kameni.",
+      ["[determined] Napnout, zajistit... [shouting] pal!", { rate: 1.03 }]
+    ],
+    annoyed: [
+      "[annoyed] Tohle není kočár, veliteli. Otáčí se pomalu.",
+      "[sarcastic] Ještě chvíli a hodím balvan na tebe.",
+      "[sighs] Kola nejsou z másla. Nech nás to dotlačit.",
+      ["[angry] Přestaň klikat, nebo se mi ten provaz utrhne!", { rate: 1.05 }]
+    ]
+  },
+  monk: {
+    // mnich: laskavý, klidný a trochu kazatelský
+    say: { rate: 150, pitch: 0.95, eq: "equalizer=f=200:t=q:w=1:g=1.2,equalizer=f=3200:t=q:w=1:g=0.8", echo: "aecho=0.8:0.25:60:0.1" },
+    eleven: { stability: 0.6, style: 0.35 },
+    openai: "sage",
+    select: [
+      "[calm] Mír s tebou, synu.",
+      "[calm] Kdo potřebuje pomoc?",
+      "[serious] Modlím se za naše vojsko.",
+      "[calm] Rány se zahojí, víra zůstane.",
+      "[curious] Kdo je raněný?",
+      ["[whispers] Ticho... modlitba ještě neskončila.", { rate: 0.94 }]
+    ],
+    order: [
+      "[calm] Půjdu, kam mě vede povinnost.",
+      "[serious] Postarám se o raněné.",
+      "[calm] Ať tě požehnání provází.",
+      "[determined] Nikoho nenechám padnout.",
+      "[calm] S pokorou jdu.",
+      ["[cheerful] Uzdravení je na cestě!", { rate: 1.02 }]
+    ],
+    annoyed: [
+      "[sighs] I trpělivost mnicha má své meze.",
+      "[annoyed] Bůh slyší napoprvé, veliteli. Já také.",
+      "[calm] Ztiš se, synu. Spěch je ďáblův přítel.",
+      ["[sarcastic] Pomodlím se i za tvé ukazováčky. [sighs]", { rate: 0.98 }]
+    ]
   }
 };
 
@@ -255,7 +341,10 @@ const ELEVEN_PREFER = {
   worker: ["Antoni", "Josh", "Liam", "Sam", "Charlie", "Fin"],
   soldier: ["Arnold", "Clyde", "Callum", "Bill", "Thomas"],
   archer: ["Daniel", "Charlie", "Liam", "Callum", "Fin"],
-  hero: ["Adam", "George", "Brian", "Daniel", "Bill"]
+  hero: ["Adam", "George", "Brian", "Daniel", "Bill"],
+  knight: ["George", "Callum", "Brian", "Thomas", "Bill"],
+  catapult: ["Clyde", "Bill", "Thomas", "Arnold", "Sam"],
+  monk: ["Brian", "Daniel", "Thomas", "George", "Adam"]
 };
 const elevenAuto = {};
 
@@ -311,6 +400,16 @@ async function renderEleven(type, c, line, file) {
 }
 
 /* ---------- motor 3: OpenAI ---------- */
+const OPENAI_STYLE = {
+  worker: "bodře, přirozeně a trochu nevrle",
+  soldier: "strohě, hrdě a vojensky",
+  archer: "klidně, chladně a s drobným úsměvem",
+  hero: "hluboce, důstojně a s vážností",
+  knight: "sebevědomě, urozeně a s chutí do útoku",
+  catapult: "drsně a prakticky jako starý mistr obléhání",
+  monk: "laskavě, klidně a trochu kazatelsky"
+};
+
 async function renderOpenAI(type, c, line, file) {
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error("Chybí OPENAI_API_KEY.");
@@ -323,7 +422,7 @@ async function renderOpenAI(type, c, line, file) {
       voice: c.openai,
       input: line.text,
       response_format: "wav",
-      instructions: `Mluv česky jako herec v fantasy hře, ${type === "hero" ? "hluboce, důstojně a s vážností" : type === "soldier" ? "strohě, hrdě a vojensky" : type === "archer" ? "klidně, chladně a s drobným úsměvem" : "bodře, přirozeně a trochu nevrle"}. Žádné čtení z papíru, hraj emoci. Řekni to na jeden nádech, krátce.`
+      instructions: `Mluv česky jako herec v fantasy hře, ${OPENAI_STYLE[type] || OPENAI_STYLE.worker}. Žádné čtení z papíru, hraj emoci. Řekni to na jeden nádech, krátce.`
     })
   });
 
@@ -347,7 +446,7 @@ async function main() {
     if (!res.ok) throw new Error(`ElevenLabs ${res.status}: ${await res.text()}`);
     const { voices } = await res.json();
     for (const v of voices) console.log(`${v.voice_id}  ${v.name}${v.labels && v.labels.gender ? `  (${v.labels.gender}${v.labels.accent ? `, ${v.labels.accent}` : ""})` : ""}`);
-    console.log("\nId vlož do .env jako ELEVEN_VOICE_WORKER, ELEVEN_VOICE_SOLDIER, ELEVEN_VOICE_ARCHER a ELEVEN_VOICE_HERO.");
+    console.log("\nId vlož do .env jako ELEVEN_VOICE_WORKER, _SOLDIER, _ARCHER, _HERO, _KNIGHT, _CATAPULT a _MONK.");
     return;
   }
 
@@ -356,10 +455,12 @@ async function main() {
   if (engine === "elevenlabs") await chooseElevenVoices();
   if (engine === "say") console.log(`Hlas: ${voice}`);
 
-  const only = typeof args.only === "string" ? args.only : "";
+  const only = typeof args.only === "string" ? args.only.split(",").map(t => t.trim()).filter(Boolean) : [];
+  const unknown = only.filter(t => !CHARACTERS[t]);
+  if (unknown.length) throw new Error(`Neznámá postava: ${unknown.join(", ")} (možnosti: ${Object.keys(CHARACTERS).join(", ")}).`);
   let manifest = {};
 
-  if (only) {
+  if (only.length) {
     try { manifest = JSON.parse(fs.readFileSync(path.join(OUT, "voices.json"), "utf8")); } catch (e) { manifest = {}; }
   } else {
     fs.rmSync(OUT, { recursive: true, force: true });
@@ -369,7 +470,7 @@ async function main() {
   let count = 0;
 
   for (const [type, c] of Object.entries(CHARACTERS)) {
-    if (only && type !== only) continue;
+    if (only.length && !only.includes(type)) continue;
     manifest[type] = {};
 
     for (const kind of KINDS) {
