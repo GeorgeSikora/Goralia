@@ -10,6 +10,7 @@ const path = require("path");
 const { WebSocketServer } = require("ws");
 const { Match, TICK } = require("../js/sim.js");
 const R = require("../js/rules.js");
+const ADMIN = require("../js/admincmd.js");
 const MAPS = require("../js/maps.js");
 const mapstore = require("./mapstore.js");
 const { createStore } = require("./store.js");
@@ -340,22 +341,20 @@ function chatNote(client, text) {
   send(client, { t: "chat", sys: true, text });
 }
 
-// Tajný příkaz správce: /sources přidá hráči 10000 zlata a dřeva. Platí jen pro účet s rolí admin v rozehraném zápase;
-// ostatním se neděje nic (příkaz se ani nepřepošle). Takový zápas se pak nezapisuje do statistik.
-const CHEAT_AMOUNT = 10000;
+// Příkazy správce (js/admincmd.js, třeba /resources nebo /spawn knight 5). Spustí je jen účet s rolí admin;
+// pro ostatní se známý příkaz ani nepřepošle do chatu a nic se nestane. Změněný zápas se nezapisuje do statistik.
+function adminCommand(client, room, text, viaChat) {
+  if (!client.user || client.user.role !== "admin") return;
 
-function chatSources(client, room) {
-  const match = room.match;
-  if (!client.user || client.user.role !== "admin" || !match || match.phase !== "playing" || !client.team) return;
+  const match = room && room.match;
+  const result = ADMIN.run(match, client.team, text);
+  if (result.changed) {
+    match.recorded = true;
+    accounts.audit(client.user, "admin-cmd", `${text.slice(0, 60)} · místnost ${room.id} (${room.map.id})`);
+  }
 
-  const eco = match.econ[client.team];
-  if (!eco) return;
-
-  eco.gold += CHEAT_AMOUNT;
-  eco.wood += CHEAT_AMOUNT;
-  match.recorded = true;
-  accounts.audit(client.user, "cheat-sources", `místnost ${room.id} (${room.map.id})`);
-  chatNote(client, `Přidáno ${CHEAT_AMOUNT} zlata a ${CHEAT_AMOUNT} dřeva. Tento zápas se nezapíše do statistik.`);
+  if (viaChat) for (const line of result.lines) chatNote(client, line);
+  else send(client, { t: "admin", ok: result.ok, lines: result.lines });
 }
 
 function chatSay(client, room, raw) {
@@ -363,7 +362,7 @@ function chatSay(client, room, raw) {
   const slot = slotIndex(room, client);
   if (!text || slot < 0) return;
 
-  if (text.toLowerCase() === "/sources") return chatSources(client, room);
+  if (ADMIN.isCommand(text)) return adminCommand(client, room, text, true);
 
   const now = Date.now();
   client.chatTimes = (client.chatTimes || []).filter(at => now - at < CHAT_WINDOW);
@@ -870,6 +869,11 @@ wss.on("connection", (ws, req) => {
       return;
     }
 
+    if (msg.t === "admin") {
+      if (room) adminCommand(client, room, cleanChat(msg.text), false);
+      return;
+    }
+
     if (msg.t === "talk") {
       if (room) voiceTalk(client, room, msg.on === true);
       return;
@@ -1009,7 +1013,8 @@ setInterval(() => {
     accumulator -= TICK;
 
     for (const room of [...matches]) {
-      room.match.step(TICK);
+      // příkaz správce /speed: víc kroků simulace za jeden tik
+      for (let i = 0; i < (room.match.speed || 1) && room.match.phase !== "ended"; i++) room.match.step(TICK);
       flush(room);
     }
   }

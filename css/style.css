@@ -990,3 +990,51 @@ a.btn { display: block; text-align: center; text-decoration: none; }
   .ld-logo { height: 96px; }
   .ld-road { margin-top: 80px; }
 }
+
+/* ---------- příkazový řádek správce (klávesa „/“ ve hře) ---------- */
+.adminbar {
+  position: fixed;
+  z-index: 20;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 16px));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font: 12px/1.4 ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
+  color: var(--text);
+}
+.adminbar[hidden] { display: none; }
+.adminbar-log {
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 6px 8px;
+  background: rgba(21, 18, 31, 0.88);
+  box-shadow: 0 0 0 2px var(--ink), 0 0 0 3px var(--brass-d);
+  word-break: break-word;
+}
+.adminbar-log:empty { display: none; }
+.adminbar-line { text-shadow: 0 1px 0 #000; }
+.adminbar-line.cmd { color: var(--amber); }
+.adminbar-line.err { color: #ff9a8a; }
+.adminbar-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+  background: rgba(21, 18, 31, 0.88);
+  box-shadow: 0 0 0 2px var(--ink), 0 0 0 3px var(--brass-d);
+}
+.adminbar-title { color: var(--amber); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; font-size: 11px; }
+.adminbar-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 0;
+  background: #120f1f;
+  color: var(--text);
+  font: inherit;
+  box-shadow: 0 0 0 2px var(--ink), 0 0 0 3px var(--brass-d);
+}
+.adminbar-input:focus { outline: 2px solid var(--amber); outline-offset: 2px; }

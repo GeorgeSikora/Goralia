@@ -13,9 +13,9 @@
   const PK = (window.PK = window.PK || {});
 
   const SCRIPTS = [
-    "rules", "maps", "nav", "ai", "sim", "audio", "music", "pixel", "shaders", "font", "keys",
+    "rules", "maps", "nav", "ai", "sim", "admincmd", "audio", "music", "pixel", "shaders", "font", "keys",
     "units", "buildings", "props", "icons", "world", "fx", "hud", "net", "menubg",
-    "custommaps", "charts", "matchview", "account", "voice", "chat", "voicechat", "game"
+    "custommaps", "charts", "matchview", "account", "voice", "chat", "voicechat", "adminbar", "game"
   ];
 
   // podíl jednotlivých částí na celkovém pruhu při prvním načtení

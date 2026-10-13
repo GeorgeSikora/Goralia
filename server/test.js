@@ -11,9 +11,10 @@ const path = require("path");
 const WebSocket = require("ws");
 const MAPS = require("../js/maps.js");
 const R = require("../js/rules.js");
-const { Match, TICK, BUILDING_TYPES } = require("../js/sim.js");
+const { Match, TICK, BUILDING_TYPES, UNIT_TYPES } = require("../js/sim.js");
 const NAV = require("../js/nav.js");
 const CHECK = require("../js/mapcheck.js");
+const ADMIN = require("../js/admincmd.js");
 const fs = require("fs");
 const os = require("os");
 
@@ -164,6 +165,7 @@ function testSimulation() {
   testCollisions();
   testNewTroops();
   testNewResearch();
+  testAdminCommands();
 }
 
 // Budovy nejdou procházet: jednotky je obcházejí, k okraji ale dojdou (těžba, stavba, útok).
@@ -395,6 +397,89 @@ function testNewResearch() {
   const snap = m.snapshot("blue");
   assert.strictEqual(snap.up.length, Object.keys(R.UPGRADES).length, "snímek nese všechny výzkumy");
   assert.strictEqual(snap.up[Object.keys(R.UPGRADES).indexOf("masonry")], 1);
+}
+
+// Příkazy správce (js/admincmd.js) nad simulací.
+function testAdminCommands() {
+  const m = new Match(MAPS.get("valley"), [{ name: "A" }, { name: "B", ai: true }], { countdown: 0 });
+  const run = text => ADMIN.run(m, "blue", text);
+
+  const help = run("/help");
+  assert(help.ok && !help.changed, "nápověda nic nemění");
+  for (const c of ADMIN.COMMANDS) assert(help.lines.some(l => l.startsWith(`/${c.name}`)), `nápověda obsahuje /${c.name}`);
+  assert(!m.cheated, "po nápovědě se zápas počítá");
+
+  assert(!run("/neexistuje").ok);
+  assert(!run("resources").ok, "bez lomítka to příkaz není");
+  assert(ADMIN.isCommand("/Sources") && !ADMIN.isCommand("/ahoj") && !ADMIN.isCommand("ahoj"));
+
+  const gold = m.econ.blue.gold;
+  const wood = m.econ.blue.wood;
+  assert(run("/resources").changed && m.cheated, "zápas je označený");
+  assert.deepStrictEqual([m.econ.blue.gold, m.econ.blue.wood], [gold + 10000, wood + 10000]);
+  run("/sources 5");
+  run("/zlato 7");
+  run("/wood 3");
+  assert.deepStrictEqual([m.econ.blue.gold, m.econ.blue.wood], [gold + 10012, wood + 10008]);
+  assert(!run("/gold -5").ok && !run("/gold abc").ok);
+  assert.strictEqual(m.econ.red.gold, R.BASE_GOLD, "soupeř nic nedostal");
+
+  const before = m.units.filter(u => u.team === "blue").length;
+  assert(run("/spawn knight 5").ok);
+  assert.strictEqual(m.units.filter(u => u.team === "blue" && u.type === "knight").length, 5);
+  assert(!run("/spawn ghoul").ok && !run("/spawn").ok, "jen lidské jednotky");
+  assert(run("/spawn hero 3").ok && !run("/spawn hero").ok, "hrdina jen jeden");
+  assert.strictEqual(m.units.filter(u => u.team === "blue").length, before + 6);
+  run("/spawn soldier 999");
+  assert.strictEqual(m.units.filter(u => u.team === "blue" && u.type === "soldier").length, 50, "nejvýš 50 najednou");
+
+  const hero = m.heroOf("blue");
+  run("/level 3");
+  assert.strictEqual(hero.level, 4);
+  assert.strictEqual(hero.hp, hero.maxHp);
+
+  const hut = m.createBuilding("hut", "blue", 300, 300, true);
+  m.hqOf("blue").research = { kind: "tools", left: 20, total: 25 };
+  run("/finish");
+  assert.strictEqual(hut.progress, 1);
+  assert.strictEqual(hut.hp, hut.maxHp);
+  assert.strictEqual(m.upgrades.blue.tools, 1);
+  assert.strictEqual(m.hqOf("blue").research, null);
+
+  run("/tech");
+  for (const kind of Object.keys(R.UPGRADES)) assert.strictEqual(m.upgrades.blue[kind], R.UPGRADES[kind].levels.length, `${kind} na maximu`);
+  assert.strictEqual(m.upgrades.red.armor, 0);
+
+  run("/nocap");
+  assert.strictEqual(m.supplyCap("blue"), 999);
+  run("/nocap off");
+  assert(m.supplyCap("blue") < 999);
+
+  const knight = m.units.find(u => u.team === "blue" && u.type === "knight");
+  const foe = m.units.find(u => u.team === "red");
+  run("/god on");
+  m.damage(foe, knight, 50);
+  assert.strictEqual(knight.hp, knight.maxHp, "nesmrtelnost");
+  run("/god");
+  m.damage(foe, knight, 50);
+  assert(knight.hp < knight.maxHp, "nesmrtelnost vypnutá");
+  run("/heal");
+  assert.strictEqual(knight.hp, knight.maxHp);
+
+  assert(!run("/speed 0").ok);
+  run("/speed 20");
+  assert.strictEqual(m.speed, 10);
+
+  run("/kill");
+  m.step(TICK);
+  m.endTick();
+  assert(!m.units.some(u => u.team === "red"), "nepřátelské jednotky jsou pryč");
+  assert(m.buildings.some(b => b.team === "red"), "budovy zůstaly");
+
+  run("/win");
+  assert.strictEqual(m.phase, "ended");
+  assert.strictEqual(m.winner, "blue");
+  assert(!run("/gold").ok, "po konci zápasu příkazy nefungují");
 }
 
 function testSmithy() {
@@ -1301,6 +1386,40 @@ async function testServer() {
     await e2.until(() => e2.ended, 2000, "konec kooperace");
     assert.strictEqual(e2.ended.w, 1, "vyhráli nemrtví");
     assert.deepStrictEqual(e2.ended.ws, [1]);
+
+    // příkazy správce online: spustí je jen admin, výsledek dostane jen on
+    cookies.Jurek = adminCookie;
+    const boss = bot("Jurek");
+    const pleb = bot("Alice");
+    await Promise.all([boss.opened, pleb.opened]);
+    await Promise.all([boss, pleb].map(p => p.until(() => p.hello, 2000, "hello příkazy")));
+    boss.send({ t: "create", map: "valley" });
+    await boss.until(() => boss.room, 2000, "místnost admina");
+    pleb.send({ t: "join", room: boss.room.id });
+    await pleb.until(() => pleb.room, 2000, "Alice v místnosti admina");
+    boss.send({ t: "start" });
+    await Promise.all([boss, pleb].map(p => p.until(() => p.match && p.snap && p.snap.p === "playing", 6000, "start s adminem")));
+    const answers = p => p.msgs.filter(m => m.t === "admin");
+
+    const pg = pleb.snap.g;
+    pleb.send({ t: "admin", text: "/resources" });
+    pleb.send({ t: "chat", text: "/gold 500" });
+    await sleep(250);
+    assert(pleb.snap.g <= pg, "hráč bez role admin nic nedostane");
+    assert(!answers(pleb).length, "a ani odpověď");
+    assert(!boss.msgs.some(m => m.t === "chat" && m.text === "/gold 500"), "příkaz se nepřeposílá do chatu");
+
+    const bg = boss.snap.g;
+    boss.send({ t: "admin", text: "/resources" });
+    await boss.until(() => answers(boss).length, 2000, "odpověď na příkaz");
+    assert(answers(boss)[0].ok);
+    await boss.until(() => boss.snap.g >= bg + 10000, 2000, "admin dostal suroviny");
+    boss.send({ t: "chat", text: "/spawn knight 2" });
+    await boss.until(() => boss.units(boss.match.slot).filter(u => u[1] === UNIT_TYPES.indexOf("knight")).length === 2, 2000, "rytíři z chatu");
+    assert(boss.msgs.some(m => m.t === "chat" && m.sys && m.text.includes("knight")), "odpověď v chatu");
+    boss.send({ t: "admin", text: "/win" });
+    await boss.until(() => boss.ended, 2000, "výhra příkazem");
+    assert.strictEqual(boss.ended.w, boss.match.slot);
 
     console.log("OK: všechny testy serveru prošly");
   } finally {
