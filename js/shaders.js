@@ -29,15 +29,17 @@
    * amb = barva šera (násobí obraz), gain = síla světel, bloom = síla prozáření,
    * rays = barva a síla šikmých paprsků slunce (měsíce).
    * Ve dne je obraz skoro jako bez shaderů a světla jen lehce dýchají; v noci je svět
-   * tmavší a modravý, lucerny a ohně ho drží čitelný. Přechody trvají desítky sekund. */
+   * tmavší a modravý a uprostřed noci přijde hluboká tma, kde svět drží čitelný jen lucerny, ohně a oči. Přechody trvají desítky sekund. */
   const CYCLE = 480;
   const MOOD = [
     // fáze, šero r g b, síla světel, bloom, paprsky r g b × síla
     [0.0, [0.88, 0.86, 0.85], 0.35, 0.4, [0.05, 0.046, 0.032]], // dopoledne
     [0.34, [0.87, 0.85, 0.82], 0.4, 0.42, [0.055, 0.048, 0.03]], // odpoledne
     [0.46, [0.74, 0.6, 0.56], 0.75, 0.65, [0.16, 0.11, 0.05]], // soumrak, zlatá hodinka
-    [0.56, [0.42, 0.46, 0.64], 1.0, 0.8, [0.02, 0.026, 0.04]], // noc, slabý měsíc
-    [0.8, [0.4, 0.44, 0.62], 1.0, 0.8, [0.02, 0.026, 0.04]], // pozdní noc
+    [0.56, [0.38, 0.42, 0.6], 1.0, 0.8, [0.02, 0.026, 0.04]], // noc, slabý měsíc
+    [0.63, [0.1, 0.11, 0.19], 1.25, 0.95, [0.0, 0.0, 0.0]], // hluboká tma: vidět jen světla a oči jednotek
+    [0.75, [0.1, 0.11, 0.19], 1.25, 0.95, [0.0, 0.0, 0.0]],
+    [0.82, [0.38, 0.42, 0.6], 1.0, 0.8, [0.02, 0.026, 0.04]], // pozdní noc
     [0.9, [0.7, 0.66, 0.76], 0.7, 0.6, [0.11, 0.08, 0.08]], // úsvit
     [1.0, [0.88, 0.86, 0.85], 0.35, 0.4, [0.05, 0.046, 0.032]]
   ];
