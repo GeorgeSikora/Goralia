@@ -20,10 +20,11 @@ const FIRE_FLIGHT = 0.3;
 const MAX_IDS = 40;
 
 // Pořadí určuje číslo typu ve snímku: nové typy jen na konec.
-const UNIT_TYPES = ["worker", "soldier", "archer", "hero", ...R.UNDEAD.units];
-const BUILDING_TYPES = ["hall", "citadel", "barracks", "tower", "hut", "smithy", ...R.UNDEAD.buildings];
-const HUMAN_UNITS = ["worker", "soldier", "archer", "hero"];
-const RESEARCH_KINDS = ["armor", "weapon"];
+const UNIT_TYPES = ["worker", "soldier", "archer", "hero", ...R.UNDEAD.units, "monk", "knight", "catapult"];
+const BUILDING_TYPES = ["hall", "citadel", "barracks", "tower", "hut", "smithy", ...R.UNDEAD.buildings, "stable", "workshop"];
+const HUMAN_UNITS = ["worker", "soldier", "archer", "hero", "monk", "knight", "catapult"];
+const HUMAN_BUILDS = ["tower", "barracks", "hut", "smithy", "stable", "workshop"]; // co staví dělník
+const RESEARCH_KINDS = Object.keys(R.UPGRADES);
 const ORDER_CODES = { move: 1, attack: 2, gather: 3, deliver: 4, build: 5, amove: 6, repair: 7 };
 const UD = R.UNDEAD;
 const UNIT_RADIUS = 15; // nejmenší odstup středů dvou jednotek
@@ -89,7 +90,7 @@ class Match {
       this.side[team] = !this.coop ? team : undead ? "dead" : "living";
       this.active.push(team);
       this.econ[team] = { gold: R.BASE_GOLD, wood: R.BASE_WOOD };
-      this.upgrades[team] = { armor: 0, weapon: 0 };
+      this.upgrades[team] = Object.fromEntries(RESEARCH_KINDS.map(k => [k, 0]));
       this.notes[team] = [];
       this.stats[team] = {
         kills: 0, unitsLost: 0, buildingsDestroyed: 0, buildingsLost: 0, gold: 0, wood: 0, trained: 0, built: 0, heroLevel: 0,
@@ -118,7 +119,7 @@ class Match {
 
   /* ---------- entities ---------- */
   createBuilding(type, team, x, y, fresh) {
-    const hp = R.BUILDING_HP[type];
+    const hp = Math.round(R.BUILDING_HP[type] * (1 + R.MASONRY.hp * this.level(team, "masonry")));
     const building = {
       id: this.nextId++, kind: "building", type, team, x, y,
       hp: fresh ? Math.ceil(hp * 0.1) : hp, maxHp: hp,
@@ -216,8 +217,23 @@ class Match {
     };
     this.units.push(unit);
     this.eject(unit);
-    if (type === "soldier") unit.damage += R.WEAPON_PER_LEVEL * this.upgrades[team].weapon;
+    if (type === "knight") unit.charge = R.KNIGHT.charge; // rytíř přijíždí rozjetý
+    for (const kind of ["weapon", "archery"]) this.boost(unit, kind, this.level(team, kind));
     return unit;
+  }
+
+  level(team, kind) {
+    return (this.upgrades[team] && this.upgrades[team][kind]) || 0;
+  }
+
+  // Bonus z výzkumu (n stupňů) jedné jednotce: zbraně pro boj zblízka, střelba pro lučištníky.
+  boost(unit, kind, n) {
+    if (!n) return;
+    if (kind === "weapon" && R.MELEE.includes(unit.type)) unit.damage += R.WEAPON_PER_LEVEL * n;
+    if (kind === "archery" && unit.type === "archer") {
+      unit.damage += R.ARCHERY.damage * n;
+      unit.range += R.ARCHERY.range * n;
+    }
   }
 
   hqType(team) {
@@ -310,13 +326,14 @@ class Match {
     if (!HUMAN_UNITS.includes(type) || this.faction[team] !== "human") return;
 
     const done = b => b.team === team && alive(b) && b.progress >= 1;
+    const at = R.TRAINED_AT[type];
     const source = type === "worker"
       ? this.hqOf(team)
-      : this.buildings.find(b => b.id === srcId && b.type === "barracks" && done(b)) ||
-        this.buildings.find(b => b.type === "barracks" && done(b));
+      : this.buildings.find(b => b.id === srcId && b.type === at && done(b)) ||
+        this.buildings.find(b => b.type === at && done(b));
 
     if (!source) {
-      return this.note(team, type === "worker" ? "Potřebuješ gminu." : "Potřebuješ kasárna.");
+      return this.note(team, type === "worker" ? "Potřebuješ gminu." : at === "stable" ? "Potřebuješ stáj." : at === "workshop" ? "Potřebuješ dílnu." : "Potřebuješ kasárna.");
     }
 
     const mine = this.units.filter(u => u.team === team && alive(u));
@@ -340,23 +357,25 @@ class Match {
     }
   }
 
-  // Výzkum zbroje a zbraní v dostavěné kovárně; každý druh jen jednou najednou, kovárna jeden výzkum.
+  // Výzkum v dostavěné budově (kovárna, gmina); každý druh jen jednou najednou, budova jeden výzkum.
   research(team, kind, srcId) {
-    if (!RESEARCH_KINDS.includes(kind)) return;
+    if (!RESEARCH_KINDS.includes(kind) || this.faction[team] !== "human") return;
 
+    const up = R.UPGRADES[kind];
     const level = this.upgrades[team][kind];
-    const def = R.UPGRADES[kind].levels[level];
+    const def = up.levels[level];
 
-    if (!def) return this.note(team, `${R.UPGRADES[kind].name}: nejvyšší stupeň.`);
+    if (!def) return this.note(team, `${up.name}: nejvyšší stupeň.`);
 
-    const mine = this.buildings.filter(b => b.team === team && b.type === "smithy" && b.progress >= 1 && alive(b));
+    const at = up.at === "hall" ? this.hqType(team) : up.at;
+    const mine = this.buildings.filter(b => b.team === team && b.type === at && b.progress >= 1 && alive(b));
 
-    if (!mine.length) return this.note(team, "Potřebuješ kovárnu.");
+    if (!mine.length) return this.note(team, at === "smithy" ? "Potřebuješ kovárnu." : "Potřebuješ gminu.");
     if (mine.some(b => b.research && b.research.kind === kind)) return this.note(team, "Tento výzkum už probíhá.");
 
     const smithy = mine.find(b => b.id === srcId && !b.research) || mine.find(b => !b.research);
 
-    if (!smithy) return this.note(team, "Kovárna právě pracuje.");
+    if (!smithy) return this.note(team, at === "smithy" ? "Kovárna právě pracuje." : "Gmina právě zkoumá.");
 
     const eco = this.econ[team];
 
@@ -368,18 +387,33 @@ class Match {
     eco.wood -= def.wood;
     this.spend(team, def.gold, def.wood);
     smithy.research = { kind, left: def.time, total: def.time };
-    this.note(team, `Výzkum: ${R.UPGRADES[kind].name} ${level + 1} (${def.time} s).`);
+    this.note(team, `Výzkum: ${up.name} ${level + 1} (${def.time} s).`);
   }
 
   finishResearch(team, kind) {
     const level = ++this.upgrades[team][kind];
 
-    if (kind === "weapon") {
-      for (const u of this.units) if (u.team === team && u.type === "soldier") u.damage += R.WEAPON_PER_LEVEL;
+    for (const u of this.units) if (u.team === team) this.boost(u, kind, 1);
+
+    // opevnění: všem budovám týmu přibude zdraví (i rozestavěným), poškození zůstane stejné
+    if (kind === "masonry") {
+      for (const b of this.buildings) {
+        if (b.team !== team) continue;
+        const maxHp = Math.round(R.BUILDING_HP[b.type] * (1 + R.MASONRY.hp * level));
+        b.hp += maxHp - b.maxHp;
+        b.maxHp = maxHp;
+      }
     }
 
     this.note(team, `${R.UPGRADES[kind].name} ${level} dokončeno.`);
-    this.events.push({ e: "upg", t: teamIndex(team), k: kind === "armor" ? 0 : 1, l: level });
+    this.events.push({ e: "upg", t: teamIndex(team), k: RESEARCH_KINDS.indexOf(kind), l: level });
+  }
+
+  // Stavba, kterou ještě nejde začít (chybí dostavěná budova, kterou potřebuje), jinak null.
+  missingFor(team, type) {
+    const need = R.REQUIRES[type];
+    if (!need || this.buildings.some(b => b.team === team && b.type === need && b.progress >= 1 && alive(b))) return null;
+    return need;
   }
 
   placementProblem(team, x, y, type) {
@@ -403,8 +437,9 @@ class Match {
 
   build(team, msg) {
     const type = msg.type;
-    if (type !== "tower" && type !== "barracks" && type !== "hut" && type !== "smithy") return;
+    if (!HUMAN_BUILDS.includes(type) || this.faction[team] !== "human") return;
     if (!isNum(msg.x) || !isNum(msg.y)) return;
+    if (this.missingFor(team, type)) return this.note(team, "Nejdřív dostav kasárna.");
 
     const workers = this.ownUnits(team, msg.ids).filter(u => u.type === "worker");
 
@@ -511,6 +546,7 @@ class Match {
 
   // Dopad ohnivé koule: zásah se počítá podle toho, kdo v místě stojí teď, ne při výstřelu.
   land(blast) {
+    if (blast.rock) return this.landRock(blast);
     let hits = 0;
 
     for (const enemy of [...this.units, ...this.buildings]) {
@@ -708,7 +744,7 @@ class Match {
   damage(attacker, target, amount, opts = {}) {
     if (!alive(target)) return;
 
-    if (target.kind === "unit" && target.type === "soldier") {
+    if (target.kind === "unit" && R.MELEE.includes(target.type)) {
       const armor = this.upgrades[target.team].armor;
       if (armor) amount = Math.max(1, Math.round(amount * (1 - R.ARMOR_PER_LEVEL * armor)));
     }
@@ -719,6 +755,7 @@ class Match {
 
     const event = { e: "hit", a: attacker.id, t: target.id, n: amount, k: killed ? 1 : 0 };
     if (opts.silent) event.s = 1;
+    if (opts.charge) event.c = 1;
     if (opts.delay) event.d = opts.delay;
     this.events.push(event);
 
@@ -742,8 +779,95 @@ class Match {
 
   strike(unit, target) {
     unit.facing = target.x < unit.x ? -1 : 1;
-    this.damage(unit, target, unit.damage);
     unit.cooldown = unit.attackDelay;
+
+    if (unit.type === "catapult") return this.hurl(unit, target);
+
+    // rytíř po rozjezdu udeří naplno (nápor), pak se musí znovu rozjet
+    if (unit.type === "knight") {
+      const charged = unit.charge >= R.KNIGHT.charge;
+      unit.charge = 0;
+      if (charged) return this.damage(unit, target, unit.damage + R.KNIGHT.bonus, { charge: true });
+    }
+
+    this.damage(unit, target, unit.damage);
+  }
+
+  // Kámen z katapultu letí CATAPULT.flight s (jako ohnivá koule se počítá až při dopadu, viz land):
+  // cíl dostane plnou ránu, nepřátelé kolem místa dopadu část; budovy násobek.
+  hurl(unit, target) {
+    this.blasts.push({ t: R.CATAPULT.flight, by: unit, team: unit.team, x: target.x, y: target.y, rock: true, main: target, amount: unit.damage });
+    this.events.push({ e: "rock", a: unit.id, t: target.id, x: round1(target.x), y: round1(target.y) });
+  }
+
+  landRock(blast) {
+    const C = R.CATAPULT;
+    const hit = (e, k) => Math.round(blast.amount * k * (e.kind === "building" ? C.building : 1));
+
+    for (const e of [...this.units, ...this.buildings]) {
+      if (!alive(e) || this.friendly(e.team, blast.team)) continue;
+      // zasažený cíl se mohl za letu kousek pohnout: trefí ho, pokud nestačil utéct z místa dopadu
+      const d = distance(e, blast);
+      const near = C.radius + (e.kind === "building" ? 24 : 0);
+      if (e === blast.main && d <= near + 16) this.damage(blast.by, e, hit(e, 1), { silent: true });
+      else if (d <= near) this.damage(blast.by, e, hit(e, C.splash), { silent: true });
+    }
+  }
+
+  // Mnich: požehná nejzraněnějšímu spojenci v dosahu (ne sobě ani budovám).
+  mend(unit) {
+    let best = null;
+
+    for (const ally of this.units) {
+      if (ally === unit || !alive(ally) || !this.friendly(ally.team, unit.team) || ally.hp >= ally.maxHp) continue;
+      if (distance(ally, unit) > unit.range) continue;
+      if (!best || ally.hp / ally.maxHp < best.hp / best.maxHp) best = ally;
+    }
+
+    if (!best) return false;
+
+    const n = Math.min(R.MONK.heal, Math.ceil(best.maxHp - best.hp));
+    best.hp = Math.min(best.maxHp, best.hp + R.MONK.heal);
+    unit.cooldown = unit.attackDelay;
+    unit.facing = best.x < unit.x ? -1 : 1;
+    this.events.push({ e: "mend", a: unit.id, t: best.id, n });
+    return true;
+  }
+
+  // Nejbližší nepřítel ve vzdálenosti min..max (katapult nestřílí pod sebe).
+  enemyBetween(unit, min, max) {
+    let nearest = null;
+    let best = max;
+
+    for (const list of [this.units, this.buildings]) {
+      for (const e of list) {
+        if (!alive(e) || this.friendly(e.team, unit.team)) continue;
+        const d = distance(unit, e);
+        if (d >= min && d < best) {
+          nearest = e;
+          best = d;
+        }
+      }
+    }
+
+    return nearest;
+  }
+
+  // Zraněný spojenec, za kterým má mnich bez rozkazu dojít (v okruhu radius).
+  woundedNear(unit, radius) {
+    let best = null;
+    let bestD = radius;
+
+    for (const ally of this.units) {
+      if (ally === unit || !alive(ally) || !this.friendly(ally.team, unit.team) || ally.hp >= ally.maxHp) continue;
+      const d = distance(ally, unit);
+      if (d < bestD) {
+        best = ally;
+        bestD = d;
+      }
+    }
+
+    return best;
   }
 
   dropOff(unit) {
@@ -897,7 +1021,7 @@ class Match {
       unit.working = true;
       unit.facing = resource.x < unit.x ? -1 : 1;
 
-      if (unit.harvestTimer >= 0.9) {
+      if (unit.harvestTimer >= 0.9 * (1 - R.TOOLS_PER_LEVEL * this.level(unit.team, "tools"))) {
         unit.harvestTimer = 0;
         unit.carry = resource.type;
         resource.amount = Math.max(0, resource.amount - 10);
@@ -948,11 +1072,11 @@ class Match {
         }
       }
       if (building.type === "tower" && building.progress >= 1 && building.cooldown <= 0) {
-        const target = this.nearestEnemy(building, 155);
+        const target = this.nearestEnemy(building, R.TOWER.range);
 
         if (target) {
-          this.damage(building, target, 20);
-          building.cooldown = 0.85;
+          this.damage(building, target, R.TOWER.damage + R.MASONRY.tower * this.level(building.team, "masonry"));
+          building.cooldown = R.TOWER.delay;
         }
       }
 
@@ -990,39 +1114,10 @@ class Match {
 
       if (unit.type === "worker" && this.gather(unit, dt)) continue;
 
-      if (unit.order && unit.order.type === "move") {
-        if (this.moveTowards(unit, unit.order, dt, 5)) unit.order = null;
-        continue;
-      }
-
-      const amove = unit.order && unit.order.type === "amove";
-      let target = unit.order && unit.order.type === "attack" && alive(unit.order.target)
-        ? unit.order.target
-        : null;
-
-      if (!target) target = this.nearestEnemy(unit, amove ? Math.max(130, unit.range + 30) : 100);
-
-      // útočný pochod: jde k cíli a bije všechno, na co cestou narazí
-      if (!target && amove) {
-        if (this.moveTowards(unit, unit.order, dt, 24)) unit.order = null;
-        continue;
-      }
-
-      if (!target) continue;
-
-      // na budovu se útočí od okraje půdorysu: zblízka těsně u zdi, střelci ze své vzdálenosti
-      const reach = target.kind === "building" && unit.range < 60 ? EDGE_STOP : unit.range;
-
-      if (this.gap(unit, target) > reach) {
-        // Bez rozkazu se bojové jednotky samy pustí do nepřátel v dosahu; dělníci zůstávají stát.
-        const hunting = unit.order
-          ? unit.order.type === "attack" || amove
-          : unit.type !== "worker";
-
-        if (hunting) this.moveTowards(unit, target, dt, reach - 2);
-      } else if (unit.cooldown <= 0) {
-        this.strike(unit, target);
-      }
+      const ox = unit.x;
+      const oy = unit.y;
+      this.act(unit, dt);
+      if (unit.type === "knight") unit.charge = Math.min(R.KNIGHT.charge, unit.charge + Math.hypot(unit.x - ox, unit.y - oy));
     }
 
     this.separate(dt);
@@ -1033,6 +1128,85 @@ class Match {
     this.resources = this.resources.filter(r => r.type === "gold" || r.amount > 0);
 
     this.updateOutcome();
+  }
+
+  // Mnich nebojuje: drží se u svých a léčí. Útočný rozkaz pro něj znamená jít za cílem na dohled.
+  actMonk(unit, dt) {
+    const order = unit.order;
+
+    if (order && order.type === "move") {
+      if (this.moveTowards(unit, order, dt, 5)) unit.order = null;
+      return;
+    }
+
+    if (unit.cooldown <= 0 && this.mend(unit)) return;
+
+    if (order && order.type === "attack" && !alive(order.target)) unit.order = null;
+
+    const wounded = this.woundedNear(unit, 170);
+    if (wounded && unit.cooldown <= 0.4) {
+      this.moveTowards(unit, wounded, dt, unit.range - 10);
+      return;
+    }
+
+    if (!unit.order) return;
+    const goal = unit.order.type === "attack" ? unit.order.target : unit.order;
+    if (this.moveTowards(unit, goal, dt, unit.order.type === "attack" ? 70 : 24) && unit.order.type === "amove") unit.order = null;
+  }
+
+  act(unit, dt) {
+    if (unit.type === "monk") return this.actMonk(unit, dt);
+
+    if (unit.order && unit.order.type === "move") {
+      if (this.moveTowards(unit, unit.order, dt, 5)) unit.order = null;
+      return;
+    }
+
+    const lob = unit.type === "catapult";
+
+    const amove = unit.order && unit.order.type === "amove";
+    let target = unit.order && unit.order.type === "attack" && alive(unit.order.target)
+      ? unit.order.target
+      : null;
+
+    if (!target) {
+      target = lob
+        ? this.enemyBetween(unit, R.CATAPULT.min, unit.range + (amove ? 30 : 0))
+        : this.nearestEnemy(unit, amove ? Math.max(130, unit.range + 30) : 100);
+    }
+
+    // útočný pochod: jde k cíli a bije všechno, na co cestou narazí
+    if (!target && amove) {
+      if (this.moveTowards(unit, unit.order, dt, 24)) unit.order = null;
+      return;
+    }
+
+    if (!target) return;
+
+    // na budovu se útočí od okraje půdorysu: zblízka těsně u zdi, střelci ze své vzdálenosti
+    const reach = target.kind === "building" && unit.range < 60 ? EDGE_STOP : unit.range;
+
+    // katapult nestřílí zblízka: od cíle couvne na nejmenší dostřel
+    if (lob && distance(unit, target) < R.CATAPULT.min) {
+      const d = distance(unit, target) || 1;
+      const away = {
+        x: clamp(unit.x + (unit.x - target.x) / d * 60, 12, this.LW - 12),
+        y: clamp(unit.y + (unit.y - target.y) / d * 60, 38, this.LH - 14)
+      };
+      this.moveTowards(unit, away, dt, 2);
+      return;
+    }
+
+    if (this.gap(unit, target) > reach) {
+      // Bez rozkazu se bojové jednotky samy pustí do nepřátel v dosahu; dělníci zůstávají stát.
+      const hunting = unit.order
+        ? unit.order.type === "attack" || amove
+        : unit.type !== "worker";
+
+      if (hunting) this.moveTowards(unit, target, dt, reach - 2);
+    } else if (unit.cooldown <= 0) {
+      this.strike(unit, target);
+    }
   }
 
   /* ---------- konec hry ---------- */
@@ -1267,7 +1441,7 @@ class Match {
       g: eco.gold,
       w: eco.wood,
       sc: this.supplyCap(team),
-      up: [(this.upgrades[team] || {}).armor || 0, (this.upgrades[team] || {}).weapon || 0],
+      up: RESEARCH_KINDS.map(k => this.level(team, k)),
       u: this.units.map(u => [
         u.id,
         UNIT_TYPES.indexOf(u.type),
@@ -1286,7 +1460,7 @@ class Match {
         u.working ? 1 : u.building ? 2 : u.repairing ? 3 : 0,
         u.damage
       ]),
-      // Budova: [id, typ, tým, x, y, hp, maxHp, postup stavby 0..1, výzkum (0 žádný, 1 zbroj, 2 zbraně), postup výzkumu 0..1]
+      // Budova: [id, typ, tým, x, y, hp, maxHp, postup stavby 0..1, výzkum (0 žádný, jinak index v RESEARCH_KINDS + 1), postup výzkumu 0..1]
       b: this.buildings.map(b => [
         b.id,
         BUILDING_TYPES.indexOf(b.type),
@@ -1320,5 +1494,5 @@ class Match {
   }
 }
 
-return { Match, TICK, UNIT_TYPES, BUILDING_TYPES };
+return { Match, TICK, UNIT_TYPES, BUILDING_TYPES, RESEARCH_KINDS, HUMAN_UNITS, HUMAN_BUILDS };
 });

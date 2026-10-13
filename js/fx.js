@@ -148,6 +148,12 @@
       return life;
     },
 
+    // Kámen z katapultu: vysoký oblouk, pevná doba letu (stejná jako v simulaci), dopad zvíří prach.
+    boulder(x1, y1, x2, y2, life = 0.8) {
+      state.fx.push({ kind: "boulder", x1: A(x1), y1: A(y1), x2: A(x2), y2: A(y2), life, max: life, spin: R() * 6 });
+      return life;
+    },
+
     text(x, y, value, color = 0xffe08a) {
       if (state.fx.filter(f => f.kind === "text").length > 26) return;
       state.fx.push({ kind: "text", x: A(x) + rnd(-3, 3), y: A(y), value: String(value), color, life: 0.8, max: 0.8 });
@@ -440,6 +446,13 @@
           const t = 1 - f.life / f.max;
           emit("ember", f.x1 + (f.x2 - f.x1) * t, f.y1 + (f.y2 - f.y1) * t, rnd(-6, 6), rnd(-10, 4), rnd(0.15, 0.3), { c: GOLD.slice(1), additive: true });
         }
+      } else if (f.kind === "boulder") {
+        if (f.life <= 0) {
+          fx.puff(f.x2 * 2, f.y2 * 2 + 4, 10, DUST, 26);
+          for (let k = 0; k < 9; k++) emit("chip", f.x2 + rnd(-3, 3), f.y2, rnd(-40, 40), rnd(-60, -20), rnd(0.4, 0.7), { c: CHIP, g: 170, size: R() < 0.4 ? 2 : 1 });
+          state.shake = Math.max(state.shake, 1.5);
+          continue;
+        }
       } else if (f.kind === "fireball") {
         if (f.life <= 0) {
           explode(f);
@@ -689,6 +702,8 @@
         drawArrow(g, f, t);
       } else if (f.kind === "bolt") {
         drawBolt(g, f, t);
+      } else if (f.kind === "boulder") {
+        drawBoulder(g, f, t);
       } else if (f.kind === "fireball") {
         drawFireball(g, f, t);
       } else if (f.kind === "pillar") {
@@ -844,6 +859,26 @@
     for (let i = 1; i < 6; i++) {
       dot(g, x - ux * i * F - uy * F, y - uy * i * F + ux * F);
       dot(g, x - ux * i * F + uy * F, y - uy * i * F - ux * F);
+    }
+  }
+
+  function drawBoulder(g, f, t) {
+    const x = q(f.x1 + (f.x2 - f.x1) * t);
+    const arc = Math.sin(t * Math.PI) * 38;
+    const gy = f.y1 + (f.y2 - f.y1) * t;
+    const y = q(gy - arc);
+    // stín na zemi pod kamenem
+    g.fillStyle = "rgba(20,14,40,0.35)";
+    for (let xx = -2; xx <= 2; xx++) g.fillRect(x + xx * F, q(gy) + F, F, F);
+    // kámen v jemné mřížce: světlo zleva shora, tmavý okraj
+    for (let yy = -3; yy <= 3; yy++) {
+      for (let xx = -3; xx <= 3; xx++) {
+        const d = Math.hypot(xx + 0.5, yy + 0.5) / 3.2;
+        if (d > 1) continue;
+        const lit = d - (xx + yy) / 9 + (((xx + yy + Math.floor(f.life * 20 + f.spin)) & 3) === 0 ? 0.12 : 0);
+        g.fillStyle = d > 0.85 ? "#2a2542" : lit < 0.3 ? "#c4ccdc" : lit < 0.6 ? "#8e93a8" : "#5c5a6e";
+        g.fillRect(x + xx * F, y + yy * F, F, F);
+      }
     }
   }
 

@@ -1140,6 +1140,238 @@
     };
   }
 
+  /* ======================= Stáj ======================= */
+  // dlouhá roubená stáj s doškovou střechou, dvě stání s půldveřmi (z jednoho kouká kůň),
+  // seník, napajedlo a týmová podkova nad vraty
+  function stable(team = "blue") {
+    const W = 56;
+    const H = 40;
+    const P = new Pix(W * HD, H * HD);
+    const T = TEAM[team];
+
+    // podezdívka
+    masonry(P, 8, 70, 104, 78, {
+      seed: 41, bh: 4, wmin: 5, wmax: 9,
+      face: (x) => (x > 98 ? -1 : 0), moss: (x, y) => (y > 74 ? 0.2 : 0.04)
+    });
+    P.rect(7, 69, 98, 1, STONE[4]);
+
+    // svislá prkna, pravý konec ve stínu
+    planks(P, 10, 38, 102, 70, { pw: 4, seed: 42, face: (x) => (x > 94 ? -1 : x < 14 ? 0.3 : 0) });
+    for (const px of [10, 40, 70, 98]) beam(P, px, 38, 4, 32, { seed: px * 5, face: () => (px === 98 ? -0.7 : 0) });
+    beam(P, 10, 38, 92, 3, { horiz: true, seed: 43 });
+
+    // dvě stání: tmavý otvor, dolní půldveře
+    for (const [x0, horse] of [[16, true], [46, false]]) {
+      P.rect(x0 - 1, 43, 22, 27, WOOD[1]);
+      P.shade(x0, 44, x0 + 20, 58, (x, y) => mix(C.ink, C.w[0], 0.35 + (y - 44) / 40 + (bayer(x, y) - 0.5) * 0.12));
+      planks(P, x0, 57, x0 + 20, 70, { horiz: true, pw: 3, seed: x0, base: 2.8 });
+      brace(P, x0 + 1, 68, x0 + 18, 59);
+      P.rect(x0, 57, 20, 1, WOOD[4]);
+      P.rect(x0 + 16, 62, 2, 2, IRON[3]);
+
+      if (horse) {
+        // kůň vykukuje přes půldveře: krk, hlava z profilu, lysina, hříva
+        const HC = [C.w[1], C.w[2], C.w[3], mix(C.w[4], C.d[4], 0.3)];
+        P.poly([[x0 + 4, 58], [x0 + 12, 58], [x0 + 13, 50], [x0 + 8, 46], [x0 + 5, 49]], (x, y) => pick(HC, 2.4 - (x - x0 - 4) / 9 + (y < 50 ? 0.6 : 0)));
+        P.poly([[x0 + 9, 46], [x0 + 15, 47], [x0 + 19, 53], [x0 + 18, 56], [x0 + 15, 56], [x0 + 11, 52]], (x, y) => pick(HC, 2.8 - (x - x0 - 9) / 12 + (y < 49 ? 0.4 : 0)));
+        P.rect(x0 + 16, 49, 1, 6, mix(C.d[5], C.white, 0.5));
+        P.set(x0 + 13, 49, C.ink);
+        P.set(x0 + 17, 55, C.w[0]);
+        P.poly([[x0 + 9, 46], [x0 + 11, 46], [x0 + 10, 42]], () => HC[2]);
+        P.line(x0 + 5, 49, x0 + 9, 45, C.w[0]);
+        P.line(x0 + 4, 51, x0 + 8, 46, C.w[0]);
+        P.line(x0 + 12, 52, x0 + 18, 53, T.d);
+      } else {
+        // seno v žlabu
+        for (let x = x0 + 2; x < x0 + 19; x++) {
+          const h = 2 + Math.floor(hash(x, 4, 9) * 4);
+          for (let y = 0; y < h; y++) P.set(x, 56 - y, y === h - 1 ? C.d[5] : hash(x, y, 3) > 0.5 ? C.d[3] : C.d[4]);
+        }
+      }
+    }
+
+    // týmový štít s podkovou mezi stáními
+    P.poly([[76, 44], [92, 44], [92, 54], [84, 60], [76, 54]], (x, y) => (x < 79 || y < 46 ? T.l : x > 89 ? T.s : T.m));
+    for (let a = 0.35; a < Math.PI * 2 - 0.35; a += 0.12) {
+      const x = Math.round(84 + Math.sin(a) * 4.2);
+      const y = Math.round(51 - Math.cos(a) * 4.6);
+      P.set(x, y, a > Math.PI ? C.s[5] : C.s[3]);
+    }
+    P.set(81, 54, C.s[6]);
+    P.set(87, 54, C.s[2]);
+    P.rect(77, 61, 14, 1, WOOD[0]);
+
+    // doškový krov
+    thatch(P, [[2, 42], [110, 42], [94, 12], [18, 12]], { seed: 44, face: (x, y) => (x > 94 - (y - 12) * -0.5 ? -1.1 : x < 26 ? 0.4 : 0) });
+    P.line(18, 12, 2, 42, THATCH[5]);
+    P.line(94, 12, 110, 42, THATCH[0]);
+    for (let x = 2; x < 110; x++) {
+      P.set(x, 42, (x & 1) ? THATCH[2] : THATCH[1]);
+      if (hash(x, 1, 7) > 0.5) P.set(x, 43, THATCH[1]);
+    }
+    beam(P, 16, 10, 80, 3, { horiz: true, seed: 45 });
+    shadow(P, 10, 43, 102, 46, (x, y) => (y < 45 ? 0.45 : 0.25));
+
+    // vikýř seníku s vyčnívajícím senem
+    P.rect(66, 20, 18, 16, WOOD[1]);
+    P.shade(68, 22, 82, 36, (x, y) => (y > 29 ? (hash(x, y, 5) > 0.45 ? C.d[4] : C.d[3]) : mix(C.ink, C.w[0], 0.5)));
+    for (let x = 67; x < 84; x++) if (hash(x, 9, 2) > 0.4) P.set(x, 36 + Math.floor(hash(x, 8, 2) * 3), C.d[4]);
+    thatch(P, [[62, 22], [88, 22], [75, 12]], { seed: 46, lh: 4, face: (x) => (x > 76 ? -1 : 0.3) });
+    beam(P, 78, 14, 1, 6, { seed: 3 });
+    P.rect(78, 20, 1, 3, C.d[2]);
+
+    // napajedlo vlevo vpředu
+    planks(P, 0, 70, 16, 78, { horiz: true, pw: 3, seed: 47, noJoints: true, face: (x) => (x > 13 ? -0.8 : 0) });
+    P.rect(1, 70, 14, 2, C.u[2]);
+    P.rect(2, 70, 6, 1, C.u[3]);
+
+    // balíky sena vpravo vpředu
+    for (const [x, y, w] of [[94, 70, 14], [98, 63, 10]]) {
+      P.shade(x, y, x + w, y + 8, (xx, yy) => {
+        const v = hash(xx, yy, 11);
+        if (yy === y) return C.d[5];
+        if (xx === x + w - 1 || yy === y + 7) return C.d[2];
+        return v > 0.7 ? C.d[3] : v > 0.25 ? C.d[4] : C.d[5];
+      });
+      P.rect(x + 3, y, 1, 8, C.w[1]);
+      P.rect(x + w - 4, y, 1, 8, C.w[1]);
+    }
+
+    // lucerna nad vraty
+    P.rect(44, 40, 3, 3, C.gold[0]);
+    P.set(45, 41, C.a[4]);
+    spill(P, 45, 46, 14, 10, C.a[2], 0.45);
+
+    bannerHooks(P, 2, 22);
+    P.outline(C.ink, 0.7);
+
+    return {
+      c: PK.fine(P), w: W, h: H, ax: 28, ay: 38,
+      banners: [[2, 22]],
+      smoke: [],
+      glows: [
+        { x: 22, y: 21, r: 7, a: 0.4, color: C.a[2], pulse: true },
+        { x: 22, y: 27, r: 12, a: 0.3, color: C.a[2], ground: true }
+      ]
+    };
+  }
+
+  /* ======================= Dílna ======================= */
+  // hrázděná dílna se širokými vraty, ve kterých stojí rozestavěný katapult, jeřáb se zavěšeným
+  // trámem, hranice klád a kolo opřené o zeď
+  function workshop(team = "blue") {
+    const W = 52;
+    const H = 44;
+    const P = new Pix(W * HD, H * HD);
+    const T = TEAM[team];
+
+    masonry(P, 8, 78, 96, 86, { seed: 51, bh: 4, wmin: 5, wmax: 9, face: (x) => (x > 90 ? -1 : 0), moss: (x, y) => (y > 82 ? 0.18 : 0) });
+    P.rect(7, 77, 90, 1, STONE[4]);
+
+    // omítka a hrázdění
+    plaster(P, 10, 44, 94, 78, { seed: 52, chips: 2, cracks: 1, face: (x) => (x > 86 ? -1 : x < 14 ? 0.4 : 0) });
+    for (const px of [10, 30, 70, 90]) beam(P, px, 44, 4, 34, { seed: px * 3, face: () => (px === 90 ? -0.7 : 0) });
+    beam(P, 10, 44, 84, 3, { horiz: true, seed: 53 });
+    beam(P, 10, 60, 20, 3, { horiz: true, seed: 54 });
+    beam(P, 74, 60, 16, 3, { horiz: true, seed: 55 });
+    brace(P, 14, 58, 28, 48);
+    brace(P, 74, 48, 88, 58);
+
+    // okno vlevo
+    windowLit(P, 16, 64, 9, 9, { vbar: 4, hbar: 4, sillRamp: WOOD });
+
+    // široká vrata: tmavá dílna, lampa a rozestavěný katapult
+    P.rect(33, 49, 36, 29, WOOD[0]);
+    P.shade(35, 51, 67, 78, (x, y) => mix(C.ink, C.w[0], 0.25 + (y - 51) / 70 + (bayer(x, y) - 0.5) * 0.1));
+    spill(P, 51, 62, 16, 12, C.a[2], 0.55, (x, y) => x > 34 && x < 68 && y > 50);
+    // rám katapultu uvnitř
+    P.line(40, 76, 48, 58, WOOD[2]);
+    P.line(41, 76, 49, 58, WOOD[3]);
+    P.line(56, 76, 48, 58, WOOD[2]);
+    P.rect(38, 72, 24, 2, WOOD[3]);
+    P.rect(38, 74, 24, 1, WOOD[1]);
+    P.line(46, 70, 62, 54, WOOD[3]);
+    P.disc(62.5, 53.5, 2.2, 2.2, C.s[3]);
+    // lampa
+    P.rect(51, 51, 1, 3, IRON[2]);
+    P.rect(50, 54, 3, 3, C.gold[0]);
+    P.set(51, 55, C.a[4]);
+    // otevřená křídla vrat
+    planks(P, 27, 50, 33, 78, { pw: 3, seed: 56, face: () => 0.3 });
+    planks(P, 69, 50, 75, 78, { pw: 3, seed: 57, face: () => -0.8 });
+    P.rect(33, 48, 36, 1, WOOD[4]);
+
+    // šindelová střecha
+    tiles(P, [[2, 48], [102, 48], [84, 16], [20, 16]], {
+      ramp: WOOD, th: 3, tw: 5, y0: 16, seed: 58,
+      face: (x, y) => (x > 84 + (y - 16) * 0.56 ? -1.1 : x < 20 - (y - 16) * 0.56 ? 0.6 : 0)
+    });
+    P.line(20, 16, 2, 48, WOOD[5]);
+    P.line(84, 16, 102, 48, WOOD[0]);
+    beam(P, 18, 14, 68, 3, { horiz: true, seed: 59 });
+    beam(P, 0, 47, 104, 3, { horiz: true, seed: 60 });
+    shadow(P, 10, 50, 94, 53, (x, y) => (y < 52 ? 0.45 : 0.25));
+
+    // jeřáb: sloupek na střeše, rameno, lano a zavěšený trám
+    beam(P, 22, 2, 3, 14, { seed: 61 });
+    beam(P, 6, 2, 22, 3, { horiz: true, seed: 62 });
+    brace(P, 14, 5, 22, 11);
+    P.rect(8, 5, 1, 22, C.d[3]);
+    P.rect(4, 27, 10, 3, WOOD[3]);
+    P.rect(4, 29, 10, 1, WOOD[1]);
+    P.set(4, 27, WOOD[5]);
+
+    // týmový praporec na hřebeni
+    P.rect(70, 0, 1, 16, WOOD[4]);
+    P.rect(71, 0, 1, 16, WOOD[1]);
+    for (let y = 0; y < 7; y++) {
+      const len = 11 - Math.floor(y * 0.6);
+      for (let x = 0; x < len; x++) {
+        if (y >= 2 && y <= 4 && x > len - 3) continue;
+        P.set(72 + x, 1 + y, y === 0 ? T.l : y === 6 ? T.s : x % 4 === 3 ? T.s : T.m);
+      }
+    }
+
+    // klády vlevo (čela s letokruhy)
+    for (const [cx, cy] of [[4, 82], [10, 82], [7, 77]]) {
+      P.disc(cx, cy, 3.2, 3.2, (x, y) => (Math.hypot(x + 0.5 - cx, y + 0.5 - cy) > 2.4 ? C.w[1] : (Math.round(Math.hypot(x + 0.5 - cx, y + 0.5 - cy) * 1.6) & 1) ? C.d[3] : C.d[4]));
+      P.set(cx, cy, C.w[2]);
+    }
+
+    // kolo opřené o zeď vpravo
+    const wx = 96;
+    const wy = 74;
+    for (let y = wy - 9; y <= wy + 9; y++) {
+      for (let x = wx - 9; x <= wx + 9; x++) {
+        const d = Math.hypot(x + 0.5 - wx, y + 0.5 - wy);
+        if (d > 8.5) continue;
+        const a = Math.atan2(y + 0.5 - wy, x + 0.5 - wx);
+        if (d > 6.6) P.set(x, y, d > 7.8 ? C.s[2] : (x < wx ? WOOD[3] : WOOD[1]));
+        else if (d < 1.6) P.set(x, y, C.s[3]);
+        else if (Math.abs(Math.sin(a * 3)) < 0.18) P.set(x, y, WOOD[2]);
+      }
+    }
+
+    // štít týmu na zdi vpravo
+    P.poly([[76, 64], [86, 64], [86, 70], [81, 75], [76, 70]], (x, y) => (x < 78 || y < 66 ? T.l : x > 84 ? T.s : T.m));
+    brokenRing(P, 81, 68.5, 2.4, T.accent, T.d, 1.1);
+
+    spill(P, 20, 68, 9, 8, C.a[2], 0.4);
+    P.outline(C.ink, 0.7);
+
+    return {
+      c: PK.fine(P), w: W, h: H, ax: 26, ay: 42,
+      banners: [],
+      smoke: [],
+      glows: [
+        { x: 26, y: 29, r: 10, a: 0.45, color: C.a[2], pulse: true },
+        { x: 10, y: 34, r: 6, a: 0.35, color: C.a[2] },
+        { x: 26, y: 40, r: 13, a: 0.3, color: C.a[2], ground: true }
+      ]
+    };
+  }
+
   /* ======================= Rudá pevnost (Cinder citadel) ======================= */
   function citadel(team = "red") {
     const W = 80;
@@ -1949,7 +2181,7 @@
    */
   function rubble(type, team) {
     const w = type === "tower" || type === "ziggurat" ? 26
-      : type === "barracks" || type === "crypt" || type === "slaughterhouse" ? 46
+      : type === "barracks" || type === "crypt" || type === "slaughterhouse" || type === "stable" || type === "workshop" ? 46
       : type === "necropolis" ? 74 : 60;
     const h = 16;
     const key = `${w}|${team === "red" ? 1 : 0}|${type}`;
@@ -1960,7 +2192,7 @@
     const P = new Pix(FW, FH);
     const hell = team === "red" || ["necropolis", "crypt", "slaughterhouse", "ziggurat", "portal", "citadel"].includes(type);
     const ramp = hell ? BAS : STONE;
-    const roof = hell ? OBS : type === "smithy" ? SLATE : TEAL;
+    const roof = hell ? OBS : type === "smithy" ? SLATE : type === "stable" ? THATCH : type === "workshop" ? WOOD : TEAL;
     const seed = w * 7 + (hell ? 3 : 0);
 
     // prach a štěrk pod hromadou
@@ -2024,7 +2256,7 @@
 
   /* ======================= registr ======================= */
   const cache = {};
-  const BUILD = { hall, barracks, tower, citadel, hut, smithy, necropolis, crypt, slaughterhouse, ziggurat, portal };
+  const BUILD = { hall, barracks, tower, citadel, hut, smithy, stable, workshop, necropolis, crypt, slaughterhouse, ziggurat, portal };
 
   function get(type, team = "blue") {
     const key = `${type}|${team}`;
