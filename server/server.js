@@ -688,6 +688,13 @@ function leaveRoom(client) {
   broadcastRooms();
 }
 
+// Připíše přihlášenému hráči dobu připojení od posledního zápisu (průběžně i při odpojení, aby se při pádu serveru ztratila nejvýš minuta).
+function creditOnline(client) {
+  const now = Date.now();
+  if (client.user) accounts.addOnline(client.user, (now - client.onlineFrom) / 1000);
+  client.onlineFrom = now;
+}
+
 // Odpojí klienta (s vysvětlením, pokud je vyhozen) a uklidí po něm místnost i evidenci online hráčů.
 function disconnect(client, text) {
   if (client.closed) return;
@@ -696,6 +703,7 @@ function disconnect(client, text) {
   if (text) send(client, { t: "error", text });
 
   clients.delete(client);
+  creditOnline(client);
 
   if (client.user && byUser.get(client.user.id) === client) {
     byUser.delete(client.user.id);
@@ -801,7 +809,8 @@ wss.on("connection", (ws, req) => {
     closed: false,
     watching: null,
     windowStart: Date.now(),
-    windowCount: 0
+    windowCount: 0,
+    onlineFrom: Date.now()
   };
 
   // Jeden účet má jen jedno spojení: nové vytlačí staré (jiná záložka, zapomenutý výpadek).
@@ -1032,11 +1041,18 @@ setInterval(() => {
   }
 }, 20000);
 
+setInterval(() => {
+  for (const client of clients) creditOnline(client);
+}, 60000).unref();
+
 mapstore.load();
 traffic.startSampling(live.counts);
 
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => process.exit(0));
-process.on("exit", () => store.flush());
+process.on("exit", () => {
+  for (const client of clients) creditOnline(client); // restart serveru (pm2) nesmaže rozehraný online čas
+  store.flush();
+});
 
 // Účet admina se založí při prvním startu; heslo je z GORALIA_ADMIN_PASSWORD, jinak náhodné a vypíše se jen jednou.
 accounts.seedAdmin(process.env.GORALIA_ADMIN_PASSWORD).then(seed => {

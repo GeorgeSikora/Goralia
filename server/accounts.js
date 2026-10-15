@@ -148,6 +148,7 @@ function createAccounts(store, options = {}) {
       created: Date.now(),
       lastLogin: 0,
       lastSeen: 0,
+      onlineSeconds: 0,
       nameChanged: 0,
       banned: null,
       stats: newStats()
@@ -366,6 +367,19 @@ function createAccounts(store, options = {}) {
     store.save();
   }
 
+  // Odehraný čas: online = doba připojení k serveru (jen pro správce), ai = hry proti AI v prohlížeči.
+  function addOnline(user, seconds) {
+    if (!(seconds > 0)) return;
+    user.onlineSeconds = (user.onlineSeconds || 0) + seconds;
+    store.save();
+  }
+
+  function addAiTime(user, seconds) {
+    if (!(seconds > 0)) return;
+    user.stats.aiSeconds += Math.round(seconds);
+    store.save();
+  }
+
   /* ---------- admin ---------- */
   async function seedAdmin(password) {
     const existing = byEmail.get(adminEmail);
@@ -406,15 +420,23 @@ function createAccounts(store, options = {}) {
     id: user.id, name: user.name, email: user.email, role: user.role,
     google: !!user.google, facebook: !!user.facebook, password: !!user.passHash,
     created: user.created, lastLogin: user.lastLogin, lastSeen: user.lastSeen, banned: user.banned,
-    games: user.stats.games, wins: user.stats.wins
+    games: user.stats.games, wins: user.stats.wins,
+    playSeconds: user.stats.playSeconds, aiSeconds: user.stats.aiSeconds, onlineSeconds: Math.round(user.onlineSeconds || 0)
   });
 
-  function listUsers({ q = "", offset = 0, limit = 50 } = {}) {
+  const played = user => user.stats.playSeconds + user.stats.aiSeconds;
+  const SORTS = {
+    created: (a, b) => b.created - a.created,
+    played: (a, b) => played(b) - played(a) || b.created - a.created,
+    online: (a, b) => (b.onlineSeconds || 0) - (a.onlineSeconds || 0) || b.created - a.created
+  };
+
+  function listUsers({ q = "", offset = 0, limit = 50, sort = "created" } = {}) {
     const needle = String(q).trim().toLowerCase();
     let users = Object.values(data.users);
 
     if (needle) users = users.filter(u => u.name.toLowerCase().includes(needle) || (u.email || "").includes(needle) || String(u.id) === needle);
-    users.sort((a, b) => b.created - a.created);
+    users.sort(Object.hasOwn(SORTS, sort) ? SORTS[sort] : SORTS.created);
 
     return { total: users.length, users: users.slice(offset, offset + limit).map(adminView) };
   }
@@ -500,12 +522,16 @@ function createAccounts(store, options = {}) {
 
   function counts() {
     const users = Object.values(data.users);
-    return { users: users.length, banned: users.filter(u => u.banned).length, admins: users.filter(u => u.role === "admin").length, matches: data.matches.length };
+    const sum = fn => users.reduce((n, u) => n + fn(u), 0);
+    return {
+      users: users.length, banned: users.filter(u => u.banned).length, admins: users.filter(u => u.role === "admin").length, matches: data.matches.length,
+      playSeconds: sum(u => u.stats.playSeconds), aiSeconds: sum(u => u.stats.aiSeconds), onlineSeconds: Math.round(sum(u => u.onlineSeconds || 0))
+    };
   }
 
   return {
     register, login, loginWithProvider, createSession, userFromToken, destroySession, destroyUserSessions,
-    rename, changePassword, touch, seedAdmin, resetAdminPassword,
+    rename, changePassword, touch, addOnline, addAiTime, seedAdmin, resetAdminPassword,
     listUsers, setBanned, setRole, resetPassword, deleteUser, audit, adminView,
     selfView, getUser, leaderboard, counts,
     adminEmail, adminName, SESSION_TTL

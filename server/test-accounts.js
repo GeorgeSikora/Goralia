@@ -197,6 +197,22 @@ async function testAccounts() {
   assert.strictEqual(accounts.leaderboard()[0].name, "Pat");
   assert.deepStrictEqual(accounts.leaderboard({ q: "ma" }).map(p => p.name), ["Mat"]);
 
+  // odehraný čas: multiplayer ze zápasů, hry proti AI a doba připojení; řazení a součty pro správce
+  accounts.addAiTime(mat, 3600);
+  accounts.addOnline(mat, 90.4);
+  accounts.addOnline(mat, -5);
+  const matView = accounts.adminView(mat);
+  assert.strictEqual(matView.aiSeconds, 3600);
+  assert.strictEqual(matView.onlineSeconds, 90);
+  assert.strictEqual(matView.playSeconds, mat.stats.playSeconds);
+  assert.strictEqual(accounts.listUsers({ sort: "played" }).users[0].name, "Mat", "hodina proti AI je víc než krátké zápasy");
+  assert.strictEqual(accounts.listUsers({ sort: "online" }).users[0].name, "Mat");
+  assert.strictEqual(accounts.listUsers({ sort: "constructor" }).users.length, accounts.listUsers().users.length, "neznámé řazení = podle registrace");
+  const totals = accounts.counts();
+  assert.strictEqual(totals.aiSeconds, 3600);
+  assert.strictEqual(totals.playSeconds, Object.values(store.data.users).reduce((n, u) => n + u.stats.playSeconds, 0));
+  assert.strictEqual(totals.onlineSeconds, 90);
+
   // trvalé uložení
   store.flush();
   const raw = fs.readFileSync(store.file, "utf8");
@@ -325,7 +341,7 @@ const PORT = 3600 + Math.floor(Math.random() * 300);
 function request(method, p, body, headers = {}) {
   return new Promise((resolve, reject) => {
     const data = body === undefined ? null : typeof body === "string" ? body : JSON.stringify(body);
-    const req = http.request({ host: "localhost", port: PORT, path: p, method, headers: { "Content-Type": "application/json", ...headers } }, res => {
+    const req = http.request({ host: "localhost", port: PORT, path: p, method, headers: { "Content-Type": "application/json", ...(data === null ? {} : { "Content-Length": Buffer.byteLength(data) }), ...headers } }, res => {
       let text = "";
       res.on("data", chunk => { text += chunk; });
       res.on("end", () => {
@@ -511,6 +527,18 @@ async function testServerApi() {
     assert.strictEqual(listed.total, 1);
     assert(!JSON.stringify(listed).includes("scrypt"));
 
+    // čas her proti AI: konec bez startu se nepočítá, jinak nejvýš skutečně uplynulá doba
+    const beacon = body => request("POST", "/api/beacon", body, as(eve.cookie));
+    const eveAi = async () => (await request("GET", "/api/admin/users?q=eve", undefined, admin)).json.users[0].aiSeconds;
+    assert.strictEqual((await beacon({ e: "end", result: "win", duration: 600 })).status, 200);
+    assert.strictEqual(await eveAi(), 0, "konec bez startu");
+    await beacon({ e: "start" });
+    await beacon({ e: "end", result: "win", duration: 99999 });
+    const ai = await eveAi();
+    assert(ai >= 5 && ai <= 7, `podvržená délka se ořízne na uplynulý čas (${ai})`);
+    assert.strictEqual((await request("GET", "/api/admin/users?sort=played", undefined, admin)).json.users[0].name, "Eve2");
+    assert.strictEqual((await request("GET", "/api/admin/overview", undefined, admin)).json.aiSeconds, ai);
+
     // zablokování odpojí hráče, zruší relace a zabrání přihlášení
     const eveSocket = open(eve.cookie);
     await until(() => eveSocket.hello, "hello");
@@ -592,10 +620,16 @@ async function testServerApi() {
     const saved = JSON.parse(fs.readFileSync(path.join(dataDir, "db.json"), "utf8"));
     assert(Object.values(saved.users).some(u => u.name === "Jurek" && u.role === "admin"));
     assert(Object.values(saved.users).some(u => u.name === "Eve2"));
+    assert(Object.values(saved.users).find(u => u.name === "Eve2").onlineSeconds > 0, "doba připojení se uloží po odpojení");
   } finally {
     for (const s of sockets) s.ws.terminate();
-    proc.kill();
-    fs.rmSync(dataDir, { recursive: true, force: true });
+    // počkat na skutečné ukončení serveru, jinak ještě zapisuje do mazané složky
+    if (proc.exitCode === null && proc.signalCode === null) {
+      const exited = new Promise(resolve => proc.once("exit", resolve));
+      proc.kill();
+      await exited;
+    }
+    fs.rmSync(dataDir, { recursive: true, force: true, maxRetries: 5 });
   }
 }
 

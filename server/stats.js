@@ -9,7 +9,7 @@ const MIN_DURATION = 15; // kratší zápasy (odchod v odpočtu) se nezapisují
 const TEAMS = require("../js/rules.js").TEAMS;
 
 const newStats = () => ({
-  games: 0, wins: 0, losses: 0, draws: 0, pvpGames: 0, pvpWins: 0, playSeconds: 0,
+  games: 0, wins: 0, losses: 0, draws: 0, pvpGames: 0, pvpWins: 0, playSeconds: 0, aiSeconds: 0,
   kills: 0, unitsLost: 0, buildingsDestroyed: 0, buildingsLost: 0, gold: 0, wood: 0, trained: 0, built: 0, heroLevel: 0,
   byMap: {}
 });

@@ -72,9 +72,7 @@ h2:first-child { margin-top: 0; }
 
 .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
 
-input[type="search"] {
-  width: 280px;
-  max-width: 100%;
+input[type="search"], .bar select {
   padding: 7px 9px;
   border: 0;
   background: var(--panel);
@@ -83,7 +81,10 @@ input[type="search"] {
   box-shadow: inset 0 0 0 1px var(--line);
 }
 
-input[type="search"]:focus { outline: 2px solid var(--amber); }
+input[type="search"] { width: 280px; max-width: 100%; }
+.bar select { cursor: pointer; }
+
+input[type="search"]:focus, .bar select:focus { outline: 2px solid var(--amber); }
 
 button {
   padding: 6px 11px;
