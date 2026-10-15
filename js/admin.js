@@ -48,6 +48,13 @@
     return [d ? `${d} d` : "", h || d ? `${h} h` : "", `${m} min`].filter(Boolean).join(" ");
   }
 
+  // Odehraný čas: pod hodinu v minutách, jinak hodiny a minuty („12 h 05 min“).
+  function playTime(sec) {
+    const total = Math.floor((sec || 0) / 60);
+    const h = Math.floor(total / 60);
+    return h ? `${h.toLocaleString("cs-CZ")} h ${String(total % 60).padStart(2, "0")} min` : `${total} min`;
+  }
+
   function table(headers, rows, empty = "Nic tu není.") {
     if (!rows.length) return el("p", "muted", empty);
 
@@ -103,7 +110,9 @@
     const cards = [
       ["Připojení", o.online], ["Přihlášení hráči online", o.authed], ["Místnosti", o.rooms], ["Běžící zápasy", o.matchesRunning],
       ["Hráči ve hře", o.playing], ["Registrovaní hráči", o.users], ["Zablokovaní", o.banned], ["Administrátoři", o.admins],
-      ["Zaznamenané zápasy", o.matches], ["Běží", duration(o.uptime), "small"], ["Paměť (RSS)", `${Math.round(o.rss / 1048576)} MB`, "small"], ["Node.js", o.node, "small"],
+      ["Zaznamenané zápasy", o.matches], ["Odehráno celkem (všichni hráči)", playTime(o.playSeconds + o.aiSeconds)],
+      ["Z toho multiplayer", playTime(o.playSeconds), "small"], ["Z toho proti AI", playTime(o.aiSeconds), "small"], ["Online celkem (připojení)", playTime(o.onlineSeconds), "small"],
+      ["Běží", duration(o.uptime), "small"], ["Paměť (RSS)", `${Math.round(o.rss / 1048576)} MB`, "small"], ["Node.js", o.node, "small"],
       ["Přihlášení přes Google", o.providers.google ? "zapnuto" : "vypnuto", o.providers.google ? "good small" : "bad small"],
       ["Přihlášení přes Facebook", o.providers.facebook ? "zapnuto" : "vypnuto", o.providers.facebook ? "good small" : "bad small"],
       ["Veřejná adresa (PUBLIC_URL)", o.publicUrl || "není nastavena", o.publicUrl ? "small" : "bad small"]
@@ -119,11 +128,12 @@
   /* ---------- hráči ---------- */
   async function loadUsers() {
     const q = $("user-q").value.trim();
-    const data = await api("GET", `/api/admin/users?limit=100&q=${encodeURIComponent(q)}`);
+    const sort = $("user-sort").value;
+    const data = await api("GET", `/api/admin/users?limit=100&sort=${sort}&q=${encodeURIComponent(q)}`);
     $("user-total").textContent = `Celkem: ${data.total}${data.total > data.users.length ? ` (zobrazeno ${data.users.length})` : ""}`;
 
     $("users").replaceChildren(table(
-      ["ID", "Přezdívka", "E-mail", "Přihlášení", "Výhry/zápasy", "Registrace", "Naposledy", "Akce"],
+      ["ID", "Přezdívka", "E-mail", "Přihlášení", "Výhry/zápasy", "Odehráno", "Online", "Registrace", "Naposledy", "Akce"],
       data.users.map((u, i) => {
         const name = el("span", "", u.name);
         if (u.role === "admin") name.append(el("span", "badge admin", "admin"));
@@ -161,7 +171,10 @@
           }, true)
         ];
 
-        return [u.id, name, u.email, via, `${u.wins}/${u.games}`, when(u.created), when(u.lastSeen || u.lastLogin), { actions }];
+        const played = el("span", "", playTime(u.playSeconds + u.aiSeconds));
+        played.title = `multiplayer ${playTime(u.playSeconds)}, proti AI ${playTime(u.aiSeconds)}`;
+
+        return [u.id, name, u.email, via, `${u.wins}/${u.games}`, played, playTime(u.onlineSeconds), when(u.created), when(u.lastSeen || u.lastLogin), { actions }];
       }),
       "Žádný hráč nenalezen."
     ));
@@ -171,6 +184,7 @@
     event.preventDefault();
     loadUsers().catch(fail);
   });
+  $("user-sort").addEventListener("change", () => loadUsers().catch(fail));
 
   /* ---------- online ---------- */
   async function loadLive() {

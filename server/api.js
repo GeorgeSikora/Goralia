@@ -14,6 +14,8 @@ const PLAYER_LIMIT = 1000;
 function createApi({ accounts, stats, store, live, traffic, adminMaps, isLocalRequest, publicUrl }) {
   const passwordFails = new Limiter(10, 10 * 60 * 1000);
   const beaconIp = new Limiter(120, 10 * 60 * 1000);
+  const aiStarts = new Map(); // id hráče -> čas začátku hry proti AI (pro odehraný čas)
+  const AI_MAX = 6 * 3600;
 
   const tokenOf = req => parseCookies(req.headers.cookie)[SID];
   const userOf = req => accounts.userFromToken(tokenOf(req));
@@ -36,6 +38,21 @@ function createApi({ accounts, stats, store, live, traffic, adminMaps, isLocalRe
   const fail = (ctx, status, error) => sendJson(ctx.res, status, { error });
 
   /* ---------- účet ---------- */
+  // Hra proti AI běží v prohlížeči, takže délku hlásí klient. Připíše se nejvýš skutečně uplynulý
+  // čas od nahlášeného startu; konec bez startu (restart serveru, podvržené hlášení) se nepočítá.
+  function aiTime(user, body) {
+    const now = Date.now();
+    if (body.e === "start") {
+      aiStarts.set(user.id, now);
+      if (aiStarts.size > 10000) aiStarts.delete(aiStarts.keys().next().value);
+    } else if (body.e === "end") {
+      const start = aiStarts.get(user.id);
+      aiStarts.delete(user.id);
+      const sec = Number(body.duration);
+      if (start && Number.isFinite(sec) && sec > 0) accounts.addAiTime(user, Math.min(sec, (now - start) / 1000 + 5, AI_MAX));
+    }
+  }
+
   const handlers = {
     me(ctx) {
       const canEditMaps = !!(ctx.user && ctx.user.role === "admin") || (!!isLocalRequest && isLocalRequest(ctx.req));
@@ -116,6 +133,7 @@ function createApi({ accounts, stats, store, live, traffic, adminMaps, isLocalRe
     beacon(ctx) {
       if (beaconIp.blocked(ctx.ip)) return sendJson(ctx.res, 202, { ok: false });
       beaconIp.add(ctx.ip);
+      if (ctx.user) aiTime(ctx.user, ctx.body);
       const ok = traffic ? traffic.aiEvent(ctx.body) : false;
       sendJson(ctx.res, ok ? 200 : 400, { ok });
     },
@@ -131,7 +149,7 @@ function createApi({ accounts, stats, store, live, traffic, adminMaps, isLocalRe
 
     users(ctx) {
       const q = ctx.query;
-      const result = accounts.listUsers({ q: q.get("q") || "", offset: clamp(q.get("offset"), 0, 1e6, 0), limit: clamp(q.get("limit"), 1, 200, 50) });
+      const result = accounts.listUsers({ q: q.get("q") || "", offset: clamp(q.get("offset"), 0, 1e6, 0), limit: clamp(q.get("limit"), 1, 200, 50), sort: q.get("sort") || "created" });
       sendJson(ctx.res, 200, { ...result, online: result.users.map(u => live.isOnline(u.id)) });
     },
 

@@ -47,6 +47,11 @@
     <form id="user-search" class="bar">
       <input id="user-q" type="search" placeholder="přezdívka, e-mail nebo ID" maxlength="60" autocomplete="off">
       <button type="submit">Hledat</button>
+      <select id="user-sort" aria-label="Řazení">
+        <option value="created">Nejnovější registrace</option>
+        <option value="played">Nejvíc odehráno</option>
+        <option value="online">Nejdéle online</option>
+      </select>
       <span id="user-total" class="muted"></span>
     </form>
     <div id="users" class="table-wrap"></div>
