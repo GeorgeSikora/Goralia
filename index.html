@@ -38,6 +38,7 @@
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/charts.css">
 <link rel="stylesheet" href="css/fame.css">
+<link rel="stylesheet" href="css/events.css">
 </head>
 <body>
 <div id="loading" class="loading" role="progressbar" aria-label="Načítání hry" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-busy="true">
@@ -81,6 +82,11 @@
 
       <section id="panel-main" class="page" data-page="main">
         <p id="menu-status" class="status"></p>
+        <button id="m-event" class="event-banner" type="button" hidden>
+          <span class="event-kicker">Turnaj</span>
+          <span id="m-event-name" class="event-name"></span>
+          <span id="m-event-time" class="event-time"></span>
+        </button>
         <button id="m-online" class="btn big" type="button">Multiplayer</button>
         <button id="m-play" class="btn big" type="button">Hra proti AI</button>
         <button id="m-restart" class="btn big" type="button" hidden>Nová hra</button>
@@ -180,6 +186,20 @@
         <p id="mt-status" class="status" aria-live="polite"></p>
         <div id="mt-body" class="match-detail"></div>
         <button id="mt-back" class="btn big" type="button">Zpět na profil</button>
+      </section>
+
+      <section id="panel-event" class="page" data-page="event" hidden>
+        <h2 id="te-name">Turnaj</h2>
+        <p id="te-when" class="status small"></p>
+        <div id="te-count" class="event-count" aria-live="off"></div>
+        <div id="te-info" class="stats"></div>
+        <p id="te-desc" class="event-desc" hidden></p>
+        <p id="te-status" class="status" aria-live="polite"></p>
+        <button id="te-join" class="btn big" type="button">Přihlásit se do turnaje</button>
+        <h3 class="touch-title">Přihlášení hráči</h3>
+        <div id="te-players" class="event-players"></div>
+        <div id="te-more" class="event-more" hidden></div>
+        <button class="btn big" type="button" data-back>Zpět</button>
       </section>
 
       <section id="panel-players" class="page" data-page="players" hidden>

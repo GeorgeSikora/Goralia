@@ -772,9 +772,125 @@
     }
   });
 
-  /* ---------- turnaje ---------- */
+  /* ---------- turnaje: plánování a výsledky ---------- */
+  let editing = null; // id upravovaného naplánovaného turnaje
+  let resultsFor = null; // id naplánovaného turnaje, ke kterému se zapisují výsledky
+
+  // datetime-local pracuje v místním čase prohlížeče
+  const localInput = ms => {
+    const d = new Date(ms - new Date(ms).getTimezoneOffset() * 60000);
+    return d.toISOString().slice(0, 16);
+  };
+
+  function untilText(ms) {
+    const sec = Math.round((ms - Date.now()) / 1000);
+    if (sec <= 0) return "probíhá";
+    const d = Math.floor(sec / 86400);
+    const h = Math.floor((sec % 86400) / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    return `za ${d ? `${d} d ` : ""}${h} h ${String(m).padStart(2, "0")} min`;
+  }
+
+  function resetEventForm() {
+    editing = null;
+    $("ev-form").reset();
+    $("ev-max").value = "8";
+    $("ev-start").value = localInput(Date.now() + 7 * 86400000 - (Date.now() % 3600000));
+    $("ev-title").textContent = "Naplánovat turnaj";
+    $("ev-submit").textContent = "Naplánovat turnaj";
+    $("ev-cancel-edit").hidden = true;
+  }
+
+  function editEvent(e) {
+    editing = e.id;
+    $("ev-name").value = e.name;
+    $("ev-start").value = localInput(e.start);
+    $("ev-map").value = e.map;
+    $("ev-format").value = e.format;
+    $("ev-max").value = String(e.maxPlayers);
+    $("ev-prize").value = e.prize;
+    $("ev-desc").value = e.description;
+    $("ev-title").textContent = `Upravit turnaj „${e.name}“`;
+    $("ev-submit").textContent = "Uložit změny";
+    $("ev-cancel-edit").hidden = false;
+    $("ev-title").scrollIntoView({ behavior: "smooth" });
+  }
+
+  // Formulář výsledků předvyplní název, datum a přihlášené hráče.
+  function fillResults(e) {
+    resultsFor = e.id;
+    $("tour-name").value = e.name;
+    $("tour-date").value = localInput(e.start).slice(0, 10);
+    for (const id of ["tour-1", "tour-2", "tour-3"]) $(id).value = "";
+    $("tour-others").value = e.players.map(p => p.name).join(", ");
+    $("tour-title").textContent = `Zapsat výsledky: ${e.name}`;
+    $("tour-title").scrollIntoView({ behavior: "smooth" });
+    $("tour-1").focus({ preventScroll: true });
+  }
+
+  let mapsLoaded = false;
+
+  async function loadEvents() {
+    const [data, maps] = await Promise.all([api("GET", "/api/admin/events"), mapsLoaded ? null : api("GET", "/api/admin/maps")]);
+
+    if (maps) {
+      mapsLoaded = true;
+      $("ev-map").append(...maps.maps.map(m => Object.assign(el("option", "", `${m.name} (${m.players} hráči)`), { value: m.id })));
+      $("ev-format").replaceChildren(...Object.entries(data.formats).map(([id, name]) => Object.assign(el("option", "", name), { value: id })));
+      resetEventForm();
+    }
+
+    $("events").replaceChildren(table(
+      ["Začátek", "Turnaj", "Stav", "Mapa", "Formát", "Přihlášení", "Odměna", "Akce"],
+      data.events.map(e => {
+        const state = el("span", `badge ${e.state}`, e.state === "planned" ? "naplánován" : "odehrán");
+        const when = el("span", "", new Date(e.start).toLocaleString("cs-CZ", { dateStyle: "medium", timeStyle: "short" }));
+        if (e.state === "planned") when.append(el("span", "sub countdown", untilText(e.start)));
+
+        const who = el("span", "", `${e.players.length}/${e.maxPlayers}`);
+        if (e.players.length) who.append(el("span", "sub", e.players.map(p => p.name).join(", ")));
+
+        const actions = e.state !== "planned" ? [] : [
+          button("Upravit", async () => editEvent(e)),
+          button("Zapsat výsledky", async () => fillResults(e)),
+          button("Zrušit", async () => {
+            if (!window.confirm(`Zrušit turnaj „${e.name}“? Zmizí z menu hry i s přihláškami.`)) return;
+            await api("DELETE", `/api/admin/events/${e.id}`);
+            if (editing === e.id) resetEventForm();
+            await loadEvents();
+          }, true)
+        ];
+
+        return [when, e.name, state, e.map ? mapName(e.map) : "libovolná", e.formatName, who, e.prize, { actions }];
+      }),
+      "Žádný naplánovaný turnaj."
+    ));
+  }
+
+  $("ev-form").addEventListener("submit", async event => {
+    event.preventDefault();
+    $("ev-submit").disabled = true;
+
+    try {
+      const body = {
+        name: $("ev-name").value, start: new Date($("ev-start").value).getTime(), map: $("ev-map").value, format: $("ev-format").value,
+        maxPlayers: Number($("ev-max").value), prize: $("ev-prize").value, description: $("ev-desc").value
+      };
+      const result = await api("POST", editing ? `/api/admin/events/${editing}` : "/api/admin/events", body);
+      notice(editing ? `Turnaj „${result.event.name}“ je upravený.` : `Turnaj „${result.event.name}“ je naplánovaný a hráči ho uvidí v menu hry.`);
+      resetEventForm();
+      await loadEvents();
+    } catch (e) {
+      fail(e);
+    } finally {
+      $("ev-submit").disabled = false;
+    }
+  });
+
+  $("ev-cancel-edit").addEventListener("click", resetEventForm);
+
   async function loadTournaments() {
-    const data = await api("GET", "/api/admin/tournaments");
+    const [data] = await Promise.all([api("GET", "/api/admin/tournaments"), loadEvents()]);
 
     $("tournaments").replaceChildren(table(
       ["Datum", "Turnaj", "1. místo", "2. místo", "3. místo", "Účastníků", "Zapsal", "Akce"],
@@ -796,16 +912,19 @@
 
   $("tour-form").addEventListener("submit", async event => {
     event.preventDefault();
-    const submit = $("tour-form").querySelector("button");
+    const submit = $("tour-form").querySelector("button[type=submit]");
     submit.disabled = true;
 
     try {
       const result = await api("POST", "/api/admin/tournaments", {
         name: $("tour-name").value, date: $("tour-date").value,
         places: [$("tour-1").value, $("tour-2").value, $("tour-3").value],
-        others: $("tour-others").value.split(",").map(s => s.trim()).filter(Boolean)
+        others: $("tour-others").value.split(",").map(s => s.trim()).filter(Boolean),
+        eventId: resultsFor == null ? undefined : resultsFor
       });
       for (const id of ["tour-name", "tour-1", "tour-2", "tour-3", "tour-others"]) $(id).value = "";
+      resultsFor = null;
+      $("tour-title").textContent = "Zapsat výsledky turnaje";
       await loadTournaments();
       notice(`Turnaj „${result.tournament.name}“ je zapsaný.`);
     } catch (e) {

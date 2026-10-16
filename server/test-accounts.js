@@ -17,6 +17,7 @@ const { createAccounts } = require("./accounts.js");
 const { createStats, MIN_DURATION } = require("./stats.js");
 const { createOAuth } = require("./oauth.js");
 const { createHallOfFame, POINTS } = require("./halloffame.js");
+const { createEvents } = require("./events.js");
 
 const ADMIN_EMAIL = "info@jirisikora.cz";
 const ADMIN_PASSWORD = "test-admin-heslo";
@@ -240,6 +241,47 @@ async function testAccounts() {
   assert(hall.deleteTournament(admin, cup.id).tournament);
   assert(hall.deleteTournament(admin, cup.id).error);
   assert.deepStrictEqual(hall.ranking().map(p => p.name), ["Pat", "Mat"]);
+
+  // pořádání turnajů: plán, přihlášky, odpočet a uzavření výsledky
+  const karel2 = Object.values(store.data.users).find(u => u.name === "Karel");
+  const events = createEvents(store, accounts, { mapExists: id => id === "valley" });
+  const T = Date.parse("2026-11-01T18:00:00Z");
+  const before = T - 86400000;
+  const plan = (body, at = before) => events.create(admin, { name: "Zimní pohár", start: T, map: "valley", format: "ko", maxPlayers: 2, ...body }, at);
+  assert(/název/.test(plan({ name: "" }).error));
+  assert(/minulosti/.test(plan({}, T + 3600000).error));
+  assert(/mapa/i.test(plan({ map: "neni" }).error));
+  assert(/Počet hráčů/.test(plan({ maxPlayers: 1 }).error));
+  const cupEvent = plan({ format: "bogus", prize: "titul", description: "1 na 1", maxPlayers: 3 }).event;
+  assert.strictEqual(cupEvent.format, "ko", "neznámý formát = vyřazovací");
+  assert(store.data.audit.some(a => a.action === "event-create"));
+
+  assert(events.join(pat, cupEvent.id, before).event);
+  assert(events.join(pat, cupEvent.id, before).event, "druhé přihlášení nic nezmění");
+  assert(events.join(mat, cupEvent.id, before).event);
+  assert(events.join(karel2, cupEvent.id, before).event);
+  assert(/plně obsazený/.test(events.join(admin, cupEvent.id, before).error));
+  assert(/už začal/.test(events.leave(karel2, cupEvent.id, T + 1).error));
+  assert(/Přihlášeno je už 3/.test(events.update(admin, cupEvent.id, { name: "Zimní pohár", start: T, maxPlayers: 2 }, before).error));
+  assert(events.leave(mat, cupEvent.id, before).event);
+  assert(/už začal/.test(events.join(mat, cupEvent.id, T + 1).error));
+
+  const seen = events.upcoming(pat.id, before);
+  assert.strictEqual(seen.length, 1);
+  assert.deepStrictEqual(seen[0].players.map(p => p.name), ["Pat", "Karel"]);
+  assert.strictEqual(seen[0].joined, true);
+  assert.strictEqual(events.upcoming(mat.id, before)[0].joined, false);
+  assert(!("by" in seen[0]), "veřejně se neukazuje, kdo turnaj založil");
+  assert.strictEqual(events.upcoming(null, T + 3600000).length, 1, "probíhající turnaj se ukazuje dál");
+  assert.strictEqual(events.upcoming(null, T + 4 * 3600000).length, 0, "po pár hodinách zmizí");
+
+  assert(events.finish(cupEvent.id, 99));
+  assert.strictEqual(events.upcoming(null, before).length, 0, "odehraný turnaj z menu zmizí");
+  assert.strictEqual(events.listAdmin()[0].state, "done");
+  const later = plan({ name: "Jarní pohár", start: T + 86400000 }).event;
+  assert.strictEqual(events.listAdmin()[0].id, later.id, "naplánované jsou v adminu první");
+  assert(events.cancel(admin, later.id).event);
+  assert(events.cancel(admin, later.id).error);
 
   // trvalé uložení
   store.flush();
@@ -649,9 +691,34 @@ async function testServerApi() {
     assert.strictEqual((await request("DELETE", `/api/admin/tournaments/${cup.json.tournament.id}`, {}, admin)).status, 200);
     assert.strictEqual((await request("DELETE", `/api/admin/tournaments/${cup.json.tournament.id}`, {}, admin)).status, 404);
 
+    // pořádání turnajů přes API
+    const start = Date.now() + 86400000;
+    assert.strictEqual((await request("POST", "/api/admin/events", { name: "Pohár", start, maxPlayers: 8 }, as(eveBack))).status, 403);
+    assert.strictEqual((await request("POST", "/api/admin/events", { name: "Pohár", start, maxPlayers: 8, map: "neexistuje" }, admin)).status, 400);
+    const planned = await request("POST", "/api/admin/events", { name: "Pohár", start, maxPlayers: 8, prize: "titul" }, admin);
+    assert.strictEqual(planned.status, 200);
+    const evId = planned.json.event.id;
+    assert.strictEqual((await request("POST", `/api/events/${evId}/join`, {})).status, 401, "přihlásit se do turnaje jde jen s účtem");
+    const joined = await request("POST", `/api/events/${evId}/join`, {}, as(eveBack));
+    assert.strictEqual(joined.status, 200);
+    assert.strictEqual(joined.json.events[0].joined, true);
+    const pub = await request("GET", "/api/events");
+    assert.strictEqual(pub.json.events[0].name, "Pohár");
+    assert.deepStrictEqual(pub.json.events[0].players.map(p => p.name), ["Eve2"]);
+    assert(typeof pub.json.now === "number", "serverový čas pro přesný odpočet");
+    assert(!pub.text.includes("Jurek"), "veřejně bez autora");
+    assert.strictEqual((await request("POST", `/api/admin/events/${evId}`, { name: "Velký pohár", start, maxPlayers: 4 }, admin)).json.event.name, "Velký pohár");
+    const closed = await request("POST", "/api/admin/tournaments", { name: "Velký pohár", date: start, places: ["Eve2"], eventId: evId }, admin);
+    assert.strictEqual(closed.status, 200);
+    assert.strictEqual((await request("GET", "/api/events")).json.events.length, 0, "po zápisu výsledků turnaj z menu zmizí");
+    assert.strictEqual((await request("GET", "/api/admin/events", undefined, admin)).json.events[0].tournamentId, closed.json.tournament.id);
+    assert.strictEqual((await request("POST", "/api/admin/tournaments", { name: "Znovu", date: start, places: ["Eve2"], eventId: evId }, admin)).status, 400, "výsledky jen jednou");
+    assert.strictEqual((await request("DELETE", `/api/admin/events/${evId}`, {}, admin)).status, 200);
+    await request("DELETE", `/api/admin/tournaments/${closed.json.tournament.id}`, {}, admin);
+
     // záznam akcí
     const audit = (await request("GET", "/api/admin/audit", undefined, admin)).json.audit.map(a => a.action);
-    for (const action of ["ban", "unban", "role", "password-reset", "delete", "kick", "close-room", "tournament-add", "tournament-delete"]) assert(audit.includes(action), `v záznamu chybí ${action}`);
+    for (const action of ["ban", "unban", "role", "password-reset", "delete", "kick", "close-room", "tournament-add", "tournament-delete", "event-create", "event-update", "event-cancel"]) assert(audit.includes(action), `v záznamu chybí ${action}`);
     assert.strictEqual((await request("GET", "/api/admin/matches", undefined, admin)).status, 200);
 
     // odhlášení

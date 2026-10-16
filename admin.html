@@ -76,6 +76,24 @@
   </section>
 
   <section id="tab-tournaments" class="tab" hidden>
+    <h2 id="ev-title">Naplánovat turnaj</h2>
+    <p class="muted">Naplánovaný turnaj se ukáže v hlavním menu hry s odpočtem do začátku a hráči se do něj můžou přihlásit (do začátku turnaje).</p>
+    <form id="ev-form" class="tour-form">
+      <label>Název <input id="ev-name" type="text" maxlength="60" required placeholder="Zimní pohár Goralie"></label>
+      <label>Začátek <input id="ev-start" type="datetime-local" required></label>
+      <label>Mapa <select id="ev-map"><option value="">libovolná</option></select></label>
+      <label>Formát <select id="ev-format"></select></label>
+      <label>Max. hráčů <input id="ev-max" type="number" min="2" max="64" value="8" required></label>
+      <label>Odměna <input id="ev-prize" type="text" maxlength="80" placeholder="např. titul Král Goralie"></label>
+      <label class="wide">Popis a pravidla <textarea id="ev-desc" maxlength="400" rows="2" placeholder="zápasy 1 na 1, kdo nepřijde do 10 minut, prohrává"></textarea></label>
+      <div class="actions">
+        <button id="ev-submit" type="submit">Naplánovat turnaj</button>
+        <button id="ev-cancel-edit" type="button" hidden>Zrušit úpravy</button>
+      </div>
+    </form>
+    <div id="events" class="table-wrap"></div>
+
+    <h2 id="tour-title">Zapsat výsledky turnaje</h2>
     <p class="muted">Výsledky turnajů se počítají do síně slávy v menu hry (Hráči): 1. místo 100 b., 2. místo 60 b., 3. místo 40 b., účast 15 b.</p>
     <form id="tour-form" class="tour-form">
       <label>Název <input id="tour-name" type="text" maxlength="60" required placeholder="Podzimní pohár"></label>
