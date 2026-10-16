@@ -200,8 +200,6 @@ const ownHosts = req => {
   return hosts;
 };
 
-const api = createApi({ accounts, stats, hall, store, live, traffic, adminMaps, isLocalRequest, publicUrl: PUBLIC_URL });
-
 const server = http.createServer((req, res) => {
   let pathname;
   let query;
