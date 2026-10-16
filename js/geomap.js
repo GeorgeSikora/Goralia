@@ -20,6 +20,11 @@
     return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2;
   };
 
+  // Kam až jde mapu posunout [západ, jih, východ, sever]: Antarktida se nekreslí, v Mercatorově
+  // projekci by k pólu nafoukla do obřího pruhu s rovnou spodní hranou na MAX_LAT.
+  const BOUNDS = [-180, -58, 190, 84];
+  const SOUTH_CUT = -58;
+
   // Výřezy [západ, jih, východ, sever]
   const VIEWS = {
     world: [-170, -56, 190, 75],
@@ -39,14 +44,17 @@
           for (const ring of list) {
             let x = 0;
             let y = 0;
+            let north = -90;
+            const points = [];
             for (let i = 0; i < ring.length; i += 2) {
               x += ring[i];
               y += ring[i + 1];
-              const X = px(x / data.q);
-              const Y = py(y / data.q);
-              if (i === 0) path.moveTo(X, Y);
-              else path.lineTo(X, Y);
+              north = Math.max(north, y / data.q);
+              points.push(px(x / data.q), py(y / data.q));
             }
+            if (north < SOUTH_CUT) continue;
+            path.moveTo(points[0], points[1]);
+            for (let i = 2; i < points.length; i += 2) path.lineTo(points[i], points[i + 1]);
           }
           return path;
         };
@@ -111,12 +119,15 @@
       fitBox([w - padLon, s - padLat, e + padLon, n + padLat]);
     }
 
+    // Nejvíc oddálit jde tak, aby byl vidět celý svět; dál od pevnin posunout nejde.
     function clamp() {
-      view.s = Math.max(width * 0.9, Math.min(width * 400, view.s));
+      const x1 = px(BOUNDS[0]), x2 = px(BOUNDS[2]), y1 = py(BOUNDS[3]), y2 = py(BOUNDS[1]);
+      const fit = Math.min(width / (x2 - x1), height / (y2 - y1));
+      view.s = Math.max(fit * 0.9, Math.min(width * 400, view.s));
       const halfW = width / 2 / view.s;
       const halfH = height / 2 / view.s;
-      view.cx = halfW >= 0.5 ? 0.5 : Math.max(halfW, Math.min(1 - halfW, view.cx));
-      view.cy = halfH >= 0.5 ? 0.5 : Math.max(halfH, Math.min(1 - halfH, view.cy));
+      view.cx = halfW * 2 >= x2 - x1 ? (x1 + x2) / 2 : Math.max(x1 + halfW, Math.min(x2 - halfW, view.cx));
+      view.cy = halfH * 2 >= y2 - y1 ? (y1 + y2) / 2 : Math.max(y1 + halfH, Math.min(y2 - halfH, view.cy));
     }
 
     const toScreen = (x, y) => [(x - view.cx) * view.s + width / 2, (y - view.cy) * view.s + height / 2];

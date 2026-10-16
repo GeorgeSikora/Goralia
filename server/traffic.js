@@ -229,7 +229,9 @@ function createTraffic(store, geo = null) {
   // Součty za období po místech: [{ cc, country, region, city, lat, lon, visitors, players }]; cc "" = neznámo.
   function geoReport(dates) {
     const sums = new Map();
+    let from = null; // první den období, ze kterého jsou místa (geolokace mohla začít později)
     for (const date of dates) {
+      if (!from && t.geo[date] && Object.keys(t.geo[date]).length) from = date;
       for (const [key, [visitors, players]] of Object.entries(t.geo[date] || {})) {
         const row = sums.get(key) || sums.set(key, [0, 0]).get(key);
         row[0] += visitors;
@@ -243,7 +245,7 @@ function createTraffic(store, geo = null) {
       return { cc, country, region, city, lat, lon, visitors, players };
     });
     places.sort((a, b) => b.players + b.visitors - (a.players + a.visitors));
-    return { enabled: !!(geo && geo.info && geo.info()), source: geo && geo.info ? geo.info() : null, places };
+    return { enabled: !!(geo && geo.info && geo.info()), source: geo && geo.info ? geo.info() : null, from, places };
   }
 
   // Součty za období: sources [{ kind, name, visits }], campaigns [{ name, visits }], od nejčastějšího.
