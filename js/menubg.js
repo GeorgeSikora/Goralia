@@ -12,7 +12,8 @@
   if (!canvas || !menu) return;
 
   const ctx = canvas.getContext("2d");
-  const H = 216;
+  const H0 = 216; // výška scény na šířku; na výšku (mobil) scéna roste do výšky
+  let H = H0;
   const P = 512; // perioda opakujících se vrstev
   const CHUNK = 260; // rozestup kulis
   let W = 384;
@@ -251,10 +252,17 @@
   function resize() {
     const cw = Math.max(1, canvas.clientWidth);
     const ch = Math.max(1, canvas.clientHeight);
-    W = Math.max(320, Math.ceil(H * cw / ch));
+    // Plátno musí mít poměr stran jako obrazovka, jinak ho CSS zdeformuje (na mobilu na výšku
+    // se scéna 320 px široká mačkala do úzkého displeje). Na úzkých displejích se proto
+    // prodlužuje výška a velikost art px zůstává jako na šířku.
+    const nw = Math.max(H0, Math.ceil(H0 * cw / ch));
+    const nh = Math.max(H0, Math.round(nw * ch / cw));
+    if (nw === W && nh === H && canvas.width === W * K) return;
+    W = nw;
+    H = nh;
     canvas.width = W * K;
     canvas.height = H * K;
-    GY = Math.round(H * 0.56);
+    GY = Math.round(H0 * 0.56 + (H - H0) * 0.5);
     // kreslí se v art px, plátno má jemnou hustotu (sprity se vykreslí přes svá jemná dvojčata)
     ctx.setTransform(K, 0, 0, K, 0, 0);
     ctx.imageSmoothingEnabled = false;
