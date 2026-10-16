@@ -183,5 +183,13 @@ tr.clickable:focus-visible { outline: 2px solid var(--amber); outline-offset: -2
 .tour-form label.silver { color: #c6c7d3; }
 .tour-form label.bronze { color: #f0b47a; }
 .tour-form label.wide { grid-column: 1 / -1; }
-.tour-form input { padding: 7px 9px; border: 0; background: var(--ink); color: var(--text); font: inherit; box-shadow: inset 0 0 0 1px var(--line); color-scheme: dark; }
-.tour-form input:focus { outline: 2px solid var(--amber); }
+.tour-form input, .tour-form select, .tour-form textarea { padding: 7px 9px; border: 0; background: var(--ink); color: var(--text); font: inherit; box-shadow: inset 0 0 0 1px var(--line); color-scheme: dark; }
+.tour-form input:focus, .tour-form select:focus, .tour-form textarea:focus { outline: 2px solid var(--amber); }
+.tour-form textarea { resize: vertical; }
+.tour-form .actions { align-self: end; }
+#events { margin: 10px 0 8px; }
+.badge.planned { color: var(--good); }
+.badge.done { color: var(--muted); }
+.countdown { color: var(--amber); }
+#events td .sub { max-width: 280px; white-space: normal; }
+#events .actions { flex-wrap: nowrap; }

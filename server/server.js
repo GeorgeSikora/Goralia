@@ -17,6 +17,7 @@ const { createStore } = require("./store.js");
 const { createAccounts } = require("./accounts.js");
 const { createStats } = require("./stats.js");
 const { createHallOfFame } = require("./halloffame.js");
+const { createEvents } = require("./events.js");
 const { createTraffic } = require("./traffic.js");
 const { createGeo } = require("./geoip.js");
 const { createMapConfig } = require("./mapconfig.js");
@@ -189,7 +190,9 @@ const adminMaps = {
   }
 };
 
-const api = createApi({ accounts, stats, hall, store, live, traffic, adminMaps, isLocalRequest, publicUrl: PUBLIC_URL });
+const events = createEvents(store, accounts, { mapExists: id => MAPS.list.some(m => m.id === id) });
+
+const api = createApi({ accounts, stats, hall, events, store, live, traffic, adminMaps, isLocalRequest, publicUrl: PUBLIC_URL });
 
 const server = http.createServer((req, res) => {
   let pathname;

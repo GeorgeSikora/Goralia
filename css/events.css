@@ -1,0 +1,55 @@
+/* Naplánované turnaje: proužek s odpočtem v hlavním menu a stránka turnaje (js/events.js). */
+.event-banner {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: "kicker name" "kicker time";
+  align-items: center;
+  gap: 0 12px;
+  margin: 0 6px;
+  padding: 9px 12px;
+  border: 0;
+  background:
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.12) 0 2px, transparent 2px 18px),
+    #4a3d2a;
+  color: #ffe9a8;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: inset 3px 3px 0 #a8823a, inset -3px -3px 0 #2e2416, 0 0 0 2px var(--ink), 0 0 0 4px #ffc83a;
+  animation: event-glow 2.4s steps(6) infinite;
+}
+.event-banner[hidden] { display: none; }
+.event-banner:hover { filter: brightness(1.12); }
+.event-banner:focus-visible { outline: 2px solid var(--amber); outline-offset: 6px; }
+.event-kicker {
+  grid-area: kicker;
+  padding: 4px 7px;
+  background: #ffc83a;
+  color: #2e2416;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  box-shadow: 0 0 0 2px #2e2416;
+}
+.event-name { grid-area: name; overflow: hidden; color: #fff6cc; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.event-time { grid-area: time; color: #ffbf45; font-size: 12px; font-variant-numeric: tabular-nums; }
+.event-banner.live { box-shadow: inset 3px 3px 0 #a8823a, inset -3px -3px 0 #2e2416, 0 0 0 2px var(--ink), 0 0 0 4px #5ff0c0; }
+.event-banner.live .event-kicker { background: #5ff0c0; }
+.event-banner.live .event-time { color: #5ff0c0; }
+@keyframes event-glow {
+  0%, 100% { box-shadow: inset 3px 3px 0 #a8823a, inset -3px -3px 0 #2e2416, 0 0 0 2px var(--ink), 0 0 0 4px #ffc83a; }
+  50% { box-shadow: inset 3px 3px 0 #a8823a, inset -3px -3px 0 #2e2416, 0 0 0 2px var(--ink), 0 0 0 4px #ffc83a, 0 0 14px 4px rgba(255, 191, 69, 0.35); }
+}
+@media (prefers-reduced-motion: reduce) { .event-banner { animation: none; } }
+
+.event-count { display: flex; flex-direction: column; align-items: center; gap: 4px; min-height: 76px; padding: 10px 6px 8px; background: #15121f; box-shadow: inset 0 0 0 2px #2f2a50; }
+.event-count-label { color: var(--muted); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
+.event-desc { margin: 0; color: var(--text); font-weight: 400; white-space: pre-line; }
+.event-players { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.event-player { padding: 3px 8px; background: #2f2a50; color: #ffe9a8; box-shadow: 0 0 0 2px var(--ink); }
+.event-player.me { background: #4a3d2a; box-shadow: 0 0 0 2px var(--ink), 0 0 0 3px #ffc83a; }
+#te-join.joined { color: #ffb0a2; }
+.event-more { display: grid; gap: 6px; }
+.event-other { display: flex; justify-content: space-between; gap: 10px; padding: 7px 10px; border: 0; background: #2f2a50; color: inherit; font: inherit; cursor: pointer; box-shadow: 0 0 0 2px var(--ink); }
+.event-other:hover { background: #3d3768; }
+.event-other-when { color: var(--muted); font-weight: 400; }

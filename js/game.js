@@ -1564,7 +1564,7 @@
   function showPage(name) {
     if (name !== "online" && name !== "lobby") leaveLobby();
     menuEl.querySelector(".panel").classList.toggle("wide", name === "lobby" || name === "match" || name === "players");
-    menuEl.querySelector(".panel").classList.toggle("solid", name === "match" || name === "players");
+    menuEl.querySelector(".panel").classList.toggle("solid", name === "match" || name === "players" || name === "event");
     menuEl.querySelector(".panel").classList.toggle("compact", name === "lobby");
     for (const page of pages) page.hidden = page.dataset.page !== name;
     const first = menuEl.querySelector(`.page[data-page="${name}"] button:not([hidden]):not(:disabled)`);
@@ -2989,6 +2989,7 @@
     onLogin: () => enterOnline()
   });
   account.start();
+  PK.events.init({ show: showPage });
 
   // Odkaz z editoru (?map=id) otevře výběr hry proti AI s danou vlastní mapou.
   const mapsReady = refreshCustomMaps();

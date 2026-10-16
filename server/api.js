@@ -11,7 +11,7 @@ const { cookie, parseCookies, clientIp, sameOrigin, sendJson, readJson } = requi
 const SID = "goralia_sid";
 const PLAYER_LIMIT = 1000;
 
-function createApi({ accounts, stats, hall, store, live, traffic, adminMaps, isLocalRequest, publicUrl }) {
+function createApi({ accounts, stats, hall, events, store, live, traffic, adminMaps, isLocalRequest, publicUrl }) {
   const passwordFails = new Limiter(10, 10 * 60 * 1000);
   const beaconIp = new Limiter(120, 10 * 60 * 1000);
   const aiStarts = new Map(); // id hráče -> čas začátku hry proti AI (pro odehraný čas)
@@ -253,9 +253,52 @@ function createApi({ accounts, stats, hall, store, live, traffic, adminMaps, isL
     },
 
     addTournament(ctx) {
+      const eventId = ctx.body.eventId;
+      if (eventId != null && (!events.get(eventId) || events.get(eventId).state !== "planned")) return fail(ctx, 400, "Naplánovaný turnaj neexistuje.");
+
       const result = hall.addTournament(ctx.user, ctx.body);
       if (result.error) return fail(ctx, 400, result.error);
+      if (eventId != null) events.finish(eventId, result.tournament.id);
       sendJson(ctx.res, 200, result);
+    },
+
+    /* ---------- pořádání turnajů ---------- */
+    events(ctx) {
+      sendJson(ctx.res, 200, { now: Date.now(), events: events.upcoming(ctx.user && ctx.user.id) });
+    },
+
+    joinEvent(ctx) {
+      const result = events.join(ctx.user, ctx.params[0]);
+      if (result.error) return fail(ctx, 400, result.error);
+      sendJson(ctx.res, 200, { now: Date.now(), events: events.upcoming(ctx.user.id) });
+    },
+
+    leaveEvent(ctx) {
+      const result = events.leave(ctx.user, ctx.params[0]);
+      if (result.error) return fail(ctx, 400, result.error);
+      sendJson(ctx.res, 200, { now: Date.now(), events: events.upcoming(ctx.user.id) });
+    },
+
+    adminEvents(ctx) {
+      sendJson(ctx.res, 200, { formats: events.FORMATS, events: events.listAdmin() });
+    },
+
+    createEvent(ctx) {
+      const result = events.create(ctx.user, ctx.body);
+      if (result.error) return fail(ctx, 400, result.error);
+      sendJson(ctx.res, 200, result);
+    },
+
+    updateEvent(ctx) {
+      const result = events.update(ctx.user, ctx.params[0], ctx.body);
+      if (result.error) return fail(ctx, 400, result.error);
+      sendJson(ctx.res, 200, result);
+    },
+
+    cancelEvent(ctx) {
+      const result = events.cancel(ctx.user, ctx.params[0]);
+      if (result.error) return fail(ctx, 404, result.error);
+      sendJson(ctx.res, 200, { ok: true });
     },
 
     deleteTournament(ctx) {
@@ -273,6 +316,9 @@ function createApi({ accounts, stats, hall, store, live, traffic, adminMaps, isL
     ["POST", /^\/api\/me\/name$/, "user", handlers.rename],
     ["POST", /^\/api\/me\/password$/, "user", handlers.password],
     ["GET", /^\/api\/halloffame$/, "none", handlers.hallOfFame],
+    ["GET", /^\/api\/events$/, "none", handlers.events],
+    ["POST", /^\/api\/events\/(\d{1,9})\/join$/, "user", handlers.joinEvent],
+    ["POST", /^\/api\/events\/(\d{1,9})\/leave$/, "user", handlers.leaveEvent],
     ["GET", /^\/api\/players$/, "none", handlers.players],
     ["GET", /^\/api\/players\/(\d{1,9})$/, "none", handlers.player],
     ["GET", /^\/api\/matches\/(\d{1,9})$/, "none", handlers.match],
@@ -295,7 +341,11 @@ function createApi({ accounts, stats, hall, store, live, traffic, adminMaps, isL
     ["GET", /^\/api\/admin\/audit$/, "admin", handlers.audit],
     ["GET", /^\/api\/admin\/tournaments$/, "admin", handlers.tournaments],
     ["POST", /^\/api\/admin\/tournaments$/, "admin", handlers.addTournament],
-    ["DELETE", /^\/api\/admin\/tournaments\/(\d{1,9})$/, "admin", handlers.deleteTournament]
+    ["DELETE", /^\/api\/admin\/tournaments\/(\d{1,9})$/, "admin", handlers.deleteTournament],
+    ["GET", /^\/api\/admin\/events$/, "admin", handlers.adminEvents],
+    ["POST", /^\/api\/admin\/events$/, "admin", handlers.createEvent],
+    ["POST", /^\/api\/admin\/events\/(\d{1,9})$/, "admin", handlers.updateEvent],
+    ["DELETE", /^\/api\/admin\/events\/(\d{1,9})$/, "admin", handlers.cancelEvent]
   ];
 
   // Vrací true, pokud požadavek patří API nebo přihlášení přes poskytovatele.
