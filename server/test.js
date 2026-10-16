@@ -1654,6 +1654,56 @@ function testGeo() {
   }
 }
 
+/* ---------- odkud návštěvníci přišli (Referer, utm) ---------- */
+function testSources() {
+  const { classify, campaign } = require("./referrer.js");
+  const { createTraffic } = require("./traffic.js");
+  const q = s => new URLSearchParams(s);
+  const own = ["goralia.cz"];
+
+  assert.deepStrictEqual(classify("https://www.google.com/", q(""), own), { kind: "search", name: "Google" });
+  assert.deepStrictEqual(classify("https://www.google.cz/", q(""), own), { kind: "search", name: "Google" });
+  assert.deepStrictEqual(classify("https://search.seznam.cz/?q=hra", q(""), own), { kind: "search", name: "Seznam" });
+  assert.deepStrictEqual(classify("https://l.instagram.com/", q(""), own), { kind: "social", name: "Instagram" });
+  assert.deepStrictEqual(classify("https://m.facebook.com/", q(""), own), { kind: "social", name: "Facebook" });
+  assert.deepStrictEqual(classify("https://www.tiktok.com/", q(""), own), { kind: "social", name: "TikTok" });
+  assert.deepStrictEqual(classify("https://youtu.be/x", q(""), own), { kind: "social", name: "YouTube" });
+  assert.deepStrictEqual(classify("https://discord.com/channels/1/2", q(""), own), { kind: "social", name: "Discord" });
+  assert.deepStrictEqual(classify("https://www.zive.cz/clanek/123?x=1", q(""), own), { kind: "web", name: "zive.cz" }, "jen doména, ne celá adresa");
+  assert.deepStrictEqual(classify("https://www.goralia.cz/privacy", q(""), own), { kind: "internal", name: "" });
+  assert.deepStrictEqual(classify("http://localhost:3000/", q(""), ["localhost:3000"]), { kind: "internal", name: "" });
+  assert.deepStrictEqual(classify(undefined, q(""), own), { kind: "direct", name: "" });
+  assert.deepStrictEqual(classify("nesmysl", q(""), own), { kind: "direct", name: "" });
+  assert.deepStrictEqual(classify(undefined, q("fbclid=abc"), own), { kind: "social", name: "Facebook" });
+  assert.deepStrictEqual(classify("https://www.google.com/", q("utm_source=ig&utm_medium=bio"), own), { kind: "social", name: "Instagram" }, "utm má přednost");
+  assert.deepStrictEqual(classify(undefined, q("utm_source=Newsletter"), own), { kind: "campaign", name: "newsletter" });
+  assert.strictEqual(campaign(q("utm_source=ig&utm_campaign=Leto 2026")), "ig / – / leto 2026");
+  assert.strictEqual(campaign(q("x=1")), null);
+
+  const store = { data: {}, save() {} };
+  const traffic = createTraffic(store);
+  const ua = "Mozilla/5.0 Firefox";
+  const view = (ip, referer, query = "") => traffic.pageView(ip, ua, { referer, query: q(query), hosts: own });
+  view("10.0.0.1", "https://www.google.com/");
+  view("10.0.0.1", "https://goralia.cz/terms");      // přechod v rámci webu
+  view("10.0.0.1", undefined);                        // obnovení stránky
+  view("10.0.0.1", "https://www.google.com/");        // znovu z Googlu týž den
+  view("10.0.0.1", "https://l.instagram.com/");       // týž člověk, nový vnější zdroj
+  view("10.0.0.2", undefined);
+  view("10.0.0.3", undefined, "utm_source=ig&utm_campaign=start");
+  traffic.pageView("10.0.0.9", "Googlebot", { referer: "https://www.google.com/" });
+
+  const rep = traffic.report(7);
+  const n = (kind, name) => (rep.sources.find(s => s.kind === kind && s.name === name) || { visits: 0 }).visits;
+  assert.strictEqual(n("search", "Google"), 1);
+  assert.strictEqual(n("social", "Instagram"), 2);
+  assert.strictEqual(n("direct", ""), 1);
+  assert.strictEqual(n("internal", ""), 0);
+  assert.strictEqual(rep.sources[0].name, "Instagram", "seřazeno od nejčastějšího");
+  assert.deepStrictEqual(rep.campaigns, [{ name: "ig / – / start", visits: 1 }]);
+  assert.strictEqual(rep.days[rep.days.length - 1].visitors, 3);
+}
+
 async function main() {
   require("./mapstore.js").load(); // mapy z repozitáře (maps/*.json)
   testMaps();
@@ -1662,6 +1712,7 @@ async function main() {
   testSimulation();
   testCoop();
   testGeo();
+  testSources();
   await testServer();
 }
 

@@ -175,6 +175,12 @@ tr.clickable:focus-visible { outline: 2px solid var(--amber); outline-offset: -2
 .geo-tables { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; margin-top: 14px; }
 .geo-tables h3 { margin: 0 0 6px; color: #ffe9a8; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; }
 .geo-tables .table-wrap { max-height: 420px; overflow: auto; }
+.sources { margin: 14px 0; }
+.sources .geo-tables:first-of-type { margin-top: 6px; }
+.share { display: flex; align-items: center; gap: 8px; min-width: 120px; }
+.share-track { display: inline-block; width: 70px; height: 8px; flex: none; background: #2a2547; }
+.share-bar { display: block; height: 100%; background: #3987e5; }
+.share span:last-child { white-space: nowrap; }
 
 /* ---------- turnaje ---------- */
 .tour-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; align-items: end; margin-bottom: 8px; padding: 12px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
