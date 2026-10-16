@@ -189,6 +189,13 @@ const adminMaps = {
   }
 };
 
+// Domény webu hry: odkaz z nich je přechod v rámci webu, ne zdroj návštěvy.
+const ownHosts = req => {
+  const hosts = [String(req.headers.host || "")];
+  try { if (PUBLIC_URL) hosts.push(new URL(PUBLIC_URL).host); } catch (e) { /* neplatná PUBLIC_URL */ }
+  return hosts;
+};
+
 const api = createApi({ accounts, stats, hall, store, live, traffic, adminMaps, isLocalRequest, publicUrl: PUBLIC_URL });
 
 const server = http.createServer((req, res) => {
@@ -244,7 +251,7 @@ const server = http.createServer((req, res) => {
       return res.end("Not found");
     }
 
-    if (pathname === "/index.html" && req.method === "GET") traffic.pageView(clientIp(req), req.headers["user-agent"]);
+    if (pathname === "/index.html" && req.method === "GET") traffic.pageView(clientIp(req), req.headers["user-agent"], { referer: req.headers.referer, query, hosts: ownHosts(req) });
 
     res.writeHead(200, {
       "Content-Type": MIME[path.extname(file)] || "application/octet-stream",

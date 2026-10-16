@@ -314,6 +314,65 @@
     return wrap;
   }
 
+  /* ---------- odkud přišli (zdroje návštěv) ---------- */
+  const SOURCE_KINDS = {
+    direct: "Přímo",
+    search: "Vyhledávač",
+    social: "Sociální síť",
+    web: "Odkaz z webu",
+    campaign: "Kampaň",
+    internal: "Z webu hry"
+  };
+  const sourceName = s => s.name || (s.kind === "direct" ? "Přímý přístup" : SOURCE_KINDS[s.kind] || s.kind);
+
+  function shareCell(value, total, max = total) { // pruh je poměrný k nejčastějšímu řádku
+    const box = el("div", "share");
+    const track = el("span", "share-track");
+    const bar = el("span", "share-bar");
+    bar.style.width = `${max ? Math.max(1, Math.round((value / max) * 100)) : 0}%`;
+    track.append(bar);
+    box.append(track, el("span", "", total ? `${Math.round((value / total) * 1000) / 10} %` : "–"));
+    return box;
+  }
+
+  function renderSources(sources, campaigns) {
+    const card = el("div", "chart-card sources");
+    const total = sources.reduce((n, s) => n + s.visits, 0);
+    card.append(el("h3", "", "Odkud přišli"), el("p", "sub",
+      `příchody na web podle zdroje · ${total.toLocaleString("cs-CZ")} celkem (návštěvník se za den počítá jednou za každý vnější zdroj)`));
+
+    const kinds = new Map();
+    for (const s of sources) kinds.set(s.kind, (kinds.get(s.kind) || 0) + s.visits);
+
+    const tables = el("div", "geo-tables");
+    const srcBox = el("div", "table-wrap");
+    srcBox.append(el("h3", "", "Zdroje"), table(
+      ["Zdroj", "Typ", "Příchody", "Podíl"],
+      sources.slice(0, 100).map(s => [sourceName(s), SOURCE_KINDS[s.kind] || s.kind, s.visits, shareCell(s.visits, total, sources[0].visits)]),
+      "Za toto období zatím žádné příchody."
+    ));
+    const kindBox = el("div", "table-wrap");
+    kindBox.append(el("h3", "", "Podle typu"), table(
+      ["Typ", "Příchody", "Podíl"],
+      [...kinds].sort((a, b) => b[1] - a[1]).map(([kind, n]) => [SOURCE_KINDS[kind] || kind, n, shareCell(n, total, Math.max(...kinds.values()))]),
+      "–"
+    ));
+    tables.append(srcBox, kindBox);
+    card.append(tables);
+
+    if (campaigns.length) {
+      const campBox = el("div", "table-wrap");
+      campBox.append(el("h3", "", "Kampaně (utm_source / utm_medium / utm_campaign)"), table(
+        ["Kampaň", "Příchody"],
+        campaigns.slice(0, 50).map(c => [c.name, c.visits])
+      ));
+      const wrap = el("div", "geo-tables");
+      wrap.append(campBox);
+      card.append(wrap);
+    }
+    return card;
+  }
+
   /* ---------- návštěvnost ---------- */
   const PALETTE = ["#3987e5", "#d95926", "#199e70"]; // ověřeno pro tmavý povrch panelu (čitelnost i pro barvoslepé)
   const WEEKDAYS = ["ne", "po", "út", "st", "čt", "pá", "so"];
@@ -465,8 +524,8 @@
     ));
     details.append(wrapTable);
 
-    box.replaceChildren(cards, grid, renderGeo(data.geo || { enabled: false, places: [] }), details);
-    $("traffic-note").textContent = `Časové pásmo ${data.tz}. Bez cookies, IP se neukládá (u míst jen souhrn za den: země, kraj, město).`;
+    box.replaceChildren(cards, grid, renderSources(data.sources || [], data.campaigns || []), renderGeo(data.geo || { enabled: false, places: [] }), details);
+    $("traffic-note").textContent = `Časové pásmo ${data.tz}. Bez cookies, IP se neukládá (u míst jen souhrn za den: země, kraj, město; u zdrojů jen název sítě nebo doména).`;
   }
 
   async function loadTraffic() {
