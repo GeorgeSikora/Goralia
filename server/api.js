@@ -11,7 +11,7 @@ const { cookie, parseCookies, clientIp, sameOrigin, sendJson, readJson } = requi
 const SID = "goralia_sid";
 const PLAYER_LIMIT = 1000;
 
-function createApi({ accounts, stats, store, live, traffic, adminMaps, isLocalRequest, publicUrl }) {
+function createApi({ accounts, stats, hall, store, live, traffic, adminMaps, isLocalRequest, publicUrl }) {
   const passwordFails = new Limiter(10, 10 * 60 * 1000);
   const beaconIp = new Limiter(120, 10 * 60 * 1000);
   const aiStarts = new Map(); // id hráče -> čas začátku hry proti AI (pro odehraný čas)
@@ -102,6 +102,14 @@ function createApi({ accounts, stats, store, live, traffic, adminMaps, isLocalRe
     },
 
     /* ---------- profily ---------- */
+    // Síň slávy: pořadí podle celkového skóre z bitev a turnajů (veřejné).
+    hallOfFame(ctx) {
+      const players = hall.ranking(clamp(ctx.query.get("limit"), 1, 500, 100));
+      sendJson(ctx.res, 200, {
+        points: hall.POINTS, players: players.map(p => ({ ...p, online: live.isOnline(p.id) })), tournaments: hall.listTournaments({ limit: 10 })
+      });
+    },
+
     players(ctx) {
       const list = accounts.leaderboard({ q: ctx.query.get("q") || "", limit: clamp(ctx.query.get("limit"), 1, PLAYER_LIMIT, PLAYER_LIMIT) });
       sendJson(ctx.res, 200, { players: list.map(p => ({ ...p, online: live.isOnline(p.id) })) });
@@ -237,6 +245,23 @@ function createApi({ accounts, stats, store, live, traffic, adminMaps, isLocalRe
 
     audit(ctx) {
       sendJson(ctx.res, 200, { audit: store.data.audit.slice(-100).reverse() });
+    },
+
+    /* ---------- turnaje do síně slávy (zapisuje admin) ---------- */
+    tournaments(ctx) {
+      sendJson(ctx.res, 200, { tournaments: hall.listTournaments({ admin: true }) });
+    },
+
+    addTournament(ctx) {
+      const result = hall.addTournament(ctx.user, ctx.body);
+      if (result.error) return fail(ctx, 400, result.error);
+      sendJson(ctx.res, 200, result);
+    },
+
+    deleteTournament(ctx) {
+      const result = hall.deleteTournament(ctx.user, ctx.params[0]);
+      if (result.error) return fail(ctx, 404, result.error);
+      sendJson(ctx.res, 200, { ok: true });
     }
   };
 
@@ -247,6 +272,7 @@ function createApi({ accounts, stats, store, live, traffic, adminMaps, isLocalRe
     ["POST", /^\/api\/auth\/logout$/, "none", handlers.logout],
     ["POST", /^\/api\/me\/name$/, "user", handlers.rename],
     ["POST", /^\/api\/me\/password$/, "user", handlers.password],
+    ["GET", /^\/api\/halloffame$/, "none", handlers.hallOfFame],
     ["GET", /^\/api\/players$/, "none", handlers.players],
     ["GET", /^\/api\/players\/(\d{1,9})$/, "none", handlers.player],
     ["GET", /^\/api\/matches\/(\d{1,9})$/, "none", handlers.match],
@@ -266,7 +292,10 @@ function createApi({ accounts, stats, store, live, traffic, adminMaps, isLocalRe
     ["GET", /^\/api\/admin\/maps$/, "admin", handlers.maps],
     ["POST", /^\/api\/admin\/maps\/([a-z0-9-]{1,31})\/multiplayer$/, "admin", handlers.mapMultiplayer],
     ["GET", /^\/api\/admin\/traffic$/, "admin", handlers.traffic],
-    ["GET", /^\/api\/admin\/audit$/, "admin", handlers.audit]
+    ["GET", /^\/api\/admin\/audit$/, "admin", handlers.audit],
+    ["GET", /^\/api\/admin\/tournaments$/, "admin", handlers.tournaments],
+    ["POST", /^\/api\/admin\/tournaments$/, "admin", handlers.addTournament],
+    ["DELETE", /^\/api\/admin\/tournaments\/(\d{1,9})$/, "admin", handlers.deleteTournament]
   ];
 
   // Vrací true, pokud požadavek patří API nebo přihlášení přes poskytovatele.

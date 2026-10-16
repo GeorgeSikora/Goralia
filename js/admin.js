@@ -713,8 +713,51 @@
     }
   });
 
+  /* ---------- turnaje ---------- */
+  async function loadTournaments() {
+    const data = await api("GET", "/api/admin/tournaments");
+
+    $("tournaments").replaceChildren(table(
+      ["Datum", "Turnaj", "1. místo", "2. místo", "3. místo", "Účastníků", "Zapsal", "Akce"],
+      data.tournaments.map(t => {
+        const at = place => (t.entrants.find(e => e.place === place) || {}).name || "";
+        return [new Date(t.date).toLocaleDateString("cs-CZ"), t.name, at(1), at(2), at(3), t.entrants.length, t.by, { actions: [
+          button("Smazat", async () => {
+            if (!window.confirm(`Smazat turnaj „${t.name}“? Body za něj zmizí ze síně slávy.`)) return;
+            await api("DELETE", `/api/admin/tournaments/${t.id}`);
+            await loadTournaments();
+          }, true)
+        ] }];
+      }),
+      "Zatím žádný turnaj."
+    ));
+  }
+
+  $("tour-date").value = new Date().toISOString().slice(0, 10);
+
+  $("tour-form").addEventListener("submit", async event => {
+    event.preventDefault();
+    const submit = $("tour-form").querySelector("button");
+    submit.disabled = true;
+
+    try {
+      const result = await api("POST", "/api/admin/tournaments", {
+        name: $("tour-name").value, date: $("tour-date").value,
+        places: [$("tour-1").value, $("tour-2").value, $("tour-3").value],
+        others: $("tour-others").value.split(",").map(s => s.trim()).filter(Boolean)
+      });
+      for (const id of ["tour-name", "tour-1", "tour-2", "tour-3", "tour-others"]) $(id).value = "";
+      await loadTournaments();
+      notice(`Turnaj „${result.tournament.name}“ je zapsaný.`);
+    } catch (e) {
+      fail(e);
+    } finally {
+      submit.disabled = false;
+    }
+  });
+
   /* ---------- záložky ---------- */
-  const loaders = { overview: loadOverview, traffic: loadTraffic, users: loadUsers, live: loadLive, matches: loadMatches, maps: loadMapsTab, audit: loadAudit };
+  const loaders = { overview: loadOverview, traffic: loadTraffic, users: loadUsers, live: loadLive, matches: loadMatches, tournaments: loadTournaments, maps: loadMapsTab, audit: loadAudit };
 
   function refresh() {
     return loaders[tab]().catch(fail);

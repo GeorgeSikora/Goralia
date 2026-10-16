@@ -334,28 +334,70 @@
   const listStatus = $("pl-status");
   let listToken = 0;
 
+  const fameRules = $("fame-rules");
+  const famePodium = $("fame-podium");
+  const fameTours = $("fame-tours");
+  let fameTitle = false;
+
+  const plural = (n, one, few, many) => (n === 1 ? one : n > 1 && n < 5 ? few : many);
+
+  // Bez hledání ukazuje síň slávy (stupně + pořadí podle skóre), s hledáním všechny shodné hráče.
   async function loadPlayers() {
     const token = ++listToken;
     const q = query.value.trim();
     setStatus(listStatus, "Načítám…");
+    if (!fameTitle && window.GFame) {
+      GFame.title($("fame-title"));
+      fameTitle = true;
+    }
 
     try {
-      const data = await api("GET", `/api/players?limit=1000&q=${encodeURIComponent(q)}`);
-      if (token !== listToken) return;
+      if (q) {
+        const data = await api("GET", `/api/players?limit=1000&q=${encodeURIComponent(q)}`);
+        if (token !== listToken) return;
+        famePodium.hidden = true;
 
-      list.replaceChildren(...data.players.map((player, i) => {
-        const row = el("button", "player-row");
-        row.type = "button";
-        row.append(
-          el("span", "player-rank", q ? "" : `${i + 1}.`),
-          el("span", `player-name${player.online ? " online" : ""}`, player.admin ? `${player.name} ★` : player.name),
-          el("span", "player-score", `${player.pvpWins} výher proti lidem · ${player.wins}/${player.games}`)
-        );
-        row.addEventListener("click", () => openProfile(player.id, "players"));
+        list.replaceChildren(...data.players.map(player => {
+          const row = el("button", "player-row");
+          row.type = "button";
+          row.append(
+            el("span", "player-rank", ""),
+            el("span", `player-name${player.online ? " online" : ""}`, player.admin ? `${player.name} ★` : player.name),
+            el("span", "player-score", `${player.pvpWins} výher proti lidem · ${player.wins}/${player.games}`)
+          );
+          row.addEventListener("click", () => openProfile(player.id, "players"));
+          return row;
+        }));
+
+        setStatus(listStatus, data.players.length ? "" : "Nikdo takový tu není.");
+        return;
+      }
+
+      const data = await api("GET", "/api/halloffame?limit=100");
+      if (token !== listToken) return;
+      const open = player => openProfile(player.id, "players");
+
+      famePodium.hidden = !data.players.length;
+      famePodium.replaceChildren(...(data.players.length ? GFame.podium(data.players.slice(0, 3), { onOpen: open }).childNodes : []));
+      list.replaceChildren(GFame.list(data.players, { onOpen: open, playTime: fmtTime }));
+
+      const P = data.points;
+      fameRules.textContent = `Skóre: výhra proti lidem ${P.pvpWin} b., výhra proti AI nebo v kooperaci ${P.otherWin} b., každý zápas ${P.game} b. ` +
+        `Turnaj: 1. místo ${P.place[0]} b., 2. místo ${P.place[1]} b., 3. místo ${P.place[2]} b., účast ${P.entry} b. Počítají se zápasy na serveru.`;
+
+      fameTours.hidden = !data.tournaments.length;
+      fameTours.replaceChildren(el("h3", "", "Poslední turnaje"), ...data.tournaments.map(t => {
+        const row = el("div", "fame-tour");
+        const winners = el("span", "fame-tour-places");
+        for (const place of [1, 2, 3]) {
+          const e = t.entrants.find(x => x.place === place);
+          if (e) winners.append(el("span", `p${place}`, `${place}. ${e.name}`));
+        }
+        row.append(el("span", "fame-tour-date", new Date(t.date).toLocaleDateString("cs-CZ")), el("span", "fame-tour-name", t.name), winners);
         return row;
       }));
 
-      setStatus(listStatus, data.players.length ? (q ? "" : `${data.players.length} hráčů, řazeno podle výher proti lidem.`) : q ? "Nikdo takový tu není." : "Zatím nikdo není zaregistrovaný.");
+      setStatus(listStatus, data.players.length ? `${data.players.length} ${plural(data.players.length, "hráč", "hráči", "hráčů")} v síni slávy` : "Síň slávy je zatím prázdná. Body přibývají z odehraných zápasů.");
     } catch (e) {
       if (token === listToken) setStatus(listStatus, e.message, true);
     }

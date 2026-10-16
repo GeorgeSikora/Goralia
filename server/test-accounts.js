@@ -16,6 +16,7 @@ const { createStore } = require("./store.js");
 const { createAccounts } = require("./accounts.js");
 const { createStats, MIN_DURATION } = require("./stats.js");
 const { createOAuth } = require("./oauth.js");
+const { createHallOfFame, POINTS } = require("./halloffame.js");
 
 const ADMIN_EMAIL = "info@jirisikora.cz";
 const ADMIN_PASSWORD = "test-admin-heslo";
@@ -212,6 +213,33 @@ async function testAccounts() {
   assert.strictEqual(totals.aiSeconds, 3600);
   assert.strictEqual(totals.playSeconds, Object.values(store.data.users).reduce((n, u) => n + u.stats.playSeconds, 0));
   assert.strictEqual(totals.onlineSeconds, 90);
+
+  // síň slávy: body z bitev a turnajů zapsaných adminem
+  const hall = createHallOfFame(store, accounts);
+  const battle = (u, other) => u.stats.pvpWins * POINTS.pvpWin + other * POINTS.otherWin + u.stats.games * POINTS.game;
+  let fame = hall.ranking();
+  assert.deepStrictEqual(fame.map(p => p.name), ["Pat", "Mat"], "hráči bez bodů se nezobrazují");
+  assert.strictEqual(fame[0].score, battle(pat, 0));
+  assert.strictEqual(fame[1].score, battle(mat, 0));
+  assert(!/scrypt|@|onlineSeconds/.test(JSON.stringify(fame)), "síň slávy obsahuje jen veřejné údaje");
+
+  assert(/vítěze/.test(hall.addTournament(admin, { name: "Pohár", date: "2026-10-01", places: ["", "Pat"] }).error));
+  assert(/Neznámí/.test(hall.addTournament(admin, { name: "Pohár", date: "2026-10-01", places: ["Nikdo"] }).error));
+  assert(/datum/.test(hall.addTournament(admin, { name: "Pohár", date: "zítra", places: ["Mat"] }).error));
+  const cup = hall.addTournament(admin, { name: "Podzimní pohár", date: "2026-10-01", places: ["mat", "Pat"], others: ["Karel", "PAT"] }).tournament;
+  assert.deepStrictEqual(cup.entrants.map(e => [e.name, e.place]), [["Mat", 1], ["Pat", 2], ["Karel", 0]], "jména bez ohledu na velikost, bez duplicit");
+
+  fame = hall.ranking();
+  assert.deepStrictEqual(fame.map(p => p.name), ["Mat", "Pat", "Karel"], "turnaj posune vítěze nahoru");
+  assert.strictEqual(fame[0].score, battle(mat, 0) + POINTS.place[0]);
+  assert.strictEqual(fame[1].score, battle(pat, 0) + POINTS.place[1]);
+  assert.strictEqual(fame[2].score, POINTS.entry);
+  assert.deepStrictEqual(fame[0].medals, { gold: 1, silver: 0, bronze: 0, played: 1, points: POINTS.place[0] });
+  assert(store.data.audit.some(a => a.action === "tournament-add"));
+
+  assert(hall.deleteTournament(admin, cup.id).tournament);
+  assert(hall.deleteTournament(admin, cup.id).error);
+  assert.deepStrictEqual(hall.ranking().map(p => p.name), ["Pat", "Mat"]);
 
   // trvalé uložení
   store.flush();
@@ -604,9 +632,26 @@ async function testServerApi() {
     assert.strictEqual((await request("GET", `/api/players/${frank.id}`)).status, 404);
     assert.strictEqual((await request("GET", "/api/me", undefined, as(frank.cookie))).json.user, null);
 
+    // síň slávy (veřejná) a turnaje (zapisuje admin) přes API
+    assert.strictEqual((await request("GET", "/api/admin/tournaments", undefined, as(eveBack))).status, 403);
+    assert.strictEqual((await request("POST", "/api/admin/tournaments", { name: "Pohár", date: "2026-10-01", places: ["Eve2"] }, as(eveBack))).status, 403);
+    assert.strictEqual((await request("POST", "/api/admin/tournaments", { name: "Pohár", date: "2026-10-01", places: ["Nikdo"] }, admin)).status, 400);
+    const cup = await request("POST", "/api/admin/tournaments", { name: "Pohár", date: "2026-10-01", places: ["Eve2"] }, admin);
+    assert.strictEqual(cup.status, 200);
+    assert.strictEqual((await request("GET", "/api/admin/tournaments", undefined, admin)).json.tournaments[0].by, "Jurek");
+    const hall = await request("GET", "/api/halloffame");
+    assert.strictEqual(hall.status, 200, "síň slávy vidí i nepřihlášený");
+    assert.strictEqual(hall.json.players[0].name, "Eve2");
+    assert.strictEqual(hall.json.players[0].medals.gold, 1);
+    assert.strictEqual(typeof hall.json.players[0].online, "boolean");
+    assert.strictEqual(hall.json.tournaments[0].name, "Pohár");
+    for (const secret of ["@", "onlineSeconds", "email", "lastLogin", "\"by\"", "scrypt"]) assert(!hall.text.includes(secret), `síň slávy neprozradí ${secret}`);
+    assert.strictEqual((await request("DELETE", `/api/admin/tournaments/${cup.json.tournament.id}`, {}, admin)).status, 200);
+    assert.strictEqual((await request("DELETE", `/api/admin/tournaments/${cup.json.tournament.id}`, {}, admin)).status, 404);
+
     // záznam akcí
     const audit = (await request("GET", "/api/admin/audit", undefined, admin)).json.audit.map(a => a.action);
-    for (const action of ["ban", "unban", "role", "password-reset", "delete", "kick", "close-room"]) assert(audit.includes(action), `v záznamu chybí ${action}`);
+    for (const action of ["ban", "unban", "role", "password-reset", "delete", "kick", "close-room", "tournament-add", "tournament-delete"]) assert(audit.includes(action), `v záznamu chybí ${action}`);
     assert.strictEqual((await request("GET", "/api/admin/matches", undefined, admin)).status, 200);
 
     // odhlášení

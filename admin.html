@@ -21,6 +21,7 @@
   <button type="button" data-tab="users">Hráči</button>
   <button type="button" data-tab="live">Online</button>
   <button type="button" data-tab="matches">Zápasy</button>
+  <button type="button" data-tab="tournaments">Turnaje</button>
   <button type="button" data-tab="maps">Mapy</button>
   <button type="button" data-tab="audit">Záznam akcí</button>
 </nav>
@@ -72,6 +73,21 @@
       <span id="matches-page" class="muted"></span>
       <button id="matches-older" type="button">Starší →</button>
     </div>
+  </section>
+
+  <section id="tab-tournaments" class="tab" hidden>
+    <p class="muted">Výsledky turnajů se počítají do síně slávy v menu hry (Hráči): 1. místo 100 b., 2. místo 60 b., 3. místo 40 b., účast 15 b.</p>
+    <form id="tour-form" class="tour-form">
+      <label>Název <input id="tour-name" type="text" maxlength="60" required placeholder="Podzimní pohár"></label>
+      <label>Datum <input id="tour-date" type="date" required></label>
+      <label class="gold">1. místo <input id="tour-1" type="text" maxlength="40" required placeholder="přezdívka"></label>
+      <label class="silver">2. místo <input id="tour-2" type="text" maxlength="40" placeholder="přezdívka"></label>
+      <label class="bronze">3. místo <input id="tour-3" type="text" maxlength="40" placeholder="přezdívka"></label>
+      <label class="wide">Další účastníci <input id="tour-others" type="text" maxlength="1500" placeholder="přezdívky oddělené čárkou"></label>
+      <button type="submit">Zapsat turnaj</button>
+    </form>
+    <h2>Zapsané turnaje</h2>
+    <div id="tournaments" class="table-wrap"></div>
   </section>
 
   <section id="tab-maps" class="tab" hidden>

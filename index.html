@@ -37,6 +37,7 @@
 </script>
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/charts.css">
+<link rel="stylesheet" href="css/fame.css">
 </head>
 <body>
 <div id="loading" class="loading" role="progressbar" aria-label="Načítání hry" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-busy="true">
@@ -182,13 +183,20 @@
       </section>
 
       <section id="panel-players" class="page" data-page="players" hidden>
-        <h2>Hráči</h2>
+        <div class="fame-head">
+          <canvas id="fame-title" class="fame-title" width="1" height="1"></canvas>
+          <h2 class="sr-only">Síň slávy</h2>
+          <p class="status small">Nejlepší vojevůdci Goralie podle skóre z bitev a turnajů</p>
+        </div>
+        <div id="fame-podium" class="podium" hidden></div>
         <label class="row">
           <span>Hledat</span>
           <input id="pl-q" class="field" type="search" maxlength="14" autocomplete="off" spellcheck="false" placeholder="přezdívka">
         </label>
         <p id="pl-status" class="status small" aria-live="polite"></p>
         <div id="pl-list" class="players" role="list"></div>
+        <p id="fame-rules" class="fame-rules small"></p>
+        <div id="fame-tours" class="fame-tours" hidden></div>
         <button class="btn big" type="button" data-back>Zpět</button>
       </section>
 
