@@ -18,12 +18,13 @@
     return node;
   };
 
-  // 1 234 → „1 234“, 12 500 → „12,5K“
+  // 1 234 → „1 234“, 12 500 → „12,5K“, 0,25 → „0,25“ (malá desetinná čísla, např. průměry, se nezaokrouhlí na 0)
   function compact(v) {
     if (v == null || !Number.isFinite(v)) return "–";
     const a = Math.abs(v);
     if (a >= 1e6) return `${trim(v / 1e6)}M`;
     if (a >= 1e4) return `${trim(v / 1e3)}K`;
+    if (a < 10 && v % 1) return v.toLocaleString("cs-CZ", { maximumFractionDigits: a < 1 ? 2 : 1 });
     return Math.round(v).toLocaleString("cs-CZ");
   }
   const trim = n => (Math.round(n * 10) / 10).toLocaleString("cs-CZ");

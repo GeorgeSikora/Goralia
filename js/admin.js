@@ -439,15 +439,17 @@
       empty: "Zatím žádné vzorky (první přibude do 5 minut po startu serveru)."
     })));
 
+    // Hodina v časovém pásmu serveru (stejném jako dny v tabulce), ne v pásmu prohlížeče.
+    const hourOf = new Intl.DateTimeFormat("en-GB", { timeZone: data.tz, hour: "numeric", hourCycle: "h23" });
     const byHour = Array.from({ length: 24 }, () => ({ total: 0, n: 0 }));
     for (const s of samples) {
-      const h = new Date(s[0]).getHours();
+      const h = Number(hourOf.format(new Date(s[0]))) % 24;
       byHour[h].total += s[1];
       byHour[h].n++;
     }
     grid.append(chartCard("Kdy se hraje", "průměrný počet připojených podle hodiny dne", GChart.bars({
       labels: byHour.map((_, h) => String(h)),
-      values: samples.length ? byHour.map(b => (b.n ? Math.round((b.total / b.n) * 10) / 10 : 0)) : [],
+      values: samples.length ? byHour.map(b => (b.n ? Math.round((b.total / b.n) * 100) / 100 : 0)) : [],
       integer: false,
       color: PALETTE[0],
       name: "průměrně online",
