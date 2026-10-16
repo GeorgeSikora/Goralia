@@ -1640,6 +1640,7 @@ function testGeo() {
     assert.strictEqual(at("Prague").lat, 50.09);
     assert.strictEqual(rep.places.find(p => p.cc === "").visitors, 1, "neznámé místo");
     assert.strictEqual(rep.places[0].city, "Prague", "seřazeno od nejčastějšího");
+    assert.strictEqual(rep.from, traffic.report(7).days[6].date, "místa jsou zaznamenaná až od dneška");
     assert(!/203\.0\.113|198\.51\.100|8\.8\.8\.8/.test(JSON.stringify(store.data)), "IP adresy se neukládají");
 
     // bez databáze vše běží, jen se místo nezjišťuje

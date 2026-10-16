@@ -227,14 +227,23 @@
 
   let geoMetric = "players";
   const GEO_METRICS = {
-    players: ["Hráči", "unikátní připojení ke hře za den, sečteno"],
-    visitors: ["Návštěvníci webu", "unikátní návštěvníci stránky hry za den, sečteno"]
+    players: ["Hráči", "unikátní připojení ke hře"],
+    visitors: ["Návštěvníci webu", "unikátní návštěvníci stránky hry"]
   };
 
-  function renderGeo(geo) {
+  const periodName = days => (days >= 365 ? "poslední rok" : `posledních ${days} dní`);
+
+  function renderGeo(geo, days) {
     const wrap = el("div", "geo");
     const head = el("div", "bar range");
     const card = el("div", "chart-card");
+
+    // Stejně jako karty nahoře: součet za vybrané období, kdo přišel víc dní, počítá se každý den.
+    function geoSub(hint, total) {
+      const parts = [`${hint} za ${periodName(days.length)}`, `${total.toLocaleString("cs-CZ")} celkem`];
+      if (geo.from && days.length && geo.from !== days[0].date) parts.push(`místa se zaznamenávají od ${dayLabel(geo.from)} ${geo.from.slice(0, 4)}`);
+      return parts.join(" · ");
+    }
 
     function paint() {
       const [label, hint] = GEO_METRICS[geoMetric];
@@ -274,7 +283,7 @@
       ));
       tables.append(countryBox, cityBox);
 
-      card.replaceChildren(el("h3", "", "Odkud se připojují"), el("p", "sub", `${hint} · ${total.toLocaleString("cs-CZ")} celkem`), map, tables);
+      card.replaceChildren(el("h3", "", "Odkud se připojují"), el("p", "sub", geoSub(hint, total)), map, tables);
     }
 
     for (const [key, [label]] of Object.entries(GEO_METRICS)) {
@@ -526,7 +535,7 @@
     ));
     details.append(wrapTable);
 
-    box.replaceChildren(cards, grid, renderSources(data.sources || [], data.campaigns || []), renderGeo(data.geo || { enabled: false, places: [] }), details);
+    box.replaceChildren(cards, grid, renderSources(data.sources || [], data.campaigns || []), renderGeo(data.geo || { enabled: false, places: [] }, days), details);
     $("traffic-note").textContent = `Časové pásmo ${data.tz}. Bez cookies, IP se neukládá (u míst jen souhrn za den: země, kraj, město; u zdrojů jen název sítě nebo doména).`;
   }
 
