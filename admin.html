@@ -18,7 +18,7 @@
 <nav id="tabs" class="tabs" aria-label="Sekce">
   <button type="button" data-tab="overview" class="active">Přehled</button>
   <button type="button" data-tab="traffic">Návštěvnost</button>
-  <button type="button" data-tab="users">Hráči</button>
+  <button type="button" data-tab="users">Síň slávy</button>
   <button type="button" data-tab="live">Online</button>
   <button type="button" data-tab="matches">Zápasy</button>
   <button type="button" data-tab="maps">Mapy</button>
@@ -44,17 +44,43 @@
   </section>
 
   <section id="tab-users" class="tab" hidden>
-    <form id="user-search" class="bar">
-      <input id="user-q" type="search" placeholder="přezdívka, e-mail nebo ID" maxlength="60" autocomplete="off">
-      <button type="submit">Hledat</button>
-      <select id="user-sort" aria-label="Řazení">
-        <option value="created">Nejnovější registrace</option>
-        <option value="played">Nejvíc odehráno</option>
-        <option value="online">Nejdéle online</option>
-      </select>
-      <span id="user-total" class="muted"></span>
-    </form>
-    <div id="users" class="table-wrap"></div>
+    <div class="fame-head">
+      <canvas id="fame-title" class="fame-title" width="1" height="1" aria-label="Síň slávy"></canvas>
+      <p class="muted fame-sub">Nejlepší vojevůdci Goralie podle celkového skóre z bitev a turnajů.</p>
+    </div>
+    <div id="podium" class="podium"></div>
+    <div id="fame-list" class="fame-list"></div>
+    <p id="fame-rules" class="muted fame-rules"></p>
+
+    <h2>Turnaje</h2>
+    <div id="tournaments" class="table-wrap"></div>
+    <details id="tour-add" class="fold">
+      <summary>Zapsat výsledek turnaje</summary>
+      <form id="tour-form" class="tour-form">
+        <label>Název <input id="tour-name" type="text" maxlength="60" required placeholder="Podzimní pohár"></label>
+        <label>Datum <input id="tour-date" type="date" required></label>
+        <label class="gold">1. místo <input id="tour-1" type="text" maxlength="40" required placeholder="přezdívka"></label>
+        <label class="silver">2. místo <input id="tour-2" type="text" maxlength="40" placeholder="přezdívka"></label>
+        <label class="bronze">3. místo <input id="tour-3" type="text" maxlength="40" placeholder="přezdívka"></label>
+        <label class="wide">Další účastníci <input id="tour-others" type="text" maxlength="1500" placeholder="přezdívky oddělené čárkou"></label>
+        <button type="submit">Zapsat turnaj</button>
+      </form>
+    </details>
+
+    <details id="accounts" class="fold">
+      <summary>Správa účtů (hledání, blokování, role, hesla)</summary>
+      <form id="user-search" class="bar">
+        <input id="user-q" type="search" placeholder="přezdívka, e-mail nebo ID" maxlength="60" autocomplete="off">
+        <button type="submit">Hledat</button>
+        <select id="user-sort" aria-label="Řazení">
+          <option value="created">Nejnovější registrace</option>
+          <option value="played">Nejvíc odehráno</option>
+          <option value="online">Nejdéle online</option>
+        </select>
+        <span id="user-total" class="muted"></span>
+      </form>
+      <div id="users" class="table-wrap"></div>
+    </details>
   </section>
 
   <section id="tab-live" class="tab" hidden>
@@ -105,6 +131,10 @@
 <script src="js/charts.js"></script>
 <script src="js/geomap.js"></script>
 <script src="js/matchview.js"></script>
+<script src="js/pixel.js"></script>
+<script src="js/font.js"></script>
+<script src="js/units.js"></script>
+<script src="js/fame.js"></script>
 <script src="js/admin.js"></script>
 </body>
 </html>

@@ -11,7 +11,7 @@ const { cookie, parseCookies, clientIp, sameOrigin, sendJson, readJson } = requi
 const SID = "goralia_sid";
 const PLAYER_LIMIT = 1000;
 
-function createApi({ accounts, stats, store, live, traffic, adminMaps, isLocalRequest, publicUrl }) {
+function createApi({ accounts, stats, hall, store, live, traffic, adminMaps, isLocalRequest, publicUrl }) {
   const passwordFails = new Limiter(10, 10 * 60 * 1000);
   const beaconIp = new Limiter(120, 10 * 60 * 1000);
   const aiStarts = new Map(); // id hráče -> čas začátku hry proti AI (pro odehraný čas)
@@ -237,6 +237,26 @@ function createApi({ accounts, stats, store, live, traffic, adminMaps, isLocalRe
 
     audit(ctx) {
       sendJson(ctx.res, 200, { audit: store.data.audit.slice(-100).reverse() });
+    },
+
+    /* ---------- síň slávy ---------- */
+    hallOfFame(ctx) {
+      const players = hall.ranking(clamp(ctx.query.get("limit"), 1, 500, 100));
+      sendJson(ctx.res, 200, {
+        points: hall.POINTS, players: players.map(p => ({ ...p, online: live.isOnline(p.id) })), tournaments: hall.listTournaments()
+      });
+    },
+
+    addTournament(ctx) {
+      const result = hall.addTournament(ctx.user, ctx.body);
+      if (result.error) return fail(ctx, 400, result.error);
+      sendJson(ctx.res, 200, result);
+    },
+
+    deleteTournament(ctx) {
+      const result = hall.deleteTournament(ctx.user, ctx.params[0]);
+      if (result.error) return fail(ctx, 404, result.error);
+      sendJson(ctx.res, 200, { ok: true });
     }
   };
 
@@ -266,7 +286,10 @@ function createApi({ accounts, stats, store, live, traffic, adminMaps, isLocalRe
     ["GET", /^\/api\/admin\/maps$/, "admin", handlers.maps],
     ["POST", /^\/api\/admin\/maps\/([a-z0-9-]{1,31})\/multiplayer$/, "admin", handlers.mapMultiplayer],
     ["GET", /^\/api\/admin\/traffic$/, "admin", handlers.traffic],
-    ["GET", /^\/api\/admin\/audit$/, "admin", handlers.audit]
+    ["GET", /^\/api\/admin\/audit$/, "admin", handlers.audit],
+    ["GET", /^\/api\/admin\/halloffame$/, "admin", handlers.hallOfFame],
+    ["POST", /^\/api\/admin\/tournaments$/, "admin", handlers.addTournament],
+    ["DELETE", /^\/api\/admin\/tournaments\/(\d{1,9})$/, "admin", handlers.deleteTournament]
   ];
 
   // Vrací true, pokud požadavek patří API nebo přihlášení přes poskytovatele.

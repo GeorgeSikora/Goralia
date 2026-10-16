@@ -125,7 +125,133 @@
     }));
   }
 
-  /* ---------- hráči ---------- */
+  /* ---------- síň slávy ---------- */
+  let fame = null;
+
+  async function loadFame() {
+    fame = await api("GET", "/api/admin/halloffame?limit=100");
+    const P = fame.points;
+    const open = p => openPlayer(p);
+
+    $("podium").replaceWith(Object.assign(GFame.podium(fame.players.slice(0, 3), { onOpen: open }), { id: "podium" }));
+    $("fame-list").replaceChildren(fame.players.length
+      ? GFame.list(fame.players, { onOpen: open, playTime })
+      : el("p", "muted", "Zatím nikdo nemá body. Skóre přibývá z dohraných zápasů na serveru a ze zapsaných turnajů."));
+    $("fame-rules").textContent = `Skóre = výhra proti lidem ${P.pvpWin} b. + výhra proti AI nebo v kooperaci ${P.otherWin} b. + každý zápas ${P.game} b. ` +
+      `+ turnaj: 1. místo ${P.place[0]} b., 2. místo ${P.place[1]} b., 3. místo ${P.place[2]} b., účast ${P.entry} b. ` +
+      "Hry proti AI jen v prohlížeči se nepočítají (výsledek nejde ověřit), zablokovaní hráči se nezobrazují.";
+
+    $("tournaments").replaceChildren(table(
+      ["Datum", "Turnaj", "1. místo", "2. místo", "3. místo", "Účastníků", "Zapsal", "Akce"],
+      fame.tournaments.map(t => {
+        const at = place => (t.entrants.find(e => e.place === place) || {}).name || "";
+        return [new Date(t.date).toLocaleDateString("cs-CZ"), t.name, at(1), at(2), at(3), t.entrants.length, t.by, { actions: [
+          button("Smazat", async () => {
+            if (!window.confirm(`Smazat turnaj „${t.name}“? Body za něj zmizí ze síně slávy.`)) return;
+            await api("DELETE", `/api/admin/tournaments/${t.id}`);
+            await loadFame();
+          }, true)
+        ] }];
+      }),
+      "Zatím žádný turnaj. Výsledek zapíšeš formulářem níže."
+    ));
+
+    if ($("accounts").open) await loadUsers();
+  }
+
+  if (!$("tour-date").value) $("tour-date").value = new Date().toISOString().slice(0, 10);
+
+  $("tour-form").addEventListener("submit", async event => {
+    event.preventDefault();
+    const submit = event.submitter || $("tour-form").querySelector("button");
+    submit.disabled = true;
+
+    try {
+      const result = await api("POST", "/api/admin/tournaments", {
+        name: $("tour-name").value, date: $("tour-date").value,
+        places: [$("tour-1").value, $("tour-2").value, $("tour-3").value],
+        others: $("tour-others").value.split(",").map(s => s.trim()).filter(Boolean)
+      });
+      for (const id of ["tour-name", "tour-1", "tour-2", "tour-3", "tour-others"]) $(id).value = "";
+      await loadFame();
+      notice(`Turnaj „${result.tournament.name}“ je zapsaný.`);
+    } catch (e) {
+      fail(e);
+    } finally {
+      submit.disabled = false;
+    }
+  });
+
+  GFame.title($("fame-title"));
+
+  function openPlayer(p) {
+    lastFocus = document.activeElement;
+    $("modal-title").textContent = `${p.rank}. ${p.name}`;
+
+    const head = el("div", "player-head");
+    head.append(GFame.sprite(GFame.typeOf(p.id, p.rank), GFame.teamOf(p.id)));
+    const info = el("div");
+    info.append(el("div", "player-score", `${p.score.toLocaleString("cs-CZ")} bodů`), GFame.medals(p.medals),
+      el("div", "muted", `${p.email || "bez e-mailu"} · ID ${p.id}`));
+    head.append(info);
+
+    const P = fame.points;
+    const rows = [
+      ["Výhry proti lidem", p.pvpWins, p.pvpWins * P.pvpWin],
+      ["Výhry proti AI / kooperace", p.otherWins, p.otherWins * P.otherWin],
+      ["Zaznamenané zápasy", p.games, p.games * P.game],
+      ["Turnaje: 1. / 2. / 3. místo / účastí", `${p.medals.gold} / ${p.medals.silver} / ${p.medals.bronze} / ${p.medals.played}`, p.tournament],
+      ["Celkem", "", p.score]
+    ];
+    const times = [
+      ["Odehráno celkem", playTime(p.playSeconds + p.aiSeconds)],
+      ["Z toho multiplayer", playTime(p.playSeconds)],
+      ["Z toho proti AI", playTime(p.aiSeconds)],
+      ["Online (připojení)", playTime(p.onlineSeconds)],
+      ["Registrace", when(p.created)],
+      ["Naposledy", when(p.lastSeen || p.lastLogin)]
+    ];
+
+    const actions = el("div", "actions player-actions");
+    actions.append(...userActions(p, async () => { closeModal(); await loadFame(); }));
+
+    $("modal-body").replaceChildren(head, table(["Skóre", "Počet", "Body"], rows), table(["Čas a účet", ""], times), actions);
+    $("modal").hidden = false;
+    $("modal-close").focus();
+  }
+
+  /* ---------- správa účtů ---------- */
+  function userActions(u, reload) {
+    return [
+      button(u.banned ? "Odblokovat" : "Zablokovat", async () => {
+        if (u.banned) {
+          await api("POST", `/api/admin/users/${u.id}/ban`, { banned: false });
+        } else {
+          const reason = window.prompt(`Důvod zablokování hráče ${u.name} (nepovinné):`, "");
+          if (reason === null) return;
+          await api("POST", `/api/admin/users/${u.id}/ban`, { banned: true, reason });
+        }
+        await reload();
+      }, !u.banned),
+      button(u.role === "admin" ? "Odebrat admina" : "Udělat adminem", async () => {
+        const make = u.role !== "admin";
+        if (!window.confirm(make ? `Opravdu dát hráči ${u.name} plná admin práva?` : `Odebrat hráči ${u.name} admin práva?`)) return;
+        await api("POST", `/api/admin/users/${u.id}/role`, { role: make ? "admin" : "user" });
+        await reload();
+      }),
+      button("Nové heslo", async () => {
+        if (!window.confirm(`Vygenerovat nové heslo pro ${u.name}? Hráč bude odhlášen.`)) return;
+        const result = await api("POST", `/api/admin/users/${u.id}/password`, {});
+        notice([`Nové heslo pro ${u.name}: `, el("code", "", result.password), " (zobrazuje se jen teď, předej ho hráči a ať si ho změní)"]);
+      }),
+      button("Smazat", async () => {
+        if (!window.confirm(`Opravdu smazat účet ${u.name}? Nelze vrátit.`)) return;
+        await api("DELETE", `/api/admin/users/${u.id}`);
+        await reload();
+      }, true)
+    ];
+  }
+
   async function loadUsers() {
     const q = $("user-q").value.trim();
     const sort = $("user-sort").value;
@@ -141,40 +267,10 @@
         if (u.banned) name.append(el("span", "badge banned", u.banned.reason ? `ban: ${u.banned.reason}` : "ban"));
 
         const via = [u.password ? "heslo" : "", u.google ? "Google" : "", u.facebook ? "Facebook" : ""].filter(Boolean).join(", ");
-
-        const actions = [
-          button(u.banned ? "Odblokovat" : "Zablokovat", async () => {
-            if (u.banned) {
-              await api("POST", `/api/admin/users/${u.id}/ban`, { banned: false });
-            } else {
-              const reason = window.prompt(`Důvod zablokování hráče ${u.name} (nepovinné):`, "");
-              if (reason === null) return;
-              await api("POST", `/api/admin/users/${u.id}/ban`, { banned: true, reason });
-            }
-            await loadUsers();
-          }, !u.banned),
-          button(u.role === "admin" ? "Odebrat admina" : "Udělat adminem", async () => {
-            const make = u.role !== "admin";
-            if (!window.confirm(make ? `Opravdu dát hráči ${u.name} plná admin práva?` : `Odebrat hráči ${u.name} admin práva?`)) return;
-            await api("POST", `/api/admin/users/${u.id}/role`, { role: make ? "admin" : "user" });
-            await loadUsers();
-          }),
-          button("Nové heslo", async () => {
-            if (!window.confirm(`Vygenerovat nové heslo pro ${u.name}? Hráč bude odhlášen.`)) return;
-            const result = await api("POST", `/api/admin/users/${u.id}/password`, {});
-            notice([`Nové heslo pro ${u.name}: `, el("code", "", result.password), " (zobrazuje se jen teď, předej ho hráči a ať si ho změní)"]);
-          }),
-          button("Smazat", async () => {
-            if (!window.confirm(`Opravdu smazat účet ${u.name}? Nelze vrátit.`)) return;
-            await api("DELETE", `/api/admin/users/${u.id}`);
-            await loadUsers();
-          }, true)
-        ];
-
         const played = el("span", "", playTime(u.playSeconds + u.aiSeconds));
         played.title = `multiplayer ${playTime(u.playSeconds)}, proti AI ${playTime(u.aiSeconds)}`;
 
-        return [u.id, name, u.email, via, `${u.wins}/${u.games}`, played, playTime(u.onlineSeconds), when(u.created), when(u.lastSeen || u.lastLogin), { actions }];
+        return [u.id, name, u.email, via, `${u.wins}/${u.games}`, played, playTime(u.onlineSeconds), when(u.created), when(u.lastSeen || u.lastLogin), { actions: userActions(u, loadUsers) }];
       }),
       "Žádný hráč nenalezen."
     ));
@@ -185,6 +281,7 @@
     loadUsers().catch(fail);
   });
   $("user-sort").addEventListener("change", () => loadUsers().catch(fail));
+  $("accounts").addEventListener("toggle", () => { if ($("accounts").open) loadUsers().catch(fail); });
 
   /* ---------- online ---------- */
   async function loadLive() {
@@ -515,6 +612,7 @@
         onPlayer: userId => {
           closeModal();
           $("user-q").value = String(userId);
+          $("accounts").open = true;
           select("users");
         }
       }));
@@ -714,7 +812,7 @@
   });
 
   /* ---------- záložky ---------- */
-  const loaders = { overview: loadOverview, traffic: loadTraffic, users: loadUsers, live: loadLive, matches: loadMatches, maps: loadMapsTab, audit: loadAudit };
+  const loaders = { overview: loadOverview, traffic: loadTraffic, users: loadFame, live: loadLive, matches: loadMatches, maps: loadMapsTab, audit: loadAudit };
 
   function refresh() {
     return loaders[tab]().catch(fail);

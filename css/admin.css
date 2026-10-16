@@ -175,3 +175,112 @@ tr.clickable:focus-visible { outline: 2px solid var(--amber); outline-offset: -2
 .geo-tables { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; margin-top: 14px; }
 .geo-tables h3 { margin: 0 0 6px; color: #ffe9a8; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; }
 .geo-tables .table-wrap { max-height: 420px; overflow: auto; }
+
+/* ---------- síň slávy ---------- */
+.pix { image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
+.fame-head { display: flex; flex-direction: column; align-items: center; gap: 4px; margin: 4px 0 6px; text-align: center; }
+.fame-sub { margin: 0; }
+.fame-rules { margin: 10px 0 0; font-size: 11px; max-width: 900px; }
+
+.podium {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 200px));
+  justify-content: center;
+  align-items: end;
+  gap: 10px;
+  padding: 18px 12px 0;
+  margin-bottom: 18px;
+  background:
+    radial-gradient(ellipse at 50% 100%, rgba(255, 191, 69, 0.16), transparent 65%),
+    repeating-linear-gradient(0deg, transparent 0 22px, rgba(255, 255, 255, 0.025) 22px 24px),
+    var(--panel);
+  box-shadow: inset 0 0 0 1px var(--line), inset 0 -4px 0 #15121f;
+}
+
+.place { display: flex; flex-direction: column; align-items: center; min-width: 0; }
+.stand-hero { position: relative; padding: 0; background: none; box-shadow: none; display: flex; flex-direction: column; align-items: center; }
+.stand-hero:hover { background: none; filter: brightness(1.15); }
+.stand-hero .crown { margin-bottom: -34px; z-index: 1; }
+.stand-name { margin-top: 2px; }
+.stand-name { max-width: 100%; margin-bottom: 6px; overflow: hidden; color: #ffe9a8; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+
+.stand {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 6px 12px;
+  /* kámen s mosaznou obrubou, světlo zleva nahoře */
+  background: repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.12) 0 2px, transparent 2px 22px), #3b3a55;
+  box-shadow: inset 4px 4px 0 #555672, inset -4px -4px 0 #26243a, 0 -4px 0 var(--ink), 4px 0 0 var(--ink), -4px 0 0 var(--ink);
+}
+.place-1 .stand { min-height: 150px; background-color: #4a3d2a; box-shadow: inset 4px 4px 0 #a8823a, inset -4px -4px 0 #2e2416, 0 -4px 0 #ffc83a, 4px 0 0 var(--ink), -4px 0 0 var(--ink); }
+.place-2 .stand { min-height: 110px; box-shadow: inset 4px 4px 0 #767892, inset -4px -4px 0 #26243a, 0 -4px 0 #c6c7d3, 4px 0 0 var(--ink), -4px 0 0 var(--ink); }
+.place-3 .stand { min-height: 80px; background-color: #3d2c2b; box-shadow: inset 4px 4px 0 #7b5b45, inset -4px -4px 0 #2e1f21, 0 -4px 0 #be7a45, 4px 0 0 var(--ink), -4px 0 0 var(--ink); }
+.place.empty .stand { min-height: 60px; opacity: 0.4; }
+.stand-score { color: #fff6cc; font-size: 15px; font-weight: 700; }
+
+.medals { display: inline-flex; gap: 8px; align-items: center; }
+.medal-count { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; }
+.medal-count.gold { color: #ffc83a; }
+.medal-count.silver { color: #c6c7d3; }
+.medal-count.bronze { color: #f0b47a; }
+
+.ranks { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.rank-row {
+  display: grid;
+  grid-template-columns: 44px 48px minmax(160px, 1.3fr) minmax(120px, 1fr) 70px 210px;
+  grid-template-areas: "num pic who bar score extra";
+  align-items: center;
+  gap: 12px;
+  padding: 4px 12px 4px 8px;
+  background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--line);
+  cursor: pointer;
+}
+.rank-row:hover, .rank-row:focus-visible { background: #2a2547; outline: none; box-shadow: inset 0 0 0 1px var(--amber); }
+.rank-row.top-1 { box-shadow: inset 4px 0 0 #ffc83a, inset 0 0 0 1px var(--line); }
+.rank-row.top-2 { box-shadow: inset 4px 0 0 #c6c7d3, inset 0 0 0 1px var(--line); }
+.rank-row.top-3 { box-shadow: inset 4px 0 0 #be7a45, inset 0 0 0 1px var(--line); }
+.rank-num { grid-area: num; color: var(--muted); font-size: 18px; font-weight: 700; text-align: right; }
+.top-1 .rank-num { grid-area: num; color: #ffc83a; }
+.top-2 .rank-num { grid-area: num; color: #c6c7d3; }
+.top-3 .rank-num { grid-area: num; color: #f0b47a; }
+.rank-row .portrait { grid-area: pic; }
+.portrait { width: 48px; height: 48px; background: #15121f; box-shadow: inset 0 0 0 2px #2f2a50; }
+.rank-who { grid-area: who; display: flex; flex-direction: column; min-width: 0; }
+.rank-name { color: #ffe9a8; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank-parts { color: var(--muted); font-size: 11px; }
+.rank-bar { grid-area: bar; display: flex; height: 10px; background: #15121f; box-shadow: inset 0 0 0 1px #2f2a50; }
+/* pixelové dílky po 4 px */
+.rank-bar .fill { height: 100%; background-image: repeating-linear-gradient(90deg, transparent 0 3px, rgba(21, 18, 31, 0.6) 3px 4px); }
+.rank-bar .battle { background-color: #e0902a; box-shadow: inset 0 2px 0 #ffe08a; }
+.rank-bar .tour { background-color: #6fb2f0; box-shadow: inset 0 2px 0 #b4e0ff; }
+.rank-score { grid-area: score; color: #fff6cc; font-size: 16px; font-weight: 700; text-align: right; }
+.rank-extra { grid-area: extra; display: flex; justify-content: flex-end; align-items: center; gap: 10px; font-size: 11px; }
+
+.fold { margin-top: 14px; }
+.fold > summary { cursor: pointer; color: var(--brass); margin-bottom: 10px; }
+.fold > summary:hover { color: #f0d088; }
+.tour-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; align-items: end; padding: 12px; background: var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+.tour-form label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+.tour-form label.gold { color: #ffc83a; }
+.tour-form label.silver { color: #c6c7d3; }
+.tour-form label.bronze { color: #f0b47a; }
+.tour-form label.wide { grid-column: 1 / -1; }
+.tour-form input { padding: 7px 9px; border: 0; background: var(--ink); color: var(--text); font: 13px ui-monospace, Consolas, monospace; box-shadow: inset 0 0 0 1px var(--line); color-scheme: dark; }
+.tour-form input:focus { outline: 2px solid var(--amber); }
+
+.player-head { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; }
+.player-head .player-score { color: #fff6cc; font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+.player-head .medals { margin-bottom: 4px; }
+#modal-body > table { margin-bottom: 12px; }
+.player-actions { margin-top: 4px; }
+
+@media (max-width: 760px) {
+  .rank-row { grid-template-columns: 30px 48px minmax(0, 1fr) 56px; grid-template-areas: "num pic who score" "num pic bar bar" "num pic extra extra"; gap: 4px 8px; padding: 6px 10px 6px 6px; }
+  .rank-extra { justify-content: flex-start; }
+  .podium { gap: 4px; padding: 12px 4px 0; }
+  .stand-hero .sprite { width: 96px !important; height: 96px !important; }
+}

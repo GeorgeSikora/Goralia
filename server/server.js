@@ -16,6 +16,7 @@ const mapstore = require("./mapstore.js");
 const { createStore } = require("./store.js");
 const { createAccounts } = require("./accounts.js");
 const { createStats } = require("./stats.js");
+const { createHallOfFame } = require("./halloffame.js");
 const { createTraffic } = require("./traffic.js");
 const { createGeo } = require("./geoip.js");
 const { createMapConfig } = require("./mapconfig.js");
@@ -60,6 +61,7 @@ const accounts = createAccounts(store, {
   onCreate: user => { if (user.role !== "admin") traffic.bump("registrations"); }
 });
 const stats = createStats(store);
+const hall = createHallOfFame(store, accounts);
 const mapConfig = createMapConfig(store, MAPS);
 
 const MIME = {
@@ -187,7 +189,7 @@ const adminMaps = {
   }
 };
 
-const api = createApi({ accounts, stats, store, live, traffic, adminMaps, isLocalRequest, publicUrl: PUBLIC_URL });
+const api = createApi({ accounts, stats, hall, store, live, traffic, adminMaps, isLocalRequest, publicUrl: PUBLIC_URL });
 
 const server = http.createServer((req, res) => {
   let pathname;
