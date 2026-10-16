@@ -1,6 +1,7 @@
 /*
  * Síň slávy: celkové skóre hráčů z bitev (zaznamenané zápasy) a turnajů (zapisuje admin).
  * Skóre je prostý součet bodů podle POINTS, aby šlo hráčům snadno vysvětlit.
+ * Výsledky jsou veřejné (záložka Hráči v menu hry), turnaje zapisuje jen admin.
  */
 "use strict";
 
@@ -63,14 +64,21 @@ function createHallOfFame(store, accounts) {
       // stejné skóre = stejné místo
       if (!i || r.score !== rows[i - 1].score) rank = i + 1;
       const { user, ...rest } = r;
-      return { rank, ...accounts.adminView(user), ...rest };
+      // jen veřejné údaje: síň slávy vidí každý návštěvník hry
+      return {
+        rank, id: user.id, name: user.name, admin: user.role === "admin",
+        playSeconds: user.stats.playSeconds, aiSeconds: user.stats.aiSeconds, ...rest
+      };
     });
   }
 
   const tournamentView = t => ({ ...t, entrants: t.entrants.map(e => ({ ...e, name: (data.users[e.userId] || {}).name || e.name })) });
+  const publicTournament = t => ({ id: t.id, name: t.name, date: t.date, entrants: tournamentView(t).entrants });
 
-  function listTournaments() {
-    return data.tournaments.slice().sort((a, b) => b.date - a.date || b.id - a.id).map(tournamentView);
+  // admin = i kdo turnaj zapsal; veřejně jen název, datum a výsledky
+  function listTournaments({ admin = false, limit = MAX_TOURNAMENTS } = {}) {
+    const sorted = data.tournaments.slice().sort((a, b) => b.date - a.date || b.id - a.id).slice(0, limit);
+    return sorted.map(admin ? tournamentView : publicTournament);
   }
 
   // body: { name, date (ms nebo "YYYY-MM-DD"), places: [jméno 1., 2., 3.], others: [jména] }

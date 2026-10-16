@@ -1,6 +1,6 @@
 /*
- * Síň slávy v panelu serveru: pixelový nadpis, stupně vítězů s postavičkami z hry,
- * žebříček s portréty a medailemi. Data dodá admin.js, obsah z databáze jde jen do textContent.
+ * Síň slávy v záložce Hráči v menu hry: pixelový nadpis, stupně vítězů s postavičkami
+ * z hry, žebříček s portréty a medailemi. Data dodá account.js, obsah z databáze jde jen do textContent.
  */
 (() => {
   "use strict";

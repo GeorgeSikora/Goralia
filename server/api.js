@@ -102,6 +102,14 @@ function createApi({ accounts, stats, hall, store, live, traffic, adminMaps, isL
     },
 
     /* ---------- profily ---------- */
+    // Síň slávy: pořadí podle celkového skóre z bitev a turnajů (veřejné).
+    hallOfFame(ctx) {
+      const players = hall.ranking(clamp(ctx.query.get("limit"), 1, 500, 100));
+      sendJson(ctx.res, 200, {
+        points: hall.POINTS, players: players.map(p => ({ ...p, online: live.isOnline(p.id) })), tournaments: hall.listTournaments({ limit: 10 })
+      });
+    },
+
     players(ctx) {
       const list = accounts.leaderboard({ q: ctx.query.get("q") || "", limit: clamp(ctx.query.get("limit"), 1, PLAYER_LIMIT, PLAYER_LIMIT) });
       sendJson(ctx.res, 200, { players: list.map(p => ({ ...p, online: live.isOnline(p.id) })) });
@@ -239,12 +247,9 @@ function createApi({ accounts, stats, hall, store, live, traffic, adminMaps, isL
       sendJson(ctx.res, 200, { audit: store.data.audit.slice(-100).reverse() });
     },
 
-    /* ---------- síň slávy ---------- */
-    hallOfFame(ctx) {
-      const players = hall.ranking(clamp(ctx.query.get("limit"), 1, 500, 100));
-      sendJson(ctx.res, 200, {
-        points: hall.POINTS, players: players.map(p => ({ ...p, online: live.isOnline(p.id) })), tournaments: hall.listTournaments()
-      });
+    /* ---------- turnaje do síně slávy (zapisuje admin) ---------- */
+    tournaments(ctx) {
+      sendJson(ctx.res, 200, { tournaments: hall.listTournaments({ admin: true }) });
     },
 
     addTournament(ctx) {
@@ -267,6 +272,7 @@ function createApi({ accounts, stats, hall, store, live, traffic, adminMaps, isL
     ["POST", /^\/api\/auth\/logout$/, "none", handlers.logout],
     ["POST", /^\/api\/me\/name$/, "user", handlers.rename],
     ["POST", /^\/api\/me\/password$/, "user", handlers.password],
+    ["GET", /^\/api\/halloffame$/, "none", handlers.hallOfFame],
     ["GET", /^\/api\/players$/, "none", handlers.players],
     ["GET", /^\/api\/players\/(\d{1,9})$/, "none", handlers.player],
     ["GET", /^\/api\/matches\/(\d{1,9})$/, "none", handlers.match],
@@ -287,7 +293,7 @@ function createApi({ accounts, stats, hall, store, live, traffic, adminMaps, isL
     ["POST", /^\/api\/admin\/maps\/([a-z0-9-]{1,31})\/multiplayer$/, "admin", handlers.mapMultiplayer],
     ["GET", /^\/api\/admin\/traffic$/, "admin", handlers.traffic],
     ["GET", /^\/api\/admin\/audit$/, "admin", handlers.audit],
-    ["GET", /^\/api\/admin\/halloffame$/, "admin", handlers.hallOfFame],
+    ["GET", /^\/api\/admin\/tournaments$/, "admin", handlers.tournaments],
     ["POST", /^\/api\/admin\/tournaments$/, "admin", handlers.addTournament],
     ["DELETE", /^\/api\/admin\/tournaments\/(\d{1,9})$/, "admin", handlers.deleteTournament]
   ];
