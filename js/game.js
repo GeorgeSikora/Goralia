@@ -3810,7 +3810,12 @@
       const u = unitMap.get(id);
       if (!u || !alive(u) || (u !== pointed && !selected.includes(u))) continue;
       const top = HB_TOP[u.type] || 28;
-      PK.text(g, name, Math.round(u.x / 2), Math.round(u.y / 2) + 6 - top - (u.type === "hero" ? 18 : 11), PK.TEAM[u.team].ui, { align: "center", alpha: 0.9 });
+      // poloviční velikost: písmo v jemné mřížce (1 bod písma = 1 jemný px)
+      g.save();
+      g.translate(Math.round(u.x / 2), Math.round(u.y / 2) + 6 - top - (u.type === "hero" ? 14 : 8));
+      g.scale(1 / HD, 1 / HD);
+      PK.text(g, name, 0, 0, PK.TEAM[u.team].ui, { align: "center", alpha: 0.9 });
+      g.restore();
     }
   }
 
