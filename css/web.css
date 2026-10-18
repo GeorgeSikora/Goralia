@@ -195,17 +195,18 @@ a:hover { color: var(--amber-l); }
 }
 .hero-in {
   text-align: center;
-  padding: 110px 16px 170px;
+  padding: 110px 16px 90px;
   max-width: 900px;
 }
-.hero-logo { margin: 0 auto; width: min(640px, 92vw); }
-.hero-logo img {
-  width: 100%;
-  height: auto;
+.hero-logo { margin: 0 auto 14px; }
+.hero-logo canvas {
+  margin: 0 auto;
   image-rendering: pixelated;
   filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.7));
   animation: rise 1.2s cubic-bezier(.2, .8, .2, 1) both;
 }
+.hero-logo.has-pix .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.hero-logo:not(.has-pix) { color: var(--amber-l); font: 700 64px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; }
 .hero-tag {
   margin: 10px 0 6px;
   color: var(--amber-l);
@@ -243,17 +244,7 @@ a:hover { color: var(--amber-l); }
   background: rgba(21, 18, 31, 0.72);
   box-shadow: 0 0 0 2px var(--brass-d);
 }
-.march {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 30px;
-  width: 100%;
-  max-width: none;
-  height: 128px;
-  image-rendering: pixelated;
-  pointer-events: none;
-}
+
 .scroll-hint {
   position: absolute;
   left: 50%;
@@ -640,7 +631,7 @@ p { margin: 0 0 16px; }
   .roster { grid-template-columns: 1fr 1fr; gap: 12px; }
   .unit canvas.sprite { width: 144px; height: 144px; }
   .unit .role { font-size: 13px; }
-  .hero-in { padding-bottom: 150px; }
+  .hero-in { padding-bottom: 80px; }
 
 }
 

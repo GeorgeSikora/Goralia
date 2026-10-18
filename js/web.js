@@ -267,57 +267,33 @@
     }
   }
 
-  /* ---------- pochodující armáda v úvodu ---------- */
-  function march() {
-    const c = document.querySelector(".march");
-    const g = c.getContext("2d");
-    const SCALE = () => 2; // css px na jemný px spritu
-    const ARMY = ["knight", "knight", "soldier", "soldier", "soldier", "hero", "archer", "archer", "monk", "soldier", "archer", "soldier", "worker", "worker"];
-    let walkers = [];
-    let W = 0;
-    let H = 0;
+  /* ---------- logo v úvodu: znak a nápis jako v menu hry ---------- */
+  function heroLogo() {
+    const h = document.querySelector(".hero-logo");
+    // Znak i písmo mají stejnou velikost pixelu (2 art px), jak to drží i grafika hry.
+    const scale = 3;
+    const emblem = PK.icons.ringEmblem(10, C.a[2], C.a[4]);
+    const E = emblem.width * scale;
+    const tw = PK.textWidth("GORALIA", "5", scale);
+    const gap = 4 * scale;
+    const w = E + gap + tw + 4;
+    const hh = Math.max(E, 12 * scale) + 2;
+    const { c, g } = PK.makeCanvas(w, hh);
+    g.drawImage(emblem, 0, Math.round((hh - E) / 2), E, E);
+    PK.text(g, "GORALIA", E + gap, Math.round((hh - 7 * scale) / 2), C.a[3], { scale, shadow: C.r[1] });
+    c.className = "pix";
+    c.setAttribute("aria-hidden", "true");
+    h.append(c);
+    h.classList.add("has-pix");
 
-    function layout() {
-      const k = SCALE();
-      W = Math.ceil(c.clientWidth / k);
-      H = Math.ceil(c.clientHeight / k);
-      c.width = W;
-      c.height = H;
-      g.imageSmoothingEnabled = false;
-      // Každý má vlastní rozestup, fázi kroku a lehce jiné tempo, ať kolona nešlape jak přes kopírák.
-      let x = W * 0.75;
-      walkers = ARMY.map(type => {
-        x -= 34 + Math.random() * 22;
-        const speed = (R.UNITS && R.UNITS[type] ? R.UNITS[type].speed : 45) * 0.42;
-        return { type, x, y: H - 3 - Math.round(Math.random() * 6), speed: Math.min(speed, 22) * (0.95 + Math.random() * 0.1), phase: Math.random() * 1000 };
-      });
-      walkers.sort((a, b) => a.y - b.y);
-    }
-
-    layout();
-    addEventListener("resize", layout);
-    const span = () => -walkers.reduce((m, w) => Math.min(m, w.x), 0) + W + 80;
-    let last = performance.now();
-    c.tick = now => {
-      const dt = Math.min(0.1, (now - last) / 1000);
-      last = now;
-      g.clearRect(0, 0, W, H);
-      // Kolona pochoduje stejným tempem jako nejpomalejší (katapult), jinak by se rozsypala.
-      const pace = Math.min(...walkers.map(w => w.speed));
-      for (const w of walkers) {
-        w.x += pace * dt;
-        if (w.x > W + 40) w.x -= span();
-        const list = frames(w.type, "blue", "walk");
-        const f = list[Math.floor((now + w.phase) / (FRAME_MS.walk * (22 / pace))) % list.length];
-        g.globalAlpha = 0.35;
-        g.fillStyle = "#0b0914";
-        g.fillRect(Math.round(w.x) + 22, w.y - 1, 20, 2);
-        g.globalAlpha = 1;
-        g.drawImage(f, Math.round(w.x), w.y - 60); // nohy jsou v buňce spritu na y = 60
-      }
+    // Celočíselné zvětšení, ať jsou všechny pixely loga stejně velké.
+    const fit = () => {
+      const zoom = Math.max(1, Math.floor(Math.min(640, innerWidth * 0.86) / w));
+      c.style.width = `${w * zoom}px`;
+      c.style.height = `${hh * zoom}px`;
     };
-    loops.add(c);
-    visibility.observe(c);
+    fit();
+    addEventListener("resize", fit);
   }
 
   /* ---------- jiskry a světlušky ---------- */
@@ -509,11 +485,13 @@
     safe(headings);
     safe(buttons);
     safe(emblem);
-    if (PK.icons) safe(icons);
+    if (PK.icons) {
+      safe(icons);
+      safe(heroLogo);
+    }
     if (PK.units) {
       safe(roster);
       safe(cast);
-      safe(march);
     }
     let resizeT = 0;
     addEventListener("resize", () => {
