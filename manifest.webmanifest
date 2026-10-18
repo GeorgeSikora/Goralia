@@ -4,7 +4,7 @@
   "description": "Online real-time strategie zdarma v prohlížeči.",
   "lang": "cs",
   "id": "/",
-  "start_url": "/",
+  "start_url": "/play",
   "scope": "/",
   "display": "fullscreen",
   "display_override": ["fullscreen", "standalone"],

@@ -312,7 +312,7 @@ Potřebuješ [Node.js](https://nodejs.org).
 
 ```bash
 npm install
-npm start            # server na http://localhost:3000 (port z proměnné PORT)
+npm start            # web na http://localhost:3000, hra na /play (port z proměnné PORT)
 npm test             # testy map, simulace, serveru a účtů
 ```
 
@@ -331,7 +331,8 @@ Přihlášení přes Google a Facebook se zapne proměnnými `GOOGLE_CLIENT_ID` 
 ## 🧱 Jak je to postavené
 
 ```
-index.html        hra (menu, lobby, zápas)
+uvod.html         úvodní stránka webu na / (js/web.js, css/web.css, média v assets/web)
+index.html        hra na /play (menu, lobby, zápas)
 editor.html       editor map
 admin.html        panel serveru
 js/               klient i sdílená logika (globální jmenný prostor PK)

@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Goralia – pixelová RTS strategie v prohlížeči zdarma</title>
+<meta name="description" content="Goralia je česká pixelová real-time strategie zdarma přímo v prohlížeči. Postav vesnici, těž zlato a dřevo, veď hrdinu a armádu proti nemrtvým, počítači nebo až 15 dalším hráčům online.">
+<meta name="keywords" content="Goralia, RTS, real-time strategie, pixel art, online hra, hra v prohlížeči, multiplayer, strategie zdarma, česká hra, Warcraft">
+<meta name="author" content="Jiří Sikora">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#15121f">
+<link rel="canonical" href="https://goralia.cz/">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/assets/favicon-192.png">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Goralia">
+<meta property="og:locale" content="cs_CZ">
+<meta property="og:url" content="https://goralia.cz/">
+<meta property="og:title" content="Goralia – pixelová RTS strategie v prohlížeči">
+<meta property="og:description" content="Postav vesnici, veď hrdinu a armádu a zastav nemrtvé z pekla. Zdarma, bez instalace, až 16 hráčů.">
+<meta property="og:image" content="https://goralia.cz/assets/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Goralia – logo hry a vojáci na louce pod noční oblohou">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Goralia – pixelová RTS strategie v prohlížeči">
+<meta name="twitter:description" content="Postav vesnici, veď hrdinu a armádu a zastav nemrtvé z pekla. Zdarma, bez instalace, až 16 hráčů.">
+<meta name="twitter:image" content="https://goralia.cz/assets/og-image.png">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"VideoGame","name":"Goralia","url":"https://goralia.cz/","inLanguage":"cs","description":"Česká pixelová real-time strategie zdarma v prohlížeči s multiplayerem pro až 16 hráčů a kooperativním bojem proti nemrtvým.","image":"https://goralia.cz/assets/og-image.png","author":{"@type":"Person","name":"Jiří Sikora"},"genre":["Real-time strategy"],"gamePlatform":"Web browser","playMode":["SinglePlayer","MultiPlayer","CoOp"],"applicationCategory":"Game","operatingSystem":"Any","offers":{"@type":"Offer","price":"0","priceCurrency":"CZK"},"potentialAction":{"@type":"PlayAction","target":"https://goralia.cz/play"}}
+</script>
+<link rel="preload" as="image" href="/assets/web/hero.jpg">
+<link rel="stylesheet" href="/css/web.css">
+</head>
+<body>
+
+<a class="skip" href="#o-hre">Přeskočit na obsah</a>
+
+<header class="top" id="top">
+  <a class="brand" href="/" aria-label="Goralia, úvod">
+    <canvas class="emblem" width="1" height="1" aria-hidden="true"></canvas>
+    <span>Goralia</span>
+  </a>
+  <nav class="nav" aria-label="Sekce stránky">
+    <a href="#o-hre">O hře</a>
+    <a href="#prednosti">Přednosti</a>
+    <a href="#jednotky">Jednotky</a>
+    <a href="#pribeh">Příběh</a>
+    <a href="#galerie">Galerie</a>
+    <a href="#proc">Proč vznikla</a>
+  </nav>
+  <a class="btn btn-play small" href="/play" data-pix="Hrát">Hrát</a>
+</header>
+
+<main>
+
+  <!-- ========== HERO ========== -->
+  <section class="hero" aria-labelledby="hero-title">
+    <video class="hero-video" muted loop playsinline preload="none" poster="/assets/web/hero.jpg" aria-hidden="true" data-src="/assets/web/hero.mp4"></video>
+    <div class="hero-shade" aria-hidden="true"></div>
+    <canvas class="embers" aria-hidden="true"></canvas>
+
+    <div class="hero-in">
+      <h1 id="hero-title" class="hero-logo">
+        <img src="/assets/web/logo.png" width="906" height="268" alt="Goralia">
+      </h1>
+      <p class="hero-tag">Postav hrad, shromáždi armádu, dobyj království.</p>
+      <p class="hero-sub">Pixelová realtimová strategie ve stylu starých dobrých Warcraftů. Hraješ ji rovnou v prohlížeči, zdarma a bez instalace.</p>
+
+      <a class="btn btn-play big" href="/play" data-pix="Hrát">Hrát</a>
+
+      <ul class="chips" aria-label="Ve zkratce">
+        <li>Zdarma</li>
+        <li>Bez instalace</li>
+        <li>2 až 16 hráčů</li>
+        <li>Česky</li>
+        <li>PC, tablet i mobil</li>
+      </ul>
+    </div>
+
+    <canvas class="march" aria-hidden="true"></canvas>
+    <a class="scroll-hint" href="#o-hre" aria-label="Dolů na obsah"><span></span></a>
+  </section>
+
+  <!-- ========== O HŘE ========== -->
+  <section id="o-hre" class="sec about">
+    <div class="wrap two">
+      <div class="reveal">
+        <p class="kicker">O čem je Goralia</p>
+        <h2 class="pix-h">Vesnice. Armáda. Království.</h2>
+        <p>Goralia je realtimová strategie, ve které začínáš s Gminou a hrstkou dělníků uprostřed lesů a hor. Dělníci těží zlato v dolech a kácí dřevo, ty stavíš kasárna, věže a kovárnu, cvičíš vojáky, lučištníky, rytíře i katapulty a posíláš je do boje. Vyhrává ten, komu jako poslednímu zůstane hlavní budova.</p>
+        <p>Všechno se děje v reálném čase. Zatímco ty stavíš, soupeř taky. Rozhoduje, jak rychle rozjedeš ekonomiku, kdy zaútočíš a jestli ve správnou chvíli sešleš hrdinovu ohnivou kouli.</p>
+        <ul class="facts">
+          <li><b data-count="7">7</b><span>hratelných jednotek</span></li>
+          <li><b data-count="13">13</b><span>map pro 2 až 16 hráčů</span></li>
+          <li><b data-count="12">12</b><span>budov lidí i nemrtvých</span></li>
+          <li><b>0 Kč</b><span>žádné platby ani reklamy</span></li>
+        </ul>
+      </div>
+      <figure class="shot reveal" data-zoom>
+        <img src="/assets/web/obrazky/prehled-s-ui.webp" width="1280" height="720" loading="lazy" alt="Rozvinutá vesnice s HUD, minimapou a vybranou jednotkou">
+        <figcaption>Takhle vypadá rozehraná hra: suroviny nahoře, minimapa a příkazy dole.</figcaption>
+      </figure>
+    </div>
+
+    <ol class="loop reveal" aria-label="Jak se hraje">
+      <li><canvas data-icon="worker"></canvas><b>Těž</b><span>zlato a dřevo</span></li>
+      <li><canvas data-icon="hall"></canvas><b>Stav</b><span>gminu, kasárna, věže</span></li>
+      <li><canvas data-icon="soldier"></canvas><b>Cvič</b><span>armádu a hrdinu</span></li>
+      <li><canvas data-icon="weapon"></canvas><b>Vylepšuj</b><span>zbroj a zbraně</span></li>
+      <li><canvas data-icon="fire"></canvas><b>Dobývej</b><span>nepřátelskou základnu</span></li>
+    </ol>
+  </section>
+
+  <!-- ========== PŘEDNOSTI ========== -->
+  <section id="prednosti" class="sec features">
+    <div class="wrap">
+      <p class="kicker center">Proč si ji zahrát</p>
+      <h2 class="pix-h center">Co Goralia umí</h2>
+
+      <article class="feat reveal">
+        <div class="feat-media"><video muted loop playsinline preload="none" poster="/assets/web/klipy/ohniva-koule.jpg" data-src="/assets/web/klipy/ohniva-koule.mp4" aria-label="Hrdina sesílá ohnivou kouli do hordy ghúlů"></video></div>
+        <div class="feat-text">
+          <h3>Hrdina, který roste s tebou</h3>
+          <p>Hrdina sbírá v boji zkušenosti a úrovně. Ohnivou koulí rozmetá hloučky nepřátel a léčením podrží svoje muže při životě. Kolem něj se točí každá velká bitva.</p>
+        </div>
+      </article>
+
+      <article class="feat flip reveal">
+        <div class="feat-media"><video muted loop playsinline preload="none" poster="/assets/web/klipy/lich-vyvolava.jpg" data-src="/assets/web/klipy/lich-vyvolava.mp4" aria-label="Lich vyvolává kostlivce z popela"></video></div>
+        <div class="feat-text">
+          <h3>Společně proti nemrtvým z pekla</h3>
+          <p>Na kooperativních mapách stojíte s kamarády v jednom týmu proti frakci nemrtvých. Jejich krypty a zikkuraty chrlí ghúly, kostlivce a přízraky, pevnost roste a útoky sílí. Nakonec z Nekropole povstane Pekelný lich.</p>
+        </div>
+      </article>
+
+      <article class="feat reveal">
+        <div class="feat-media"><img src="/assets/web/obrazky/velka-bitva.webp" width="1280" height="720" loading="lazy" alt="Velká bitva dvou armád uprostřed lesa"></div>
+        <div class="feat-text">
+          <h3>Online až pro 16 hráčů</h3>
+          <p>Založ místnost, pozvi kamarády a domluvte se v chatu nebo hlasem přes push‑to‑talk. Probíhající zápasy jde sledovat jako divák a za vítězství se sbírá skóre do Síně slávy a turnajů.</p>
+        </div>
+      </article>
+
+      <article class="feat flip reveal">
+        <div class="feat-media"><video muted loop playsinline preload="none" poster="/assets/web/klipy/den-a-noc.jpg" data-src="/assets/web/klipy/den-a-noc.mp4" aria-label="Osada se zrychleně stmívá a rozsvěcují se okna"></video></div>
+        <div class="feat-text">
+          <h3>Světlo, stín, den a noc</h3>
+          <p>Svět se pomalu přelévá ze dne do noci. Lucerny a okna se rozsvítí, ohně vrhají světlo, voda odráží nebe a lesem prosvítají sluneční paprsky. Všechno počítá grafická karta přes WebGL.</p>
+        </div>
+      </article>
+
+      <article class="feat reveal">
+        <div class="feat-media pixbox"><img src="/assets/web/obrazky/katalog-budov.webp" width="1280" height="720" loading="lazy" alt="Katalog budov lidí a nemrtvých"></div>
+        <div class="feat-text">
+          <h3>Každý pixel nakreslený kódem</h3>
+          <p>Ve hře nejsou žádné stažené obrázky. Jednotky, budovy, stromy, efekty, písmo i ikony vznikají přímo v kódu na jemné pixelové mřížce. Hudba je syntetizovaná a podhalanská lidová muzika se mění podle toho, jestli je klid, nebo boj.</p>
+        </div>
+      </article>
+
+      <ul class="perks reveal">
+        <li><canvas data-icon="tower"></canvas><b>Bez instalace</b><span>Otevřeš prohlížeč a hraješ, na počítači, tabletu i mobilu.</span></li>
+        <li><canvas data-icon="command"></canvas><b>Chytrá AI</b><span>Počítač hraje podle stejných pravidel jako člověk.</span></li>
+        <li><canvas data-icon="monk"></canvas><b>Česky a s hlasy</b><span>Jednotky odpovídají českými hláškami při výběru i rozkazu.</span></li>
+        <li><canvas data-icon="smithy"></canvas><b>Výzkumy</b><span>Kovárna a gmina vylepšují zbroj, zbraně, střelbu i nástroje.</span></li>
+        <li><canvas data-icon="workshop"></canvas><b>Editor map</b><span>Nakresli vlastní bojiště a zahraj si ho s ostatními.</span></li>
+        <li><canvas data-icon="hero"></canvas><b>Síň slávy</b><span>Profily, statistiky zápasů, žebříček a turnaje s odpočtem.</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ========== JEDNOTKY ========== -->
+  <section id="jednotky" class="sec units">
+    <div class="wrap">
+      <p class="kicker center">Kdo bojuje v Goralii</p>
+      <h2 class="pix-h center">Jednotky</h2>
+      <p class="lead center">Každá jednotka má vlastní animaci chůze, útoku i zásahu. Ty, které tu vidíš, vykresluje stejný kód jako ve hře. Klikni na ni a uvidíš, jak se hýbe.</p>
+
+      <div class="tabs" role="tablist" aria-label="Frakce">
+        <button class="tab" role="tab" aria-selected="true" data-side="lide">Království</button>
+        <button class="tab" role="tab" aria-selected="false" data-side="nemrtvi">Nemrtví z pekla</button>
+      </div>
+      <div class="roster" id="roster" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <!-- ========== PŘÍBĚH ========== -->
+  <section id="pribeh" class="sec story">
+    <canvas class="embers" aria-hidden="true"></canvas>
+    <div class="wrap">
+      <p class="kicker center">Kampaň</p>
+      <h2 class="pix-h center">Stín Morvanův</h2>
+      <p class="lead center story-lead">Goralie, rok po Velké válce. Lidé znovu orají pole a staví domy. Ale na severu, ve Vraním lese, začala zem kouřit popelem a mrtví se zvedají z hrobů. Někdo je volá.</p>
+
+      <div class="cast reveal" id="cast"></div>
+
+      <ol class="chapters">
+        <li class="chapter reveal">
+          <img src="/assets/web/obrazky/nemrtvi-utoci-na-vesnici.webp" width="1280" height="720" loading="lazy" alt="Nemrtví útočí na vesnici v noci">
+          <div><span class="ch-no">Kapitola I</span><h3>Popel nad Bystrou</h3><p>Rytíř Radim musí s hrstkou sedláků ubránit vesnici Bystrá před první nocí mrtvých.</p></div>
+        </li>
+        <li class="chapter reveal">
+          <img src="/assets/web/klipy/lich-vyvolava.jpg" width="854" height="480" loading="lazy" alt="Lich v mrtvém lese">
+          <div><span class="ch-no">Kapitola II</span><h3>Vraní les</h3><p>Družina prochází mrtvým lesem ke strážnici Hněvína. U brodu poprvé promluví ten, kdo mrtvé volá.</p></div>
+        </li>
+        <li class="chapter reveal">
+          <img src="/assets/web/obrazky/obleheni.webp" width="1280" height="720" loading="lazy" alt="Obléhání hradeb">
+          <div><span class="ch-no">Kapitola III</span><h3>Obležení Hněvína</h3><p>Hordy z hor obléhají hrad. Je třeba vydržet do úsvitu, než dorazí knížecí vojsko. A Morvan má pro vojvodu nabídku.</p></div>
+        </li>
+        <li class="chapter reveal">
+          <img src="/assets/web/klipy/souboj.jpg" width="854" height="480" loading="lazy" alt="Souboj hrdiny s lichem u pekelné brány">
+          <div><span class="ch-no">Kapitola IV</span><h3>Brána pekel</h3><p>Poslední bitva. Za horským valem stojí Nekropole a Brána, kterou je třeba zavřít navždy.</p></div>
+        </li>
+      </ol>
+      <p class="quote reveal">„Jen pojďte, malí lidé. Každý z vás, kdo padne, mi přidá dalšího vojáka.“<span>Hlas ze tmy</span></p>
+    </div>
+  </section>
+
+  <!-- ========== GALERIE ========== -->
+  <section id="galerie" class="sec gallery">
+    <div class="wrap">
+      <p class="kicker center">Ze hry</p>
+      <h2 class="pix-h center">Galerie</h2>
+      <div class="grid">
+        <figure class="g wide reveal" data-zoom><img src="/assets/web/obrazky/key-art.webp" width="1280" height="720" loading="lazy" alt="Lesní údolí s cestou, krystaly a vesnicí"></figure>
+        <figure class="g reveal" data-zoom><video muted loop playsinline preload="none" poster="/assets/web/klipy/obrana-brany.jpg" data-src="/assets/web/klipy/obrana-brany.mp4" aria-label="Obrana horské brány"></video></figure>
+        <figure class="g reveal" data-zoom><img src="/assets/web/obrazky/vesnice-noc.webp" width="1280" height="720" loading="lazy" alt="Vesnice v noci s rozsvícenými okny"></figure>
+        <figure class="g reveal" data-zoom><video muted loop playsinline preload="none" poster="/assets/web/klipy/katapulty.jpg" data-src="/assets/web/klipy/katapulty.mp4" aria-label="Katapulty bourají zikkurat"></video></figure>
+        <figure class="g reveal" data-zoom><img src="/assets/web/obrazky/tezba-surovin.webp" width="1280" height="720" loading="lazy" alt="Dělníci těží zlato a dřevo"></figure>
+        <figure class="g wide reveal" data-zoom><video muted loop playsinline preload="none" poster="/assets/web/klipy/salva.jpg" data-src="/assets/web/klipy/salva.mp4" aria-label="Salva lučištníků"></video></figure>
+        <figure class="g reveal" data-zoom><img src="/assets/web/obrazky/obrana-prusmyku.webp" width="1280" height="720" loading="lazy" alt="Obrana průsmyku mezi horami"></figure>
+        <figure class="g reveal" data-zoom><video muted loop playsinline preload="none" poster="/assets/web/klipy/mnich.jpg" data-src="/assets/web/klipy/mnich.mp4" aria-label="Mnich léčí raněné po boji"></video></figure>
+        <figure class="g reveal" data-zoom><img src="/assets/web/obrazky/stavba-ve-trech-fazich.webp" width="1280" height="720" loading="lazy" alt="Stavba věže ve třech fázích"></figure>
+        <figure class="g reveal" data-zoom><video muted loop playsinline preload="none" poster="/assets/web/klipy/kachny.jpg" data-src="/assets/web/klipy/kachny.mp4" aria-label="Kachny na jezeře"></video></figure>
+        <figure class="g reveal" data-zoom><img src="/assets/web/obrazky/detail-krajiny.webp" width="1280" height="720" loading="lazy" alt="Potok se vlévá do jezera"></figure>
+        <figure class="g wide reveal" data-zoom><img src="/assets/web/obrazky/technologicky-strom.webp" width="1280" height="720" loading="lazy" alt="Technologický strom budov, jednotek a výzkumů"></figure>
+        <figure class="g reveal" data-zoom><video muted loop playsinline preload="none" poster="/assets/web/klipy/zlaty-dul.jpg" data-src="/assets/web/klipy/zlaty-dul.mp4" aria-label="Zlatý důl ve zlaté hodince"></video></figure>
+        <figure class="g reveal" data-zoom><img src="/assets/web/obrazky/vitezstvi.webp" width="1280" height="720" loading="lazy" alt="Obrazovka vítězství po zničení poslední soupeřovy základny"></figure>
+        <figure class="g reveal" data-zoom><img src="/assets/web/obrazky/hlavni-menu.webp" width="1280" height="720" loading="lazy" alt="Hlavní menu hry"></figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== PROČ ========== -->
+  <section id="proc" class="sec why">
+    <div class="wrap two">
+      <figure class="shot reveal" data-zoom>
+        <img src="/assets/web/obrazky/rozvinuta-vesnice.webp" width="1280" height="720" loading="lazy" alt="Rozvinutá vesnice v lesním údolí">
+      </figure>
+      <div class="reveal">
+        <p class="kicker">Proč Goralia vznikla</p>
+        <h2 class="pix-h">Z lásky ke strategiím</h2>
+        <p>Vyrůstal jsem u Warcraftu a podobných strategií, u kterých se dalo sedět celé večery s kamarády. Dnes je ale těžké takovou hru jen tak spustit: instalace, účty, aktualizace a placené přídavky. Chtěl jsem strategii, kterou otevřeš v prohlížeči a za minutu už stavíš první kasárna.</p>
+        <p>Goralia vzniká v Česku, po večerech a s chutí. Je česky, je zdarma a bez reklam, a každý detail od chůze vojáka po plamínek v lucerně je poctivě vykreslený kódem. Inspirací jsou naše hory, lesy a podhalanská muzika.</p>
+        <p>Hra pořád roste. Přibývají jednotky, mapy, turnaje i příběhová kampaň, a hodně nápadů přichází přímo od hráčů.</p>
+        <p class="sign">Jiří Sikora, autor hry</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== VÝZVA ========== -->
+  <section class="sec cta">
+    <canvas class="embers" aria-hidden="true"></canvas>
+    <div class="wrap center">
+      <h2 class="pix-h center">Království čeká</h2>
+      <p class="lead center">Stačí kliknout. Hra se načte během pár vteřin a hrát můžeš hned, i bez účtu.</p>
+      <a class="btn btn-play big" href="/play" data-pix="Hrát">Hrát</a>
+    </div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <p>Goralia &middot; <a href="/play">Hrát</a> &middot; <a href="/editor.html">Editor map</a> &middot; <a href="/terms">Podmínky</a> &middot; <a href="/privacy">Soukromí</a></p>
+  <p class="small">&copy; Jiří Sikora</p>
+</footer>
+
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Zvětšený obrázek" hidden>
+  <button class="lb-close" type="button" aria-label="Zavřít">&times;</button>
+  <div class="lb-body"></div>
+</div>
+
+<script src="/js/rules.js"></script>
+<script src="/js/pixel.js"></script>
+<script src="/js/font.js"></script>
+<script src="/js/icons.js"></script>
+<script src="/js/units.js"></script>
+<script src="/js/web.js"></script>
+</body>
+</html>
