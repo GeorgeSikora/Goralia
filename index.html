@@ -88,9 +88,12 @@
           <span id="m-event-time" class="event-time"></span>
         </button>
         <button id="m-online" class="btn big" type="button">Multiplayer</button>
+        <button id="m-campaign" class="btn big" type="button">Kampaň</button>
         <button id="m-play" class="btn big" type="button">Hra proti AI</button>
         <button id="m-restart" class="btn big" type="button" hidden>Nová hra</button>
         <button id="m-surrender" class="btn big" type="button" hidden>Vzdát se</button>
+        <button id="m-next" class="btn big" type="button" hidden>Další kapitola</button>
+        <button id="m-retry" class="btn big" type="button" hidden>Opakovat kapitolu</button>
         <button id="m-leave" class="btn big" type="button" hidden>Hlavní menu</button>
         <button id="m-players" class="btn big" type="button">Hráči</button>
         <button id="m-account" class="btn big" type="button">Přihlásit se</button>
@@ -217,6 +220,13 @@
         <div id="pl-list" class="players" role="list"></div>
         <p id="fame-rules" class="fame-rules small"></p>
         <div id="fame-tours" class="fame-tours" hidden></div>
+        <button class="btn big" type="button" data-back>Zpět</button>
+      </section>
+
+      <section id="panel-campaign" class="page" data-page="campaign" hidden>
+        <h2>Kampaň: Stín Morvanův</h2>
+        <p class="status small">Rytíř Radim z Bystré proti nemrtvým. Postup se ukládá v tomto prohlížeči.</p>
+        <div id="c-list" class="chapters" role="list"></div>
         <button class="btn big" type="button" data-back>Zpět</button>
       </section>
 

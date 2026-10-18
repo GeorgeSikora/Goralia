@@ -89,6 +89,9 @@
 
   // "ai": hra proti počítačům, simulace běží tady. "online": o všem rozhoduje server.
   let mode = "ai";
+  // Kapitola kampaně (js/campaign.js): běží jako hra proti AI, řídí ji režisér { ch, dir, cine, zoomBack }.
+  let campaign = null;
+  const cineActive = () => !!(campaign && campaign.dir.state.cinematic);
   // Mapy se načítají ze serveru; než dorazí, drží se prázdná zástupná mapa (není v seznamu map).
   const STUB_MAP = MAPS.compileDoc(MAPS.normalizeDoc({
     format: "goralia-map", version: 1, id: "stub", name: "Bez map", size: [800, 500],
@@ -215,6 +218,11 @@
     ownOutWhy = "";
     simMatch = null;
     simAcc = 0;
+    if (campaign) {
+      PK.campaign.stopVoice();
+      if (PK.shaders) PK.shaders.phase = null;
+      campaign = null;
+    }
   }
 
   // Postaví terén mapy (jednou na mapu) a vycentruje kameru na vlastní základnu.
@@ -309,7 +317,8 @@
         const p = players.find(q => q.slot === i);
         return p ? { name: p.name, ai: p.ai } : null;
       });
-      simMatch = new sim.Match(map, roster, { countdown: 0 });
+      simMatch = new sim.Match(map, roster, { countdown: 0, scripted: !!cfg.campaign });
+      if (cfg.campaign) startDirector(cfg.campaign);
       applySnapshot(simMatch.snapshot(me));
       simMatch.endTick();
       reportAi("start");
@@ -320,8 +329,130 @@
     closeMenu();
   }
 
+  /* ---------- kampaň ---------- */
+  function startDirector(ch) {
+    const dir = PK.campaign.start(ch, { m: simMatch, me, foe: R.TEAMS[1], ally: R.TEAMS[2], fx: campaignFx, announce });
+    campaign = { ch, dir, cine: false, zoomBack: zoom };
+    campaignTick(0);
+  }
+
+  // Efekty, které si skript kapitoly řekne (x, y logicky).
+  function campaignFx(kind, x, y) {
+    if (kind === "spawn") {
+      fx.spawn(x, y + 12);
+      return;
+    }
+
+    for (let i = 0; i < 6; i++) fx.later(i * 0.05, () => fx.smoke(x + (Math.random() - 0.5) * 24, y - 4 - Math.random() * 16, true));
+    fx.ring(x, y + 10, 18, kind === "turn" ? 0xff5a5a : 0xb58cff, 0.7);
+    audio.play(kind === "turn" ? "levelUp" : "spawn", { x });
+  }
+
+  function campaignTick(dt) {
+    const st = campaign.dir.state;
+    campaign.dir.tick(dt);
+
+    if (st.cinematic !== campaign.cine) {
+      campaign.cine = st.cinematic;
+
+      if (st.cinematic) {
+        selected = [];
+        placement = null;
+        spellMode = null;
+        commandMode = false;
+        pointerStart = null;
+        pointerEnd = null;
+        keysDown.clear();
+        campaign.zoomBack = zoom;
+      } else {
+        animateZoom(nearestZoom(campaign.zoomBack), view.w / 2, view.mapH / 2);
+      }
+    }
+
+    if (PK.shaders) PK.shaders.phase = st.phase;
+  }
+
+  // Kamera v cutscéně: plynule za postavou nebo na bod, přiblížení podle scény.
+  function cineCamera(dt) {
+    const st = campaign.dir.state;
+    const c = st.camera;
+    const z = clamp(st.zoom || 2, zoomMin(), ZOOMS[ZOOMS.length - 1]);
+
+    if (Math.abs(zoom - z) > 1e-3 && (!zoomAnim || zoomAnim.to !== z)) {
+      if (st.fade > 0.95 || (c && c.snap)) setZoom(z, view.w / 2, view.mapH / 2);
+      else animateZoom(z, view.w / 2, view.mapH / 2);
+    }
+
+    if (!c) return;
+
+    let x = c.x;
+    let y = c.y;
+
+    if (c.id) {
+      const u = unitMap.get(c.id);
+      if (!u) return;
+      x = u.x;
+      y = u.y - 16;
+    }
+
+    const tx = x / 2 - view.w / zoom / 2;
+    const ty = y / 2 - view.mapH / zoom / 2 + 6 / zoom;
+    const k = c.snap ? 1 : 1 - Math.exp(-dt * 2.4);
+    c.snap = false;
+    setCam(camF.x + (tx - camF.x) * k, camF.y + (ty - camF.y) * k);
+  }
+
+  function startCampaign(ch) {
+    audio.unlock();
+    if (!ch || !PK.campaign.unlocked(ch) || (PK.loader && PK.loader.busy)) return;
+    const next = PK.campaign.mapOf(ch);
+    if (!next) return;
+    if (settings.autoFullscreen && fsSupported && !isFullscreen()) toggleFullscreen(true);
+    prepareMatch(next, ch.roster.map(p => p.slot), () => beginMatch({ mode: "ai", map: next, slot: 0, players: ch.roster, campaign: ch }));
+  }
+
+  function leaveCampaign() {
+    leaveOnline();
+    openCampaign();
+  }
+
+  function openCampaign() {
+    audio.unlock();
+    if (menuOpen) showPage("campaign");
+    else openMenu("campaign");
+    renderCampaign();
+  }
+
+  // Seznam kapitol: další se odemkne až po dohrání předchozí.
+  function renderCampaign() {
+    $("c-list").replaceChildren(...PK.campaign.chapters.map(ch => {
+      const open = PK.campaign.unlocked(ch);
+      const done = PK.campaign.done(ch);
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = `chapter${done ? " done" : ""}`;
+      item.disabled = !open;
+
+      const kicker = document.createElement("span");
+      kicker.className = "chapter-num";
+      kicker.textContent = `${ch.num}${done ? " · dohráno" : open ? "" : " · zamčeno"}`;
+      const name = document.createElement("span");
+      name.className = "chapter-name";
+      name.textContent = ch.title;
+      const blurb = document.createElement("span");
+      blurb.className = "chapter-blurb";
+      blurb.textContent = open ? ch.blurb : "Dohraj předchozí kapitolu.";
+
+      item.append(kicker, name, blurb);
+      item.addEventListener("click", () => startCampaign(ch));
+      return item;
+    }));
+  }
+
   function pumpSim(dt) {
     if (!simMatch || matchOver) return;
+    if (campaign) campaignTick(dt);
+    if (matchOver) return;
 
     simAcc += dt * (simMatch.speed || 1); // příkaz správce /speed
     let stepped = false;
@@ -332,7 +463,8 @@
       stepped = true;
     }
 
-    if (stepped) {
+    // konec vyhlášený skriptem kampaně přijde i bez dalšího kroku simulace
+    if (stepped || simMatch.phase === "ended") {
       applySnapshot(simMatch.snapshot(me));
       simMatch.endTick();
     }
@@ -384,6 +516,7 @@
 
     // v kooperaci vyhrává celý tým, i ten, komu už padla základna
     const won = endWinners.includes(mySlot);
+    if (campaign && won) PK.campaign.markDone(campaign.ch);
 
     if (state === "playing" || (won && state === "lose")) {
       state = won ? "win" : winner < 0 ? "draw" : "lose";
@@ -901,6 +1034,12 @@
       if (a.t >= 1) zoomAnim = null;
     }
 
+    if (cineActive()) {
+      fling = null;
+      cineCamera(dt);
+      return;
+    }
+
     // setrvačnost po švihnutí prstem
     if (fling) {
       setCam(camF.x + fling.vx * dt, camF.y + fling.vy * dt);
@@ -943,6 +1082,7 @@
 
   canvas.addEventListener("contextmenu", event => {
     event.preventDefault();
+    if (cineActive()) return;
 
     // dlouhé podržení prstu vyvolá contextmenu; to nesmí vydat rozkaz
     if (event.pointerType === "touch" || touches.size || performance.now() - lastTouchAt < 800) return;
@@ -973,6 +1113,13 @@
 
   canvas.addEventListener("pointerdown", event => {
     audio.unlock();
+
+    // cutscéna: klik dopíše nebo odklikne repliku, nic jiného
+    if (cineActive()) {
+      if (event.button === 0) campaign.dir.advance();
+      event.preventDefault();
+      return;
+    }
 
     if (event.button === 1) {
       event.preventDefault();
@@ -1053,6 +1200,8 @@
   });
 
   canvas.addEventListener("pointerup", event => {
+    if (cineActive()) return;
+
     if (touches.has(event.pointerId)) {
       touchEnd(event, false);
       return;
@@ -1138,7 +1287,7 @@
 
   canvas.addEventListener("wheel", event => {
     event.preventDefault();
-    if (menuOpen || !started || pointerPosition(event).y >= mapAreaH()) return;
+    if (menuOpen || !started || cineActive() || pointerPosition(event).y >= mapAreaH()) return;
 
     wheelAcc += event.deltaY * (event.deltaMode === 1 ? 33 : 1);
     if (Math.abs(wheelAcc) < 40) return;
@@ -1489,6 +1638,16 @@
   window.addEventListener("keydown", event => {
     const key = event.key.toLowerCase();
 
+    // cutscéna: Esc ji přeskočí, mezerník a Enter posunou repliku, pauza otevře menu
+    if (cineActive() && !menuOpen) {
+      if (event.repeat) return;
+      if (key === "escape") campaign.dir.skip();
+      else if (key === " " || key === "enter") campaign.dir.advance();
+      else if (PK.keys.is(event, "pause")) openMenu();
+      event.preventDefault();
+      return;
+    }
+
     if (key.startsWith("arrow")) {
       if (!menuOpen && started && !event.target.matches("input, select")) {
         keysDown.add(key);
@@ -1532,7 +1691,8 @@
     }
 
     if (PK.keys.is(event, "leave") && matchOver) {
-      if (spectator) leaveSpectate();
+      if (campaign) leaveCampaign();
+      else if (spectator) leaveSpectate();
       else if (mode === "online") returnToRoom();
       else leaveOnline();
     }
@@ -1580,6 +1740,8 @@
   }
 
   function endReason() {
+    if (campaign) return state === "win" ? campaign.ch.winText : campaign.dir.loseWhy || "Kapitola nevyšla.";
+
     if (spectator) {
       const w = players.find(p => p.slot === endWinner);
       if (w) return `Vítěz: ${w.name}.`;
@@ -1614,6 +1776,11 @@
     $("m-leave").textContent = spectator ? "Opustit zápas" : "Hlavní menu";
     $("m-play").textContent = live ? "Pokračovat" : "Hra proti AI";
     $("m-restart").hidden = !started || onl || over;
+    $("m-restart").textContent = campaign ? "Restartovat kapitolu" : "Nová hra";
+    $("m-campaign").hidden = live;
+    const nextCh = campaign && PK.campaign.next(campaign.ch);
+    $("m-next").hidden = !(campaign && over && state === "win" && nextCh);
+    $("m-retry").hidden = !(campaign && over && state !== "win");
     $("m-surrender").hidden = !playing;
     $("m-leave").hidden = !((onl && (over || !playing)) || (started && !onl && over));
     menuBtn.hidden = !started || menuOpen;
@@ -2218,7 +2385,8 @@
       attackDelay: s.delay, cooldown: 0, fireCooldown: 0, healCooldown: 0,
       order: null, carry: null, level: 1, xp: 0, walkCycle: 0,
       facing: map.slots[R.TEAMS.indexOf(team)].facing,
-      atk: 0, castT: 0, flashT: 0, workT: 0, fxT: 0, moveT: 0, wd: 0, lx: x, ly: y, stepT: 0
+      // wd: ušlá dráha pro snímky chůze; posun podle id, ať skupina nekráčí v jednom kroku
+      atk: 0, castT: 0, flashT: 0, workT: 0, fxT: 0, moveT: 0, wd: (id * 37) % 22, lx: x, ly: y, stepT: 0
     };
   }
 
@@ -2421,6 +2589,7 @@
       }
 
       seenUnits.add(id);
+      u.team = R.TEAMS[team]; // jednotka může přejít k jinému týmu (kampaň)
       u.sx = x;
       u.sy = y;
       u.hp = hp;
@@ -2869,7 +3038,10 @@
     else startOffline();
   });
   $("l-back").addEventListener("click", () => goBack("lobby"));
-  $("m-restart").addEventListener("click", openOfflineLobby);
+  $("m-restart").addEventListener("click", () => (campaign ? startCampaign(campaign.ch) : openOfflineLobby()));
+  $("m-campaign").addEventListener("click", openCampaign);
+  $("m-next").addEventListener("click", () => campaign && startCampaign(PK.campaign.next(campaign.ch)));
+  $("m-retry").addEventListener("click", () => campaign && startCampaign(campaign.ch));
   $("m-settings").addEventListener("click", () => showPage("settings"));
   $("m-help").addEventListener("click", () => showPage("help"));
   $("fs-btn").addEventListener("click", () => toggleFullscreen());
@@ -3630,6 +3802,18 @@
     }
   }
 
+  // Jméno postavy kampaně nad hlavou, když je vybraná nebo pod kurzorem (svět, art px).
+  function drawActorNames() {
+    const pointed = hover && (hover.friend || hover.enemy);
+
+    for (const [id, name] of campaign.dir.names) {
+      const u = unitMap.get(id);
+      if (!u || !alive(u) || (u !== pointed && !selected.includes(u))) continue;
+      const top = HB_TOP[u.type] || 28;
+      PK.text(g, name, Math.round(u.x / 2), Math.round(u.y / 2) + 6 - top - (u.type === "hero" ? 18 : 11), PK.TEAM[u.team].ui, { align: "center", alpha: 0.9 });
+    }
+  }
+
   // stavba: stejný tenký pruh, modrá náplň s přebíhajícím leskem
   function drawProgressBar(x, y, w, pct) {
     const f = 1 / HD;
@@ -3841,8 +4025,17 @@
   }
 
   function drawGroundMarks() {
+    // kampaň: kdo právě mluví, má místo týmového kroužku živý zlatý kruh
+    const line = campaign && campaign.dir.state.line;
+    const speaker = line && line.unit ? unitMap.get(line.unit) : null;
+
+    if (speaker && alive(speaker)) {
+      PK.cutscene.speakerRing(g, speaker, clock, ellipseRing, (x, y, r, color, a) => world.light(g, x, y, r, color, a, 1, true));
+    }
+
     // faint team rings keep factions readable at a glance
     for (const u of units) {
+      if (u === speaker) continue;
       const rx = u.type === "hero" ? 10 : 8;
       g.globalAlpha = u.team === me ? 0.4 : 0.55;
       g.drawImage(ellipseRing(rx, 3, PK.TEAM[u.team].ui), Math.round(u.x / 2) - rx - 1, Math.round(u.y / 2) + 6 - 4);
@@ -4053,8 +4246,10 @@
     fx.drawAmbient(g, T);
     if (shading) PK.shaders.end();
 
+    const cine = cineActive();
     for (const e of selected) if (alive(e) && e.kind === "building") drawBrackets(e);
-    drawOverlays();
+    if (!cine) drawOverlays();
+    if (campaign && !cine) drawActorNames();
     fx.drawTexts(g);
     drawPlacementGhost();
     drawSpellTarget();
@@ -4072,6 +4267,12 @@
 
     g.restore();
     g.restore();
+
+    // cutscéna kampaně: místo HUD filmové lišty a dialog
+    if (cine) {
+      PK.cutscene.draw(g, campaign.dir.state, view, T);
+      return;
+    }
 
     // HUD
     const hero = selectedHero();
@@ -4164,12 +4365,21 @@
       spectating: !matchOver && state !== "playing",
       endReason: matchOver ? endReason() : "",
       spectator,
-      endHint: spectator ? "R: seznam zápasů · Esc: menu" : mode === "online" ? "R: zpět do místnosti · Esc: menu" : "R: hlavní menu · Esc: menu"
+      endHint: campaign ? "R: kampaň · Esc: menu" : spectator ? "R: seznam zápasů · Esc: menu" : mode === "online" ? "R: zpět do místnosti · Esc: menu" : "R: hlavní menu · Esc: menu"
     };
 
     if (matchPhase === "countdown" && mode === "online") drawCountdown();
 
     PK.hud.draw(g, vm, T, dt);
+    if (campaign && !matchOver) {
+      PK.cutscene.drawPlay(g, campaign.dir.state, view, T, key => campaign.dir.left(key));
+      if (campaign.dir.state.fade > 0.01) {
+        g.globalAlpha = campaign.dir.state.fade;
+        g.fillStyle = "#000";
+        g.fillRect(0, 0, view.w, view.h);
+        g.globalAlpha = 1;
+      }
+    }
 
     if (matchOver && started) PK.hud.drawEnd(g, vm, T, endT);
   }
@@ -4362,6 +4572,8 @@
     get mode() { return mode; },
     get me() { return me; },
     get map() { return map; },
+    get campaign() { return campaign; },
+    get sim() { return simMatch; },
     get cam() { return cam; },
     online,
     cheat(k, v) { if (k === "gold") gold = v; if (k === "wood") wood = v; },

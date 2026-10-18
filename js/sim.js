@@ -73,6 +73,8 @@ class Match {
     this.events = [];
     this.blasts = []; // ohnivé koule v letu: poškození se započítá až při dopadu
     this.coop = map.coop || null;
+    // kampaň: o vítězství a prohře rozhoduje skript kapitoly (js/campaign.js), ne pád hlavní budovy
+    this.scripted = !!opts.scripted;
     this.side = {};    // tým -> strana; spojenci mají stejnou stranu
     this.faction = {}; // tým -> "human" | "undead"
 
@@ -1214,6 +1216,7 @@ class Match {
   /* ---------- konec hry ---------- */
   // Hráč bez HQ vypadává. Hra končí, když zůstane jeden tým nebo žádný člověk.
   updateOutcome() {
+    if (this.scripted) return;
     const standing = this.active.filter(t => !this.out.has(t));
     const down = standing.filter(t => !this.hqOf(t));
     if (!down.length) return;
