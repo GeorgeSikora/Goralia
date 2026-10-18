@@ -36,15 +36,20 @@
     return best;
   }
 
+  // Hladké sloučení vodních tahů (art px): potok se do jezera vlévá zaobleným ústím, ne ostrým zubem.
+  const RIVER_BLEND = 10;
+  function smin(a, b, k) {
+    const h = Math.max(k - Math.abs(a - b), 0) / k;
+    return Math.min(a, b) - h * h * k / 4;
+  }
+
   // Je bod (art px) ve vodě? Cesty přes vodu jsou brody a jdou přejít; hrana vody je o px úžší než vykreslená.
   function isWater(rec, ax, ay) {
-    let water = false;
+    let sd = 1e6;
 
-    for (const r of rec.rivers) {
-      if (distToPolyline(ax, ay, r.pts) < r.hw - 1) water = true;
-    }
+    for (const r of rec.rivers) sd = smin(sd, distToPolyline(ax, ay, r.pts) - r.hw, RIVER_BLEND);
 
-    return water && !onRoad(rec, ax, ay);
+    return sd < -1 && !onRoad(rec, ax, ay);
   }
 
   const onRoad = (rec, ax, ay) => rec.roads.some(road => distToPolyline(ax, ay, road.pts) < road.w * (road.main ? 0.8 : 0.5));
@@ -390,7 +395,7 @@
   return {
     list,
     get: id => byId.get(id) || null,
-    isWater, isRock, WALL_PAD, wallR, WALL_FACE, waterNear,
+    isWater, isRock, distToPolyline, smin, RIVER_BLEND, WALL_PAD, wallR, WALL_FACE, waterNear,
     DOC, normalizeDoc, compileDoc, zonesFor, baseAt, baseMinesFor, register, unregister,
     // první dostupná mapa (mapy se načítají ze serveru, napevno žádná není)
     get DEFAULT() { return list.length ? list[0].id : ""; }

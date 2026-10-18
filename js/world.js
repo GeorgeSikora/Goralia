@@ -24,6 +24,8 @@
   const Z_PATH = 1;
   const Z_PLAZA = 2;
   const Z_WATER = 3;
+  // hloubka vody roste od břehu nejvýš na tolik art px; široké jezero z více tahů pak nemá pruhy podle tahů
+  const DEEP = 9;
   const Z_FRAME = 4;
   const Z_TERRACE = 5;
   const Z_BANK = 6;
@@ -236,35 +238,32 @@
 
     yield 0;
 
-    // river raster: distance to the nearest river centre line and its half-width there
+    // river raster: signed distance to the water edge (< 0 = water) and the half-width of the stroke that owns it.
+    // Strokes merge with a smooth minimum (riverBlend), so a stream flows into a lake through a rounded mouth
+    // instead of a sharp notch, and a lake drawn from several strokes gets one smooth shore.
     const rd = new Float32Array(W * H).fill(1e6);
     const rhw = new Float32Array(W * H);
+    const K = PK.maps.RIVER_BLEND;
 
     for (const river of rec.rivers) {
       if (!river.pts) continue;
-      const pad = river.hw * 1.6 + 6;
+      const pad = river.hw * 1.6 + 6 + K;
+      const xs = river.pts.map(p => p[0]);
+      const ys = river.pts.map(p => p[1]);
+      const x0 = Math.max(0, Math.floor(Math.min(...xs) - pad));
+      const x1 = Math.min(W - 1, Math.ceil(Math.max(...xs) + pad));
+      const y0 = Math.max(0, Math.floor(Math.min(...ys) - pad));
+      const y1 = Math.min(H - 1, Math.ceil(Math.max(...ys) + pad));
 
-      for (let i = 0; i < river.pts.length - 1; i++) {
-        const [ax, ay] = river.pts[i];
-        const [bx, by] = river.pts[i + 1];
-        const x0 = Math.max(0, Math.floor(Math.min(ax, bx) - pad));
-        const x1 = Math.min(W - 1, Math.ceil(Math.max(ax, bx) + pad));
-        const y0 = Math.max(0, Math.floor(Math.min(ay, by) - pad));
-        const y1 = Math.min(H - 1, Math.ceil(Math.max(ay, by) + pad));
-        const dx = bx - ax;
-        const dy = by - ay;
-        const len2 = dx * dx + dy * dy;
-
-        for (let y = y0; y <= y1; y++) {
-          for (let x = x0; x <= x1; x++) {
-            const t = clamp(((x - ax) * dx + (y - ay) * dy) / len2, 0, 1);
-            const d = Math.hypot(x - (ax + dx * t), y - (ay + dy * t));
-
-            if (d < rd[y * W + x]) {
-              rd[y * W + x] = d;
-              rhw[y * W + x] = river.hw + 1.3 * Math.sin((x + y) * 0.09);
-            }
-          }
+      for (let y = y0; y <= y1; y++) {
+        for (let x = x0; x <= x1; x++) {
+          const hw = river.hw + 1.3 * Math.sin((x + y) * 0.09);
+          const sd = PK.maps.distToPolyline(x, y, river.pts) - hw;
+          const i = y * W + x;
+          const prev = rd[i];
+          if (sd > pad) continue;
+          if (sd < prev) rhw[i] = hw;
+          rd[i] = PK.maps.smin(prev, sd, K);
         }
       }
     }
@@ -418,18 +417,16 @@
         let bdx = 1e6;
 
         if (rd[i] < 1e5) {
-          const pd = rd[i] + (vnoise(y / 7, x / 9, 6) - 0.5) * 2.4;
-          F.riv[i] = pd - rhw[i];
-          if (pd - rhw[i] < bdx - hw) {
-            bdx = pd;
-            hw = rhw[i];
-          }
+          const sd = rd[i] + (vnoise(y / 7, x / 9, 6) - 0.5) * 2.4;
+          F.riv[i] = sd;
+          hw = rhw[i];
+          bdx = sd + hw;
         }
 
         if (bdx < hw) {
           z = Z_WATER;
           col = C.v[1];
-          rivE[i] = clamp((hw - bdx) / hw, 0, 1);
+          rivE[i] = clamp((hw - bdx) / Math.min(hw, DEEP), 0, 1);
         } else if (bdx < hw + 2.6) {
           z = Z_BANK;
           const wet = bdx < hw + 1.2;
@@ -1030,7 +1027,7 @@
           rs = bil(F.riv, fx);
           if (rs < 0) {
             z = Z_WATER;
-            const e = clamp(-rs / Math.max(1, F.rhw[ai]), 0, 1);
+            const e = clamp(-rs / clamp(F.rhw[ai], 1, DEEP), 0, 1);
             col = V[clamp(dither(3.3 - e * 2.8, fx, fy, 0.6), 0, 4)];
           } else if (rs < 2.6) {
             z = Z_BANK;
