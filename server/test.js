@@ -885,6 +885,23 @@ async function testServer() {
     assert.strictEqual(await get("/editor.html"), 200);
     assert.strictEqual(await get("/maps/x.json"), 404);
 
+    // neznámá stránka: stylová 404 se stavem 404, chybějící skript jen krátký text
+    const page = p => new Promise((resolve, reject) => {
+      http.get({ host: "localhost", port: PORT, path: p }, res => {
+        let body = "";
+        res.on("data", chunk => (body += chunk));
+        res.on("end", () => resolve({ status: res.statusCode, type: res.headers["content-type"], body }));
+      }).on("error", reject);
+    });
+    const lost = await page("/tahle/stranka/neni");
+    assert.strictEqual(lost.status, 404);
+    assert.match(lost.type, /text\/html/);
+    assert.match(lost.body, /Zabloudil jsi do mlhy války/);
+    assert.strictEqual((await page("/admin")).status, 404, "panel pro nepřihlášené vypadá jako neexistující stránka");
+    const noScript = await page("/js/neexistuje.js");
+    assert.strictEqual(noScript.status, 404);
+    assert.match(noScript.type, /text\/plain/);
+
     // vlastní mapy: ukládání jen z místního počítače a jen platné mapy
     const api = (method, p, body, headers = {}) => new Promise((resolve, reject) => {
       const data = body === undefined ? null : typeof body === "string" ? body : JSON.stringify(body);

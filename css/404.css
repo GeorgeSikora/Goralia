@@ -1,0 +1,189 @@
+/* Stránka 404: noční mýtina na okraji mapy. Barvy a "kamenné" bevely jako úvod webu a menu hry. */
+:root {
+  --ink: #15121f;
+  --shade: #231d33;
+  --dusk: #31294a;
+  --brass: #c09c5a;
+  --brass-d: #8a6a3c;
+  --amber: #ffbf45;
+  --amber-l: #ffe08a;
+  --text: #e8e2f4;
+  --muted: #a49dc0;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body { min-height: 100%; }
+
+body {
+  margin: 0;
+  color: var(--text);
+  background:
+    radial-gradient(ellipse 70% 50% at 50% 38%, rgba(49, 41, 74, 0.9), rgba(21, 18, 31, 0) 70%),
+    var(--ink);
+  font: 17px/1.6 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+a { color: var(--amber); }
+a:hover { color: var(--amber-l); }
+canvas { display: block; }
+.pix, canvas.pix { image-rendering: pixelated; image-rendering: crisp-edges; }
+
+.lost {
+  width: min(1100px, 100% - 32px);
+  margin: 0 auto;
+  padding: max(24px, env(safe-area-inset-top)) 0 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+/* Pixelová kopie textu: původní text zůstává pro čtečky a vyhledávače. */
+.has-pix > .label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.brand {
+  align-self: flex-start;
+  color: var(--amber-l);
+  text-decoration: none;
+  font: 700 16px var(--mono);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.brand:focus-visible { outline: 3px solid var(--amber); outline-offset: 6px; }
+
+.code {
+  margin: 18px 0 0;
+  color: var(--amber);
+  font: 900 clamp(84px, 20vw, 168px)/1 var(--mono);
+  text-shadow: 6px 6px 0 #6e1f2c;
+}
+.code.has-pix { filter: drop-shadow(0 0 28px rgba(255, 191, 69, 0.28)); }
+
+.title {
+  margin: 16px 0 0;
+  color: var(--text);
+  font: 700 clamp(22px, 4vw, 34px)/1.25 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.lead {
+  max-width: 620px;
+  margin: 18px 0 0;
+  color: var(--muted);
+}
+.path {
+  padding: 1px 6px;
+  color: var(--amber-l);
+  background: var(--shade);
+  font: 15px var(--mono);
+  overflow-wrap: anywhere;
+  box-shadow: inset 0 0 0 1px var(--dusk);
+}
+
+/* ---------- scéna v kamenném rámu ---------- */
+.scene {
+  width: 100%;
+  margin: 28px 0 0;
+}
+.scene canvas {
+  margin: 0 auto;
+  max-width: 100%;
+  cursor: pointer;
+  background: var(--ink);
+  box-shadow:
+    0 0 0 3px var(--ink),
+    0 0 0 6px var(--brass-d),
+    0 0 0 8px #e0c68e40,
+    0 0 0 11px var(--ink),
+    0 18px 50px rgba(0, 0, 0, 0.55);
+}
+.say {
+  min-height: 1.6em;
+  margin: 22px auto 0;
+  max-width: 640px;
+  color: var(--muted);
+  font: 15px/1.5 var(--mono);
+}
+.say b { color: var(--amber-l); font-weight: 700; }
+[hidden] { display: none !important; }
+
+/* ---------- tlačítka ve stylu hry ---------- */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 26px;
+  margin: 30px 0 0;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 190px;
+  padding: 16px 30px;
+  background: #2f2a50;
+  color: #ffe9a8;
+  font: 700 16px/1 var(--mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-decoration: none;
+  box-shadow:
+    0 0 0 3px var(--ink),
+    inset 3px 3px 0 #6a6296,
+    inset -3px -3px 0 #1a1630,
+    0 0 0 6px var(--brass-d),
+    0 0 0 9px var(--ink);
+  transition: background 0.12s, transform 0.08s, filter 0.2s;
+}
+.btn:hover { background: #3d3768; color: #fff3c4; }
+.btn:active { transform: translateY(2px); }
+.btn:focus-visible { outline: 3px solid var(--amber); outline-offset: 8px; }
+.btn canvas { height: 21px; width: auto; }
+
+.btn-play {
+  background: linear-gradient(#e0902a, #a85a1c);
+  color: #fff6cc;
+  box-shadow:
+    0 0 0 3px var(--ink),
+    inset 3px 3px 0 #ffd27a,
+    inset -3px -3px 0 #6e3a12,
+    0 0 0 6px var(--brass),
+    0 0 0 9px var(--ink);
+  animation: beckon 2.4s ease-in-out infinite;
+}
+.btn-play:hover { background: linear-gradient(#ffaa3a, #c0681e); filter: brightness(1.05); }
+
+@keyframes beckon {
+  0%, 100% { filter: drop-shadow(0 0 0 rgba(255, 191, 69, 0)); }
+  50% { filter: drop-shadow(0 0 22px rgba(255, 191, 69, 0.55)); }
+}
+
+.foot {
+  margin: 40px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+@media (max-width: 560px) {
+  body { font-size: 16px; }
+  .actions { gap: 22px; }
+  .btn { min-width: 0; width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-play { animation: none; }
+}
