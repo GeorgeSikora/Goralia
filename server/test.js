@@ -882,7 +882,14 @@ async function testServer() {
     assert.strictEqual(await get("/package.json"), 404);
     assert.strictEqual(await get("/js/..%2Fpackage.json"), 404);
     assert.strictEqual(await get("/%2e%2e/package.json"), 404);
-    assert.strictEqual(await get("/editor.html"), 200);
+    assert.strictEqual(await get("/editor"), 200);
+    const moved = await new Promise((resolve, reject) => {
+      http.get({ host: "localhost", port: PORT, path: "/editor.html?map=duel" }, res => {
+        res.resume();
+        resolve([res.statusCode, res.headers.location]);
+      }).on("error", reject);
+    });
+    assert.deepStrictEqual(moved, [301, "/editor?map=duel"]);
     assert.strictEqual(await get("/maps/x.json"), 404);
 
     // neznámá stránka: stylová 404 se stavem 404, chybějící skript jen krátký text

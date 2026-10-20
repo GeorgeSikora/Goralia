@@ -264,7 +264,7 @@ Nad hotovým obrazem světa běží **WebGL 2 shadery**: každá lucerna, oheň,
 
 ## 🧭 Editor map
 
-Vlastní mapy se kreslí přímo v prohlížeči na `/editor.html`: štětce pro **vodu, hory, hradby, cesty, stromy, doly a základny**, symetrie podle os a průběžná **kontrola hratelnosti**, která česky řekne, co mapě chybí. Uložená mapa se hned objeví mezi ostatními a admin ji může pro multiplayer zapnout nebo vypnout. Editor zvládne i mapy 10 000 × 10 000 jednotek.
+Vlastní mapy se kreslí přímo v prohlížeči na `/editor`: štětce pro **vodu, hory, hradby, cesty, stromy, doly a základny**, symetrie podle os a průběžná **kontrola hratelnosti**, která česky řekne, co mapě chybí. Uložená mapa se hned objeví mezi ostatními a admin ji může pro multiplayer zapnout nebo vypnout. Editor zvládne i mapy 10 000 × 10 000 jednotek.
 
 <div align="center">
 <img src="docs/readme/editor.png" width="100%" alt="Editor map s mapou Čtyři koruny">
