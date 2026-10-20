@@ -7,7 +7,7 @@ Zjisti heslo admina v logu:
     pm2 logs goralia --lines 100 --nostream
 
 Docker na VPS (/srv/goralia, za Nginx Proxy Managerem v síti reverse-proxy)
-    Kontejner `goralia` nemá žádný port ven, NPM na něj míří jménem: goralia.cz -> http://goralia:8300 (Websockets Support zapnout).
+    Kontejner `goralia` nemá žádný port ven, NPM na něj míří jménem: goralia.cz -> http://goralia:3000 (Websockets Support zapnout).
     Data (účty, statistiky, turnaje, geoip.mmdb) jsou v ./data, mapy v ./maps, oboje připojené do kontejneru, rebuild je nesmaže.
     Nastavení se bere z .env vedle docker-compose.yml. PORT, GORALIA_DATA_DIR, GORALIA_MAPS_DIR a GORALIA_GEOIP
     určuje docker-compose.yml, hodnoty z .env pro ně neplatí.
