@@ -1,6 +1,6 @@
 /*
  * Úvodní stránka webu: pixelové nadpisy, živé sprity jednotek z kódu hry, pochodující armáda v úvodu,
- * jiskry, líně načítaná videa, galerie se zvětšením a postupné odhalování sekcí.
+ * jiskry, líně načítaná videa, zvětšení obrázků a postupné odhalování sekcí.
  * Spoléhá jen na pixel.js, font.js, icons.js, units.js a rules.js; bez nich stránka funguje dál jako obyčejné HTML.
  */
 (() => {
