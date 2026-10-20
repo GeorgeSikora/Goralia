@@ -296,6 +296,7 @@ p { margin: 0 0 16px; }
   aspect-ratio: 16 / 9;
   object-fit: cover;
 }
+.shot video { display: block; width: 100%; height: auto; }
 .shot figcaption {
   padding: 10px 14px;
   font: 13px var(--mono);
