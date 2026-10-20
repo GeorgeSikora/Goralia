@@ -359,22 +359,22 @@ async function testOAuth() {
     return state;
   }
 
-  assert.strictEqual((await call("/auth/facebook")).headers.Location, "/?login=unavailable", "nenastavený poskytovatel");
+  assert.strictEqual((await call("/auth/facebook")).headers.Location, "/play?login=unavailable", "nenastavený poskytovatel");
 
   // státní ochrana proti podvržení: špatný state, cizí cookie, odmítnutí
-  assert.strictEqual((await withCookie("/auth/google/callback?code=abc&state=zle", "goralia_oauth=zle")).headers.Location, "/?login=failed");
+  assert.strictEqual((await withCookie("/auth/google/callback?code=abc&state=zle", "goralia_oauth=zle")).headers.Location, "/play?login=failed");
 
   let state = await begin();
-  assert.strictEqual((await withCookie(`/auth/google/callback?code=abc&state=${state}`, "goralia_oauth=jiny")).headers.Location, "/?login=failed", "cookie nesedí se state");
+  assert.strictEqual((await withCookie(`/auth/google/callback?code=abc&state=${state}`, "goralia_oauth=jiny")).headers.Location, "/play?login=failed", "cookie nesedí se state");
 
   state = await begin();
-  assert.strictEqual((await withCookie(`/auth/google/callback?error=access_denied&state=${state}`, `goralia_oauth=${state}`)).headers.Location, "/?login=denied");
+  assert.strictEqual((await withCookie(`/auth/google/callback?error=access_denied&state=${state}`, `goralia_oauth=${state}`)).headers.Location, "/play?login=denied");
   assert.strictEqual(calls.length, 0, "bez platného state se poskytovatel nevolá");
 
   // úspěšné přihlášení založí účet a relaci
   state = await begin();
   const first = await withCookie(`/auth/google/callback?code=THECODE&state=${state}`, `goralia_oauth=${state}`);
-  assert.strictEqual(first.headers.Location, "/?login=new");
+  assert.strictEqual(first.headers.Location, "/play?login=new");
   const cookies = [].concat(first.headers["Set-Cookie"]);
   assert(cookies.some(c => c.startsWith("goralia_oauth=;") && /Max-Age=0/.test(c)), "state cookie se smaže");
   const sid = cookies.find(c => c.startsWith("goralia_sid="));
@@ -386,21 +386,21 @@ async function testOAuth() {
   assert(exchange.body.includes("code=THECODE") && exchange.body.includes("client_secret=gsecret") && exchange.body.includes(encodeURIComponent("https://goralia.test/auth/google/callback")), exchange.body);
   assert.strictEqual(calls[1].headers.Authorization, "Bearer AT");
 
-  assert.strictEqual((await withCookie(`/auth/google/callback?code=THECODE&state=${state}`, `goralia_oauth=${state}`)).headers.Location, "/?login=failed", "state jde použít jen jednou");
+  assert.strictEqual((await withCookie(`/auth/google/callback?code=THECODE&state=${state}`, `goralia_oauth=${state}`)).headers.Location, "/play?login=failed", "state jde použít jen jednou");
 
   state = await begin();
-  assert.strictEqual((await withCookie(`/auth/google/callback?code=X&state=${state}`, `goralia_oauth=${state}`)).headers.Location, "/?login=ok", "druhé přihlášení už je do existujícího účtu");
+  assert.strictEqual((await withCookie(`/auth/google/callback?code=X&state=${state}`, `goralia_oauth=${state}`)).headers.Location, "/play?login=ok", "druhé přihlášení už je do existujícího účtu");
   assert.strictEqual(accounts.counts().users, 1);
 
   state = await begin();
   failToken = true;
-  assert.strictEqual((await withCookie(`/auth/google/callback?code=X&state=${state}`, `goralia_oauth=${state}`)).headers.Location, "/?login=failed", "poskytovatel odmítl kód");
+  assert.strictEqual((await withCookie(`/auth/google/callback?code=X&state=${state}`, `goralia_oauth=${state}`)).headers.Location, "/play?login=failed", "poskytovatel odmítl kód");
   failToken = false;
   console.warn = warn;
 
   accounts.getUser(1).banned = { at: Date.now(), reason: "" };
   state = await begin();
-  assert.strictEqual((await withCookie(`/auth/google/callback?code=X&state=${state}`, `goralia_oauth=${state}`)).headers.Location, "/?login=banned");
+  assert.strictEqual((await withCookie(`/auth/google/callback?code=X&state=${state}`, `goralia_oauth=${state}`)).headers.Location, "/play?login=banned");
 
   fs.rmSync(dir, { recursive: true, force: true });
 }
@@ -496,6 +496,18 @@ async function testServerApi() {
     assert.strictEqual((await request("GET", "/js/admin.js")).status, 200);
     assert.strictEqual((await request("GET", "/")).headers["x-frame-options"], "DENY");
 
+    // úvodní stránka webu je na /, samotná hra na /play
+    assert.ok((await request("GET", "/")).text.includes('href="/play"'), "úvod odkazuje do hry");
+    assert.ok((await request("GET", "/play")).text.includes('id="game"'), "na /play běží hra");
+    assert.strictEqual((await request("GET", "/index.html")).status, 200, "staré odkazy na hru fungují dál");
+    const slash = await request("GET", "/play/?server=x");
+    assert.strictEqual(slash.status, 302);
+    assert.strictEqual(slash.headers.location, "/play?server=x", "lomítko na konci by rozbilo relativní cesty hry");
+    const part = await request("GET", "/assets/web/hero.mp4", undefined, { Range: "bytes=0-9" });
+    assert.strictEqual(part.status, 206, "video jde stahovat po částech (Safari)");
+    assert.strictEqual(part.headers["content-type"], "video/mp4");
+    assert.ok(/^bytes 0-9\/\d+$/.test(part.headers["content-range"]));
+
     const anon = await request("GET", "/api/me");
     assert.deepStrictEqual(anon.json, { user: null, canEditMaps: true, providers: { google: true, facebook: true } });
     assert.strictEqual((await request("GET", "/api/neexistuje")).status, 404);
@@ -571,7 +583,7 @@ async function testServerApi() {
     const forged = await new Promise((resolve, reject) => {
       http.get({ host: "localhost", port: PORT, path: "/auth/google/callback?code=x&state=zle" }, res => { res.resume(); resolve(res); }).on("error", reject);
     });
-    assert.strictEqual(forged.headers.location, "/?login=failed");
+    assert.strictEqual(forged.headers.location, "/play?login=failed");
 
     /* ----- administrace ----- */
     assert.strictEqual((await request("GET", "/api/admin/overview")).status, 401);

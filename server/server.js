@@ -26,7 +26,7 @@ const { createTraffic } = require("./traffic.js");
 const { createGeo } = require("./geoip.js");
 const { createMapConfig } = require("./mapconfig.js");
 const { createApi, SID } = require("./api.js");
-const { SECURITY_HEADERS, parseCookies, sameOrigin, clientIp } = require("./httputil.js");
+const { SECURITY_HEADERS, parseCookies, sameOrigin, clientIp, redirect } = require("./httputil.js");
 
 const PORT = Number(process.env.PORT) || 3000;
 const ROOT = path.resolve(__dirname, "..");
@@ -40,9 +40,11 @@ const MAX_MSG_PER_SEC = 80;
 const BUFFER_LIMIT = 2 * 1024 * 1024;
 const MAX_MAP_BYTES = 1024 * 1024;
 const MAX_WS_PAYLOAD = 16 * 1024; // zprávy hráčů; nejdelší je popis spojení hlasového chatu (SDP)
-const PAGES = ["index.html", "editor.html", "privacy.html", "terms.html", "manifest.webmanifest", "robots.txt", "sitemap.xml"];
-// Hezké adresy bez přípony (např. https://goralia.cz/privacy).
-const PRETTY = { "/privacy": "/privacy.html", "/terms": "/terms.html" };
+const PAGES = ["uvod.html", "index.html", "editor.html", "privacy.html", "terms.html", "manifest.webmanifest", "robots.txt", "sitemap.xml"];
+// Hezké adresy bez přípony (např. https://goralia.cz/privacy). Na / je úvodní stránka webu, hra sama běží na /play.
+const PRETTY = { "/": "/uvod.html", "/play": "/index.html", "/privacy": "/privacy.html", "/terms": "/terms.html" };
+// Stránky, jejichž zobrazení se počítá do návštěvnosti (úvod webu i samotná hra).
+const COUNTED = ["/uvod.html", "/index.html"];
 const ADMIN_PAGE = "admin.html";
 const NOT_FOUND_PAGE = path.join(ROOT, "404.html");
 // Servery pro navázání hlasového spojení mezi prohlížeči. STUN stačí většině domácích sítí;
@@ -75,6 +77,10 @@ const MIME = {
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".mp4": "video/mp4",
   ".mp3": "audio/mpeg",
   ".json": "application/json; charset=utf-8",
   ".ico": "image/x-icon",
@@ -226,8 +232,13 @@ const server = http.createServer((req, res) => {
     return res.end();
   }
 
-  if (pathname === "/") pathname = "/index.html";
-  const pretty = PRETTY[pathname.replace(/\/$/, "")];
+  // /play/ by rozbilo relativní cesty ke skriptům a stylům hry, proto lomítko na konci zahodíme.
+  if (pathname.length > 1 && pathname.endsWith("/") && PRETTY[pathname.replace(/\/+$/, "")]) {
+    const search = query.toString();
+    return redirect(res, pathname.replace(/\/+$/, "") + (search ? `?${search}` : ""));
+  }
+
+  const pretty = PRETTY[pathname];
   if (pretty) pathname = pretty;
 
   // Panel serveru vidí jen přihlášený admin, ostatním stránka neexistuje.
@@ -249,13 +260,33 @@ const server = http.createServer((req, res) => {
   fs.readFile(file, (err, data) => {
     if (err) return notFound(req, res, pathname);
 
-    if (pathname === "/index.html" && req.method === "GET") traffic.pageView(clientIp(req), req.headers["user-agent"], { referer: req.headers.referer, query, hosts: ownHosts(req) });
+    if (COUNTED.includes(pathname) && req.method === "GET") traffic.pageView(clientIp(req), req.headers["user-agent"], { referer: req.headers.referer, query, hosts: ownHosts(req) });
 
-    res.writeHead(200, {
+    const headers = {
       "Content-Type": MIME[path.extname(file)] || "application/octet-stream",
-      "Cache-Control": isAdminPage ? "no-store" : "no-cache",
+      // Obrázky a videa úvodní stránky se nemění často a jsou velké, ať se nestahují při každé návštěvě znovu.
+      "Cache-Control": isAdminPage ? "no-store" : rel[0] === "assets" && rel[1] === "web" ? "public, max-age=86400" : "no-cache",
+      "Accept-Ranges": "bytes",
       ...SECURITY_HEADERS
-    });
+    };
+
+    // Safari na iPhonu přehraje video jen tehdy, když server umí posílat jeho části (Range).
+    const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || "");
+    if (range && (range[1] || range[2])) {
+      const size = data.length;
+      let start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2]));
+      let end = range[1] && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
+
+      if (start >= size || start > end) {
+        res.writeHead(416, { ...headers, "Content-Range": `bytes */${size}` });
+        return res.end();
+      }
+
+      res.writeHead(206, { ...headers, "Content-Range": `bytes ${start}-${end}/${size}`, "Content-Length": end - start + 1 });
+      return res.end(req.method === "HEAD" ? undefined : data.subarray(start, end + 1));
+    }
+
+    res.writeHead(200, headers);
     res.end(req.method === "HEAD" ? undefined : data);
   });
 });

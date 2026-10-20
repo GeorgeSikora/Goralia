@@ -87,10 +87,10 @@ function createOAuth({ accounts, publicUrl, startSession, fetchJson = request })
   }
 
   function begin(name, req, res) {
-    if (!configured(name)) return redirect(res, "/?login=unavailable");
+    if (!configured(name)) return redirect(res, "/play?login=unavailable");
 
     sweep();
-    if (states.size >= MAX_STATES) return redirect(res, "/?login=failed");
+    if (states.size >= MAX_STATES) return redirect(res, "/play?login=failed");
 
     const state = crypto.randomBytes(24).toString("hex");
     states.set(state, { provider: name, expires: Date.now() + STATE_TTL });
@@ -141,22 +141,22 @@ function createOAuth({ accounts, publicUrl, startSession, fetchJson = request })
     const headers = { "Set-Cookie": clearCookie(req) };
 
     if (!entry || entry.provider !== name || entry.expires < Date.now() || cookies[COOKIE] !== state) {
-      return redirect(res, "/?login=failed", headers);
+      return redirect(res, "/play?login=failed", headers);
     }
 
     const code = query.get("code");
-    if (query.get("error") || !code) return redirect(res, "/?login=denied", headers);
+    if (query.get("error") || !code) return redirect(res, "/play?login=denied", headers);
 
     try {
       const profile = await exchange(name, req, String(code));
       const result = accounts.loginWithProvider(name, profile);
-      if (result.error) return redirect(res, "/?login=banned", headers);
+      if (result.error) return redirect(res, "/play?login=banned", headers);
 
       const sessionCookie = startSession(req, result.user);
-      redirect(res, result.created ? "/?login=new" : "/?login=ok", { "Set-Cookie": [headers["Set-Cookie"], sessionCookie] });
+      redirect(res, result.created ? "/play?login=new" : "/play?login=ok", { "Set-Cookie": [headers["Set-Cookie"], sessionCookie] });
     } catch (e) {
       console.warn(`Přihlášení přes ${name} selhalo: ${e.message}`);
-      redirect(res, "/?login=failed", headers);
+      redirect(res, "/play?login=failed", headers);
     }
   }
 
