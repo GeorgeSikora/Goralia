@@ -44,6 +44,7 @@ const PAGES = ["index.html", "editor.html", "privacy.html", "terms.html", "manif
 // Hezké adresy bez přípony (např. https://goralia.cz/privacy).
 const PRETTY = { "/privacy": "/privacy.html", "/terms": "/terms.html" };
 const ADMIN_PAGE = "admin.html";
+const NOT_FOUND_PAGE = path.join(ROOT, "404.html");
 // Servery pro navázání hlasového spojení mezi prohlížeči. STUN stačí většině domácích sítí;
 // pro hráče za přísným NATem (mobilní data, firemní sítě) lze přidat vlastní TURN (např. coturn na VPS).
 const ICE_SERVERS = [{ urls: (process.env.GORALIA_STUN_URLS || "stun:stun.l.google.com:19302").split(",").map(u => u.trim()).filter(Boolean) }];
@@ -233,10 +234,7 @@ const server = http.createServer((req, res) => {
   if (pathname === "/admin" || pathname === "/admin.html") {
     const user = api.userOf(req);
 
-    if (!user || user.role !== "admin") {
-      res.writeHead(404);
-      return res.end("Not found");
-    }
+    if (!user || user.role !== "admin") return notFound(req, res, pathname);
 
     pathname = `/${ADMIN_PAGE}`;
   }
@@ -246,16 +244,10 @@ const server = http.createServer((req, res) => {
   const isAdminPage = rel.length === 1 && rel[0] === ADMIN_PAGE && pathname === `/${ADMIN_PAGE}`;
   const allowed = rel.length === 1 ? PAGES.includes(rel[0]) || isAdminPage : PUBLIC_DIRS.includes(rel[0]);
 
-  if (!allowed || rel.includes("..")) {
-    res.writeHead(404);
-    return res.end("Not found");
-  }
+  if (!allowed || rel.includes("..")) return notFound(req, res, pathname);
 
   fs.readFile(file, (err, data) => {
-    if (err) {
-      res.writeHead(404);
-      return res.end("Not found");
-    }
+    if (err) return notFound(req, res, pathname);
 
     if (pathname === "/index.html" && req.method === "GET") traffic.pageView(clientIp(req), req.headers["user-agent"], { referer: req.headers.referer, query, hosts: ownHosts(req) });
 
@@ -267,6 +259,21 @@ const server = http.createServer((req, res) => {
     res.end(req.method === "HEAD" ? undefined : data);
   });
 });
+
+// Neznámá adresa: lidem stránka 404 ve stylu webu, chybějícím skriptům, obrázkům a podobně jen krátký text.
+function notFound(req, res, pathname) {
+  const ext = path.extname(pathname);
+
+  if (ext && ext !== ".html") {
+    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8", ...SECURITY_HEADERS });
+    return res.end("Not found");
+  }
+
+  fs.readFile(NOT_FOUND_PAGE, (err, data) => {
+    res.writeHead(404, { "Content-Type": err ? "text/plain; charset=utf-8" : MIME[".html"], "Cache-Control": "no-cache", ...SECURITY_HEADERS });
+    res.end(req.method === "HEAD" ? undefined : err ? "Not found" : data);
+  });
+}
 
 /* ---------- lobby ---------- */
 const wss = new WebSocketServer({ server, maxPayload: MAX_WS_PAYLOAD });
