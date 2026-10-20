@@ -1,0 +1,18 @@
+# Do obrazu jde jen to, co server opravdu servíruje a spouští.
+.git
+.github
+node_modules
+data
+.env
+.env.*
+!.env.example
+ecosystem.config.js
+docs
+assets-export
+legacy
+debug-*.html
+Dockerfile
+docker-compose.yml
+.dockerignore
+HELP.txt
+README.md
