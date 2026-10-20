@@ -158,8 +158,6 @@
     s.g.drawImage(list[idx], 0, 0);
   }
 
-  const ANIM_NAME = { idle: "stojí", walk: "chůze", attack: "útok", cast: "kouzlo" };
-
   function stat(icon, value, label) {
     const span = document.createElement("span");
     span.title = label;
@@ -177,16 +175,13 @@
     s.c.classList.add("sprite");
     const anims = ["idle", "walk", "attack"].concat(u.cast ? ["cast"] : []);
     let k = 0;
-    const tag = document.createElement("span");
-    tag.className = "anim";
-    tag.textContent = ANIM_NAME.idle;
 
     const h = document.createElement("h3");
     h.textContent = u.name;
     const p = document.createElement("p");
     p.className = "role";
     p.textContent = u.role;
-    card.append(tag, s.c, h, p);
+    card.append(s.c, h, p);
 
     const st = R.UNITS && R.UNITS[u.type];
     if (st) {
@@ -201,7 +196,6 @@
     const next = () => {
       k = (k + 1) % anims.length;
       s.set(anims[k]);
-      tag.textContent = ANIM_NAME[anims[k]];
     };
     card.addEventListener("click", next);
     card.setAttribute("aria-label", `${u.name}: ${u.role} Kliknutím změníš animaci.`);
@@ -235,11 +229,11 @@
 
   /* ---------- postavy kampaně ---------- */
   const CAST = [
-    { type: "knight", team: "blue", name: "Radim z Bystré", line: "Rytíř, který přísahal, že Bystrá nepadne." },
-    { type: "archer", team: "blue", name: "Jitka", line: "Lučištnice. Jako první viděla mrtvé chodit." },
-    { type: "monk", team: "blue", name: "Bratr Kryštof", line: "Mnich z Lysé hory, pohřbívá ty, kdo nechtějí zůstat v zemi." },
-    { type: "hero", team: "gold", name: "Vojvoda Hostivít", line: "Pán Hněvína. Mezi mrtvými poznal svého syna." },
-    { type: "lich", team: "red", name: "Morvan", line: "Bývalý dvorní mág, dnes lich, který volá mrtvé.", foe: true }
+    { type: "knight", team: "blue", name: "Radim z Bystré" },
+    { type: "archer", team: "blue", name: "Jitka" },
+    { type: "monk", team: "blue", name: "Bratr Kryštof" },
+    { type: "hero", team: "gold", name: "Vojvoda Hostivít" },
+    { type: "lich", team: "red", name: "Morvan", foe: true }
   ];
 
   function cast() {
@@ -254,9 +248,7 @@
       c.setAttribute("aria-hidden", "true");
       const b = document.createElement("b");
       b.textContent = who.name;
-      const s = document.createElement("span");
-      s.textContent = who.line;
-      el.append(c, b, s);
+      el.append(c, b);
       box.append(el);
     }
   }
