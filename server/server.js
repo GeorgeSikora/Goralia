@@ -42,7 +42,7 @@ const MAX_MAP_BYTES = 1024 * 1024;
 const MAX_WS_PAYLOAD = 16 * 1024; // zprávy hráčů; nejdelší je popis spojení hlasového chatu (SDP)
 const PAGES = ["uvod.html", "index.html", "editor.html", "privacy.html", "terms.html", "manifest.webmanifest", "robots.txt", "sitemap.xml"];
 // Hezké adresy bez přípony (např. https://goralia.cz/privacy). Na / je úvodní stránka webu, hra sama běží na /play.
-const PRETTY = { "/": "/uvod.html", "/play": "/index.html", "/privacy": "/privacy.html", "/terms": "/terms.html" };
+const PRETTY = { "/": "/uvod.html", "/play": "/index.html", "/editor": "/editor.html", "/privacy": "/privacy.html", "/terms": "/terms.html" };
 // Stránky, jejichž zobrazení se počítá do návštěvnosti (úvod webu i samotná hra).
 const COUNTED = ["/uvod.html", "/index.html"];
 const ADMIN_PAGE = "admin.html";
@@ -236,6 +236,12 @@ const server = http.createServer((req, res) => {
   if (pathname.length > 1 && pathname.endsWith("/") && PRETTY[pathname.replace(/\/+$/, "")]) {
     const search = query.toString();
     return redirect(res, pathname.replace(/\/+$/, "") + (search ? `?${search}` : ""));
+  }
+
+  // Editor má hezkou adresu /editor, stará /editor.html na ni trvale přesměruje.
+  if (pathname === "/editor.html") {
+    const search = query.toString();
+    return redirect(res, "/editor" + (search ? `?${search}` : ""), {}, 301);
   }
 
   const pretty = PRETTY[pathname];

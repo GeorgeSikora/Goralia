@@ -736,7 +736,7 @@
       const actions = el("td", "actions-cell");
       const box2 = el("div", "actions");
       box2.append(
-        mapLink(m.custom ? "Upravit" : "Upravit kopii", `/editor.html?map=${encodeURIComponent(m.id)}`),
+        mapLink(m.custom ? "Upravit" : "Upravit kopii", `/editor?map=${encodeURIComponent(m.id)}`),
         mapLink("Hrát", `/index.html?map=${encodeURIComponent(m.id)}`)
       );
 
