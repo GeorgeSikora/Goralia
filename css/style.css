@@ -305,6 +305,28 @@ kbd {
 .map-name { font-weight: 700; }
 .map-tag { color: var(--muted); font-size: 11px; }
 
+/* kampaň: seznam kapitol */
+.chapters { display: grid; gap: 10px; padding: 4px 6px; max-height: min(420px, 56vh); overflow-y: auto; overscroll-behavior: contain; }
+.chapter {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 0;
+  background: #2f2a50;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 0 0 2px var(--ink), 0 0 0 4px var(--brass-d);
+}
+.chapter:hover:not(:disabled) { background: #3d3768; }
+.chapter:focus-visible { outline: 2px solid var(--amber); outline-offset: 5px; }
+.chapter:disabled { cursor: default; opacity: 0.55; }
+.chapter.done { box-shadow: 0 0 0 2px var(--ink), 0 0 0 4px #5f8f4a; }
+.chapter-num { color: var(--amber); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+.chapter-name { font-weight: 700; color: #ffe9a8; }
+.chapter-blurb { color: var(--muted); font-size: 12px; font-weight: 400; }
+
 .detail { display: grid; gap: 8px; min-width: 0; }
 
 .preview {

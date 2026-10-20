@@ -15,7 +15,8 @@
   const SCRIPTS = [
     "rules", "maps", "nav", "ai", "sim", "admincmd", "audio", "music", "pixel", "shaders", "font", "keys",
     "units", "fame", "buildings", "props", "icons", "world", "fx", "hud", "net", "menubg",
-    "custommaps", "charts", "matchview", "account", "events", "voice", "chat", "voicechat", "adminbar", "game"
+    "custommaps", "charts", "matchview", "account", "events", "voice", "chat", "voicechat", "adminbar",
+    "campaign-maps", "campaign", "cutscene", "game"
   ];
 
   // podíl jednotlivých částí na celkovém pruhu při prvním načtení
