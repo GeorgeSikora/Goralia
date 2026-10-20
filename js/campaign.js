@@ -244,6 +244,16 @@
 
         /* scéna */
         unit(type, side, x, y, o = {}) {
+          // nikdo se nesmí objevit ve vodě, ve skále ani v budově: posun na nejbližší volné místo
+          if (m.nav.isBlocked(x, y)) {
+            search: for (let r = 8; r <= 160; r += 8) {
+              for (let k = 0; k < 16; k++) {
+                const nx = Math.round(x + Math.cos(k * Math.PI / 8) * r);
+                const ny = Math.round(y + Math.sin(k * Math.PI / 8) * r);
+                if (nx > 12 && nx < m.LW - 12 && ny > 38 && ny < m.LH - 14 && !m.nav.isBlocked(nx, ny)) { x = nx; y = ny; break search; }
+              }
+            }
+          }
           const u = m.createUnit(type, teamOf(side), x, y);
           u.x = x;
           u.y = y;
@@ -593,7 +603,7 @@
       c.building("barracks", "me", plot.x, plot.y);
 
       const radim = c.unit("knight", "me", 900, 760, { as: "radim", hp: 4, facing: -1 });
-      const soldiers = [c.unit("soldier", "me", 640, 640), c.unit("soldier", "me", 690, 610), c.unit("soldier", "me", 960, 900)];
+      const soldiers = [c.unit("soldier", "me", 760, 640), c.unit("soldier", "me", 800, 600), c.unit("soldier", "me", 960, 900)];
       c.unit("worker", "me", 600, 900);
       c.unit("worker", "me", 1000, 680);
       const bartos = c.unit("worker", "me", 860, 700, { as: "sedlak", facing: 1 });
