@@ -1,0 +1,36 @@
+# Goralia za Nginx Proxy Managerem: kontejner je jen v síti `reverse-proxy`, žádný port ven.
+# V NPM: goralia.cz -> http://goralia:8300 (zapnout Websockets Support).
+# Nastavení (Google, Facebook, admin, TURN, PUBLIC_URL) je v .env vedle tohoto souboru.
+services:
+  goralia:
+    build: .
+    image: goralia:latest
+    container_name: goralia
+    restart: unless-stopped
+    init: true
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Pevně dané uvnitř kontejneru, ať je .env z pm2 doby (PORT=3100, cesty na hostu) nepřebije.
+      PORT: "8300"
+      GORALIA_DATA_DIR: /app/data
+      GORALIA_MAPS_DIR: /app/maps
+      GORALIA_GEOIP: /app/data/geoip.mmdb
+      GORALIA_ENV_FILE: ""
+    volumes:
+      # Účty, statistiky, turnaje, geoip.mmdb a zálohy db.json.bak
+      - ./data:/app/data
+      # Mapy, včetně těch uložených z editoru
+      - ./maps:/app/maps
+    networks:
+      - reverse-proxy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  reverse-proxy:
+    external: true

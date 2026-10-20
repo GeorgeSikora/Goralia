@@ -6,6 +6,20 @@ npm.cmd start
 Zjisti heslo admina v logu: 
     pm2 logs goralia --lines 100 --nostream
 
+Docker na VPS (/srv/goralia, za Nginx Proxy Managerem v síti reverse-proxy)
+    Kontejner `goralia` nemá žádný port ven, NPM na něj míří jménem: goralia.cz -> http://goralia:8300 (Websockets Support zapnout).
+    Data (účty, statistiky, turnaje, geoip.mmdb) jsou v ./data, mapy v ./maps, oboje připojené do kontejneru, rebuild je nesmaže.
+    Nastavení se bere z .env vedle docker-compose.yml. PORT, GORALIA_DATA_DIR, GORALIA_MAPS_DIR a GORALIA_GEOIP
+    určuje docker-compose.yml, hodnoty z .env pro ně neplatí.
+    První spuštění / update:   git pull && docker compose up -d --build
+    Po změně .env:             docker compose up -d   (restart nestačí, env se načte jen při vytvoření kontejneru)
+    Logy (heslo admina):       docker compose logs --tail 100 goralia
+    Stav:                      docker compose ps
+    GeoIP databáze:            docker compose exec -u node goralia npm run geoip
+    Reset hesla admina:        docker compose exec -u node goralia npm run admin:reset
+    Cron jednou měsíčně:       15 4 3 * * cd /srv/goralia && docker compose exec -T -u node goralia npm run geoip >> data/geoip.log 2>&1
+
+Bez Dockeru přes pm2:
 Nastavení serveru (port, adresa, Google/Facebook, admin, TURN) je v souboru .env v kořeni projektu:
     cp .env.example .env && nano .env
     pm2 start server/server.js --name goralia
@@ -32,5 +46,5 @@ Odkud se hráči připojují (mapa a tabulka v panelu serveru, Návštěvnost)
     Země a město se zjišťují z IP offline v databázi data/geoip.mmdb (IP se nikam neposílají ani neukládají).
     Stažení / aktualizace (DB-IP City Lite, zdarma, vychází měsíčně), běžící server ji do hodiny načte sám:
     npm run geoip
-    Cron jednou měsíčně: 15 4 3 * * cd /cesta/ke/goralia && npm run geoip >> data/geoip.log 2>&1
+    Cron jednou měsíčně (pm2): 15 4 3 * * cd /cesta/ke/goralia && npm run geoip >> data/geoip.log 2>&1
     Jiný soubor (např. MaxMind GeoLite2-City.mmdb): GORALIA_GEOIP=/cesta/k/souboru.mmdb (v .env)
