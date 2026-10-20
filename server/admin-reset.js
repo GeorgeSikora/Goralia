@@ -4,6 +4,8 @@
  */
 "use strict";
 
+require("./env.js").loadEnv();
+
 const path = require("path");
 const { createStore } = require("./store.js");
 const { createAccounts } = require("./accounts.js");

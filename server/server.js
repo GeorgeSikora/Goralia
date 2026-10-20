@@ -1,8 +1,12 @@
 /*
  * Server hry: statické soubory, místnosti s hostitelem (2 až 6 hráčů + AI) a autoritativní běh zápasů.
  * Spuštění: npm install && npm start  (port z proměnné PORT, výchozí 3000)
+ * Nastavení jde dát do souboru .env v kořeni projektu (vzor .env.example); proměnné prostředí mají přednost.
  */
 "use strict";
+
+// Jako první: moduly níže čtou proměnné prostředí už při načtení.
+require("./env.js").loadEnv();
 
 const http = require("http");
 const fs = require("fs");
