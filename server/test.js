@@ -846,7 +846,7 @@ async function testServer() {
   for (const id of ["valley", "highland", "crowns", "brana-pekel"]) fs.copyFileSync(path.join(repoMaps, `${id}.json`), path.join(mapsDir, `${id}.json`));
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "goralia-data-"));
   const proc = spawn(process.execPath, [path.join(__dirname, "server.js")], {
-    env: { ...process.env, PORT: String(PORT), GORALIA_MAPS_DIR: mapsDir, GORALIA_DATA_DIR: dataDir, GORALIA_ADMIN_PASSWORD: ADMIN_PASSWORD },
+    env: { ...process.env, GORALIA_ENV_FILE: "", PORT: String(PORT), GORALIA_MAPS_DIR: mapsDir, GORALIA_DATA_DIR: dataDir, GORALIA_ADMIN_PASSWORD: ADMIN_PASSWORD },
     stdio: ["ignore", "pipe", "inherit"]
   });
 
@@ -1705,6 +1705,31 @@ function testSources() {
   assert.strictEqual(rep.days[rep.days.length - 1].visitors, 3);
 }
 
+/* ---------- nastavení ze souboru .env ---------- */
+function testEnvFile() {
+  const { loadEnv, parseEnv } = require("./env.js");
+  assert.deepStrictEqual(parseEnv([
+    "# komentář",
+    "PORT=3100\r",
+    "export PUBLIC_URL = https://goralia.cz  # vlastní doména",
+    'GORALIA_TURN_PASS="tajne # heslo"',
+    "GOOGLE_CLIENT_ID='abc'",
+    "PRAZDNA=",
+    "nesmysl"
+  ].join("\n")), { PORT: "3100", PUBLIC_URL: "https://goralia.cz", GORALIA_TURN_PASS: "tajne # heslo", GOOGLE_CLIENT_ID: "abc", PRAZDNA: "" });
+
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "goralia-env-")), ".env");
+  fs.writeFileSync(file, "GORALIA_TEST_A=z-souboru\nGORALIA_TEST_B=z-souboru\n");
+  process.env.GORALIA_TEST_A = "z-prostredi";
+  assert.strictEqual(loadEnv(file), file);
+  assert.strictEqual(process.env.GORALIA_TEST_A, "z-prostredi", "proměnná prostředí má přednost");
+  assert.strictEqual(process.env.GORALIA_TEST_B, "z-souboru");
+  assert.strictEqual(loadEnv(file + ".chybi"), null, ".env není povinný");
+  assert.strictEqual(loadEnv(""), null);
+  delete process.env.GORALIA_TEST_A;
+  delete process.env.GORALIA_TEST_B;
+}
+
 async function main() {
   require("./mapstore.js").load(); // mapy z repozitáře (maps/*.json)
   testMaps();
@@ -1714,6 +1739,7 @@ async function main() {
   testCoop();
   testGeo();
   testSources();
+  testEnvFile();
   await testServer();
 }
 

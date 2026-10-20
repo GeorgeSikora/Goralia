@@ -1,4 +1,6 @@
-// Na serveru zkopíruj do ecosystem.config.js (ten je v .gitignore) a doplň hodnoty.
+// Jednodušší je nastavení v .env (viz .env.example), server ho načte sám.
+// Kdo chce nastavení radši v pm2: zkopíruj do ecosystem.config.js (ten je v .gitignore) a doplň hodnoty.
+// Hodnoty tady mají přednost před .env.
 module.exports = {
   apps: [{
     name: "goralia",

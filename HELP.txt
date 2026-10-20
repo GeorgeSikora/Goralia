@@ -6,7 +6,13 @@ npm.cmd start
 Zjisti heslo admina v logu: 
     pm2 logs goralia --lines 100 --nostream
 
-PORT=3100 pm2 start server/server.js --name goralia
+Nastavení serveru (port, adresa, Google/Facebook, admin, TURN) je v souboru .env v kořeni projektu:
+    cp .env.example .env && nano .env
+    pm2 start server/server.js --name goralia
+    Po změně .env: pm2 restart goralia
+    Proměnné z prostředí mají před .env přednost. Pozor: pm2 si pamatuje prostředí z prvního spuštění,
+    takže proces spuštěný jako `PORT=3100 pm2 start ...` drží PORT=3100 i po `pm2 restart`, ať je v .env cokoli.
+    Úplně čistý start: pm2 delete goralia && pm2 start server/server.js --name goralia && pm2 save
 
 Pro Google 
     vytvoř v Google Cloud Console „OAuth client ID“ typu Web a jako redirect URI zadej https://goralia.cz/auth/google/callback.
@@ -20,11 +26,11 @@ Hlasový chat (push-to-talk, výchozí klávesa V)
     Zvuk jde přímo mezi prohlížeči (WebRTC), server jen předává signalizaci. Mikrofon vyžaduje HTTPS (nebo localhost).
     Výchozí STUN: stun:stun.l.google.com:19302 (jiný: GORALIA_STUN_URLS="stun:...,stun:...").
     Hráčům za přísným NATem (mobilní data, firemní síť) pomůže vlastní TURN server, např. coturn na VPS:
-    GORALIA_TURN_URL="turn:goralia.cz:3478" GORALIA_TURN_USER=goralia GORALIA_TURN_PASS=... pm2 restart goralia --update-env
+    do .env přidej GORALIA_TURN_URL=turn:goralia.cz:3478, GORALIA_TURN_USER=goralia, GORALIA_TURN_PASS=... a pm2 restart goralia
 
 Odkud se hráči připojují (mapa a tabulka v panelu serveru, Návštěvnost)
     Země a město se zjišťují z IP offline v databázi data/geoip.mmdb (IP se nikam neposílají ani neukládají).
     Stažení / aktualizace (DB-IP City Lite, zdarma, vychází měsíčně), běžící server ji do hodiny načte sám:
     npm run geoip
     Cron jednou měsíčně: 15 4 3 * * cd /cesta/ke/goralia && npm run geoip >> data/geoip.log 2>&1
-    Jiný soubor (např. MaxMind GeoLite2-City.mmdb): GORALIA_GEOIP=/cesta/k/souboru.mmdb
+    Jiný soubor (např. MaxMind GeoLite2-City.mmdb): GORALIA_GEOIP=/cesta/k/souboru.mmdb (v .env)

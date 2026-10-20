@@ -452,6 +452,7 @@ async function testServerApi() {
   const proc = spawn(process.execPath, [path.join(__dirname, "server.js")], {
     env: {
       ...process.env,
+      GORALIA_ENV_FILE: "",
       PORT: String(PORT),
       GORALIA_DATA_DIR: dataDir,
       GORALIA_MAPS_DIR: (() => { const d = tmp("goralia-maps-"); fs.copyFileSync(path.join(__dirname, "..", "maps", "valley.json"), path.join(d, "valley.json")); return d; })(),

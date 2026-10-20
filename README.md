@@ -324,6 +324,8 @@ Další užitečné příkazy:
 | `npm run voices` | vyrobí hlášky jednotek do `assets/voices` |
 | `npm run geoip` | stáhne nebo aktualizuje GeoIP databázi pro mapu připojení |
 
+Nastavení serveru patří do souboru `.env` v kořeni projektu: `cp .env.example .env` a doplň hodnoty (vzor [.env.example](.env.example) obsahuje všechny proměnné). Proměnné z prostředí mají před `.env` přednost.
+
 Přihlášení přes Google a Facebook se zapne proměnnými `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` a `FACEBOOK_APP_ID` / `FACEBOOK_APP_SECRET`. Pro hlasový chat za přísným NATem pomůže vlastní TURN server (`GORALIA_TURN_URL`, `GORALIA_TURN_USER`, `GORALIA_TURN_PASS`). Podrobnosti k nasazení s pm2 jsou v [HELP.txt](HELP.txt).
 
 ---
