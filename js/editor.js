@@ -1414,7 +1414,7 @@
     refreshServerList().then(openFromQuery);
   }
 
-  // /editor.html?map=id otevře mapu ze serveru; vestavěná se otevře jako kopie.
+  // /editor?map=id otevře mapu ze serveru; vestavěná se otevře jako kopie.
   function openFromQuery() {
     let id = "";
     try { id = new URLSearchParams(location.search).get("map") || ""; } catch (e) { return; }
