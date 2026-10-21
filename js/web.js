@@ -75,7 +75,7 @@
 
   function emblem() {
     const target = document.querySelector(".brand .emblem");
-    const word = wordmark(12);
+    const word = wordmark(12, "G");
     word.className = "pix word";
     word.setAttribute("aria-hidden", "true");
     word.style.width = `${word.width * 2}px`;
@@ -254,9 +254,9 @@
   }
 
   /* ---------- logo v úvodu: znak a nápis jako v menu hry ---------- */
-  /* Nápis GORALIA ve stylu znaku G z ikon hry: tlusté zaoblené tahy, světlo zleva shora,
+  /* Nápis (výchozí GORALIA) ve stylu znaku G z ikon hry: tlusté zaoblené tahy, světlo zleva shora,
    * zkosená hrana a obrys inkoustem. Tvary písmen jsou na mřížce F x F (F = výška písmene). */
-  function wordmark(F) {
+  function wordmark(F, word = "GORALIA") {
     const s = F / 32;
     const th = Math.max(2, Math.round(F / 6));
     const R = F / 2 - 1;
@@ -325,7 +325,6 @@
       I: { w: th + 2, in: stem }
     };
 
-    const word = "GORALIA";
     const gap = Math.max(2, Math.round(3 * s));
     const pad = 2;
     const W = [...word].reduce((sum, ch) => sum + GLYPHS[ch].w, 0) + gap * (word.length - 1) + pad * 2;

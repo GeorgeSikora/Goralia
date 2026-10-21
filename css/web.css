@@ -467,6 +467,7 @@ p { margin: 0 0 16px; }
 }
 .story .kicker { color: var(--glow); }
 .story-lead { font-style: italic; }
+.soon { margin: 0 0 14px; color: var(--amber); font: 700 14px var(--mono); letter-spacing: 0.3em; text-transform: uppercase; }
 .cast {
   display: flex;
   justify-content: center;
