@@ -14,7 +14,7 @@
 
   const SCRIPTS = [
     "rules", "maps", "nav", "ai", "sim", "admincmd", "audio", "music", "pixel", "shaders", "font", "keys",
-    "units", "fame", "buildings", "props", "icons", "world", "fx", "hud", "net", "menubg",
+    "units", "fame", "buildings", "props", "halloween", "icons", "world", "fx", "hud", "net", "menubg",
     "custommaps", "charts", "matchview", "account", "events", "voice", "chat", "voicechat", "adminbar", "game"
   ];
 
@@ -32,6 +32,9 @@
     "Vyhrává poslední, komu zůstane hlavní budova.",
     "Kolečkem myši měníš přiblížení, prostředním tlačítkem posouváš mapu."
   ];
+  // Halloween (20. 10. - 2. 11.): sezónní tip; halloween.js se načítá až s ostatními skripty
+  const hd = new Date();
+  if ((hd.getMonth() === 9 && hd.getDate() >= 20) || (hd.getMonth() === 10 && hd.getDate() <= 2)) TIPS.push("Halloween! Na mapách svítí dýně a v noci létají netopýři.");
 
   const root = document.querySelector("#loading");
   if (!root) return;

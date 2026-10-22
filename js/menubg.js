@@ -335,6 +335,35 @@
     return { x: j * 34 + hash(j + 401) * 30, y: GY + 4 + hash(j + 402) * (H - GY - 6), v: PK.props.treeKind(hash(j + 403)), s: hash(j + 404) * 6.28 };
   }
 
+  // Halloween: mezi stromy svítí dýně a místo ptáků létají netopýři
+  const HW = PK.halloween && PK.halloween.on && PK.props.doodads.jackLantern ? PK.halloween : null;
+
+  function pumpkinAt(j) {
+    if (!HW || hash(j + 700) > 0.4) return null;
+    const kind = ["jackLantern", "pumpkins", "jackEvil", "pumpkin", "graveA"][Math.floor(hash(j + 701) * 5)];
+    return { x: j * 34 + 8 + hash(j + 702) * 18, y: GY + 10 + hash(j + 703) * (H - GY - 14), kind, s: hash(j + 704) * 6.28 };
+  }
+
+  function drawPumpkin(p) {
+    const d = PK.props.doodads[p.kind];
+    const x = q(p.x - cam);
+    const y = Math.round(p.y);
+    shadow(x + 1, y, d.w / 2, 1.5);
+    ctx.drawImage(d.c, x - d.ax, y - d.ay);
+    if (!d.glow) return;
+    const a = 0.16 + 0.05 * Math.sin(clock * 7 + p.s) * Math.sin(clock * 2.9 + p.s * 2);
+    const cx = x - d.ax + d.glow.x;
+    const cy = y - d.ay + d.glow.y;
+    const gr = ctx.createRadialGradient(cx, cy, 0, cx, cy, d.glow.r * 1.4);
+    gr.addColorStop(0, `rgba(255,170,70,${a.toFixed(3)})`);
+    gr.addColorStop(1, "rgba(255,170,70,0)");
+    ctx.fillStyle = gr;
+    ctx.fillRect(cx - d.glow.r * 1.4, cy - d.glow.r * 1.4, d.glow.r * 2.8, d.glow.r * 2.8);
+    ctx.globalAlpha = 0.6 + a;
+    ctx.drawImage(d.face, x - d.ax, y - d.ay);
+    ctx.globalAlpha = 1;
+  }
+
   function drawTree(t) {
     const sp = PK.props.trees[t.v];
     const x = q(t.x - cam);
@@ -563,6 +592,7 @@
     ctx.fillStyle = "#2a1c3c";
     const f = 1 / K;
     for (const b of birds) {
+      if (HW) { HW.bat(ctx, b.x, b.y, Math.floor(clock * 11 + b.p * 3), f); continue; }
       const up = Math.sin(clock * 9 + b.p) > 0 ? -1 : 1;
       const x = q(b.x);
       const y = q(b.y);
@@ -584,11 +614,14 @@
     for (let j = Math.floor((cam - 40) / 34); j <= Math.floor((cam + W + 40) / 34); j++) {
       const t = treeAt(j);
       if (t) items.push({ y: t.y + 14, tree: t });
+      const p = pumpkinAt(j);
+      if (p) items.push({ y: p.y, pumpkin: p });
     }
     for (const u of units) items.push({ y: u.dead ? -1 : u.y, u });
     items.sort((a, b) => a.y - b.y);
     for (const it of items) {
       if (it.tree) drawTree(it.tree);
+      else if (it.pumpkin) drawPumpkin(it.pumpkin);
       else drawUnit(it.u);
     }
 
