@@ -1090,6 +1090,130 @@
     return canvas;
   }
 
+  /* ---------- nápis GORALIA (logo) ---------- */
+  /* Písmena ve stylu znaku G: stejně tlusté tahy (t = F/6), zaoblené rohy se stejným
+   * poloměrem, příčky G, R a A v jedné výšce. Mezery optické: kulatá strana písmene
+   * má menší odstup než rovná, otevřená (pravá strana L) nejmenší. F = výška písmene
+   * v px, vrací se plátno přesně v px (pro zvětšení jen celočíselně). */
+  const wordCache = new Map();
+
+  function wordmark(F, word = "GORALIA", { color = C.a[2], depth = F >= 16 } = {}) {
+    const key = `${F}|${word}|${color}|${depth}`;
+    if (wordCache.has(key)) return wordCache.get(key);
+
+    const t = Math.max(2, Math.round(F / 6));
+    const rr = Math.round(F * 0.42); // poloměr vnějších rohů
+    const barT = Math.round(F / 2 - t / 2); // horní hrana příček
+    const barB = barT + t;
+
+    // znaménková vzdálenost od obdélníku se zaoblenými rohy [tl, tr, br, bl]
+    const box = (x, y, x0, y0, x1, y1, [tl, tr, br, bl]) => {
+      const cx = (x0 + x1) / 2;
+      const cy = (y0 + y1) / 2;
+      const px = x - cx;
+      const py = y - cy;
+      const r = px > 0 ? (py > 0 ? br : tr) : (py > 0 ? bl : tl);
+      const qx = Math.abs(px) - (x1 - x0) / 2 + r;
+      const qy = Math.abs(py) - (y1 - y0) / 2 + r;
+      return Math.min(Math.max(qx, qy), 0) + Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) - r;
+    };
+    const ring = (d, inner = t) => d <= 0 && d > -inner;
+    const stem = (x, y) => x < t && y >= 0 && y < F;
+    const R4 = r => [r, r, r, r];
+
+    const wO = Math.round(F * 0.92);
+    const wR = Math.round(F * 0.78);
+    const wA = Math.round(F * 0.84);
+    const wL = Math.round(F * 0.64);
+
+    // side: [levá, pravá] - "r" kulatá, "s" rovná, "o" otevřená
+    const GLYPHS = {
+      G: {
+        w: wO,
+        side: "rr",
+        in(x, y) {
+          const cx = wO / 2;
+          const cy = F / 2;
+          if (x >= cx - t / 2 && x < wO && y >= barT && y < barB) return true;
+          if (!ring(box(x, y, 0, 0, wO, F, R4(rr)))) return false;
+          // otvor vpravo nahoře, mezi koncem horního oblouku a příčkou
+          return !(x > cx && y < barT && y > cy - (x - cx) * 1.1);
+        }
+      },
+      O: { w: wO, side: "rr", in: (x, y) => ring(box(x, y, 0, 0, wO, F, R4(rr))) },
+      R: {
+        w: wR,
+        side: "sr",
+        in(x, y) {
+          if (stem(x, y)) return true;
+          const rb = Math.round(barB / 2);
+          if (y < barB && ring(box(x, y, 0, 0, wR - 1, barB, [0, rb, rb, 0]))) return true;
+          // noha: šikmo z příčky doprava dolů, vodorovně stejně tlustá jako kmen
+          if (y < barB || y >= F) return false;
+          const k = (y - barB) / (F - barB);
+          const lx = wR * 0.38 + k * (wR - t - wR * 0.38);
+          return x >= lx && x < lx + t + 0.5 && x < wR;
+        }
+      },
+      A: {
+        w: wA,
+        side: "ss",
+        in(x, y) {
+          if (y >= F) return false;
+          if (ring(box(x, y, 0, 0, wA, F + rr, [rr, rr, 0, 0]))) return true;
+          return x >= 0 && x < wA && y >= barT + t / 2 && y < barB + t / 2;
+        }
+      },
+      L: { w: wL, side: "so", in: (x, y) => stem(x, y) || (y >= F - t && y < F && x < wL) },
+      I: { w: t, side: "ss", in: stem }
+    };
+
+    const bear = { r: 0, s: t * 0.15, o: 0 };
+    const base = Math.max(2, Math.round(t * 0.75));
+    const letters = [...word].map(ch => GLYPHS[ch]);
+    const pad = 2;
+    const gaps = letters.slice(1).map((g, i) => Math.round(base + bear[letters[i].side[1]] + bear[g.side[0]]));
+    const W = letters.reduce((s, g) => s + g.w, 0) + gaps.reduce((s, g) => s + g, 0) + pad * 2;
+    const H = F + pad * 2 + (depth ? 1 : 0);
+
+    const mask = new Int16Array(W * H).fill(-1);
+    const centers = [];
+    let ox = pad;
+    letters.forEach((gl, i) => {
+      centers.push([ox + gl.w / 2, pad + F / 2]);
+      for (let y = 0; y < F; y++) {
+        for (let x = 0; x < gl.w; x++) if (gl.in(x + 0.5, y + 0.5)) mask[(pad + y) * W + ox + x] = i;
+      }
+      ox += gl.w + (gaps[i] || 0);
+    });
+
+    const lit = mix(color, 0xffffff, 0.35);
+    const P = new Pix(W, H);
+    const empty = (x, y) => x < 0 || y < 0 || x >= W || y >= H || mask[y * W + x] < 0;
+
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = mask[y * W + x];
+        if (i < 0) {
+          // spodní hrana písmen: 1 px tmavé jantarové tloušťky
+          if (depth && !empty(x, y - 1)) P.set(x, y, mix(color, C.r[1], 0.6));
+          continue;
+        }
+        const [cx, cy] = centers[i];
+        const upper = x + 0.5 - cx + (y + 0.5 - cy) < 0;
+        let col = upper ? lit : color;
+        // hrana natočená ke světlu (nahoru/doleva) se rozzáří, odvrácená ztmavne
+        if (empty(x, y - 1) || empty(x - 1, y)) col = upper ? mix(lit, WARM, 0.4) : mix(color, WARM, 0.2);
+        else if (empty(x, y + 1) || empty(x + 1, y)) col = mix(color, C.dusk, 0.3);
+        P.set(x, y, col);
+      }
+    }
+    P.outline(C.ink, 0.72);
+    const canvas = P.rawCanvas();
+    wordCache.set(key, canvas);
+    return canvas;
+  }
+
   /* ---------- pixel cursors ---------- */
   const cursors = {};
 
@@ -1138,6 +1262,6 @@
     P.set(8, 8, C.white);
   }, "crosshair");
 
-  PK.icons = { big, bigOff, small, ringEmblem, glyph };
+  PK.icons = { big, bigOff, small, ringEmblem, wordmark, glyph };
   PK.cursors = cursors;
 })();

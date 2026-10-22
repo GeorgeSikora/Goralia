@@ -75,7 +75,7 @@
 
   function emblem() {
     const target = document.querySelector(".brand .emblem");
-    const word = wordmark(12, "G");
+    const word = PK.icons.wordmark(12, "G");
     word.className = "pix word";
     word.setAttribute("aria-hidden", "true");
     word.style.width = `${word.width * 2}px`;
@@ -253,126 +253,10 @@
     }
   }
 
-  /* ---------- logo v úvodu: znak a nápis jako v menu hry ---------- */
-  /* Nápis (výchozí GORALIA) ve stylu znaku G z ikon hry: tlusté zaoblené tahy, světlo zleva shora,
-   * zkosená hrana a obrys inkoustem. Tvary písmen jsou na mřížce F x F (F = výška písmene). */
-  function wordmark(F, word = "GORALIA") {
-    const s = F / 32;
-    const th = Math.max(2, Math.round(F / 6));
-    const R = F / 2 - 1;
-    const mid = F / 2;
-    const top = 1;
-    const bot = F - 1;
-    const ring = (x, y, cx, cy, r) => {
-      const d = Math.hypot(x - cx, y - cy);
-      return d <= r && d > r - th;
-    };
-    const seg = (x, y, x0, y0, x1, y1) => {
-      const vx = x1 - x0;
-      const vy = y1 - y0;
-      const t = Math.max(0, Math.min(1, ((x - x0) * vx + (y - y0) * vy) / (vx * vx + vy * vy)));
-      return Math.hypot(x - x0 - vx * t, y - y0 - vy * t) <= th / 2 + 0.2;
-    };
-    const stem = (x, y) => x >= 1 && x < 1 + th && y >= top && y < bot;
-
-    const GLYPHS = {
-      G: {
-        w: F,
-        in(x, y) {
-          if (ring(x, y, mid, mid, R)) {
-            const ang = Math.atan2(y - mid, x - mid);
-            if (!(ang > -1.05 && ang < -0.05)) return true;
-          }
-          const barY = Math.round(mid - th / 2);
-          const bx = Math.round(mid) - th;
-          return x >= bx && x < bx + th + Math.floor(R) && y >= barY && y < barY + th;
-        }
-      },
-      O: { w: F, in: (x, y) => ring(x, y, mid, mid, R) },
-      R: {
-        w: Math.round(24 * s),
-        in(x, y) {
-          if (stem(x, y)) return true;
-          const bx = Math.round(12 * s);
-          const r = (mid - top) / 2 + th / 2 - 0.5;
-          const cy = top + r;
-          if (x >= bx) {
-            if (ring(x, y, bx, cy, r)) return true;
-          } else if ((y >= top && y < top + th) || (y > cy + r - th && y <= cy + r)) {
-            return true;
-          }
-          return seg(x, y, bx - th / 2, cy + r - th / 2, Math.round(21 * s), bot - th / 2) && y < bot;
-        }
-      },
-      A: {
-        w: Math.round(28 * s),
-        in(x, y) {
-          const w = Math.round(28 * s);
-          const r = (w - 2) / 2;
-          const cx = 1 + r;
-          const cy = top + r;
-          if (y < cy) return ring(x, y, cx, cy, r);
-          if (y >= bot) return false;
-          if ((x >= 1 && x < 1 + th) || (x >= w - 1 - th && x < w - 1)) return true;
-          const barY = Math.round(cy + 3 * s);
-          return x >= 1 && x < w - 1 && y >= barY && y < barY + th;
-        }
-      },
-      L: {
-        w: Math.round(20 * s),
-        in: (x, y) => stem(x, y) || (y >= bot - th && y < bot && x >= 1 && x < Math.round(20 * s) - 1)
-      },
-      I: { w: th + 2, in: stem }
-    };
-
-    const gap = Math.max(2, Math.round(3 * s));
-    const pad = 2;
-    const W = [...word].reduce((sum, ch) => sum + GLYPHS[ch].w, 0) + gap * (word.length - 1) + pad * 2;
-    const H = F + pad * 2;
-
-    // maska + střed písmene (světlá polovina je vlevo nahoře od středu)
-    const mask = new Int16Array(W * H).fill(-1);
-    const centers = [];
-    let ox = pad;
-    [...word].forEach((ch, i) => {
-      const gl = GLYPHS[ch];
-      centers.push([ox + gl.w / 2, pad + mid]);
-      for (let y = 0; y < F; y++) {
-        for (let x = 0; x < gl.w; x++) if (gl.in(x + 0.5, y + 0.5)) mask[(pad + y) * W + ox + x] = i;
-      }
-      ox += gl.w + gap;
-    });
-
-    const mix = (a, b, t) => {
-      const ch = sh => Math.round(((a >> sh) & 255) * (1 - t) + ((b >> sh) & 255) * t);
-      return (ch(16) << 16) | (ch(8) << 8) | ch(0);
-    };
-    const color = C.a[2];
-    const lit = mix(color, 0xffffff, 0.35);
-    const WARM = C.a[4];
-    const P = new PK.Pix(W, H);
-    const empty = (x, y) => x < 0 || y < 0 || x >= W || y >= H || mask[y * W + x] < 0;
-
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
-        const i = mask[y * W + x];
-        if (i < 0) continue;
-        const [cx, cy] = centers[i];
-        const upper = x + 0.5 - cx + (y + 0.5 - cy) < 0;
-        let col = upper ? lit : color;
-        // hrana natočená ke světlu (nahoru/doleva) se rozzáří, odvrácená ztmavne
-        if (empty(x, y - 1) || empty(x - 1, y)) col = upper ? mix(lit, WARM, 0.4) : mix(color, WARM, 0.2);
-        else if (empty(x, y + 1) || empty(x + 1, y)) col = mix(color, C.dusk, 0.3);
-        P.set(x, y, col);
-      }
-    }
-    P.outline(C.ink, 0.72);
-    return P.rawCanvas();
-  }
-
+  /* ---------- logo v úvodu: stejný nápis jako v menu hry (PK.icons.wordmark) ---------- */
   function heroLogo() {
     const h = document.querySelector(".hero-logo");
-    const c = wordmark(24);
+    const c = PK.icons.wordmark(24);
     const w = c.width;
     const hh = c.height;
     c.className = "pix";

@@ -57,12 +57,21 @@
     if (el.dataset.key === key) return;
     el.dataset.key = key;
 
-    const c = el.classList.contains("code") ? bigCode(el.dataset.text) : pixelLines(lines, color, shadow);
+    const c = el.classList.contains("brand") ? brandLogo()
+      : el.classList.contains("code") ? bigCode(el.dataset.text) : pixelLines(lines, color, shadow);
     c.style.width = `${c.width * zoom}px`;
     c.style.height = `${c.height * zoom}px`;
     c.style.margin = "0 auto";
     const old = el.querySelector("canvas");
     if (old) old.replaceWith(c); else el.prepend(c);
+  }
+
+  // Nápis GORALIA stejný jako v menu hry a na úvodní stránce.
+  function brandLogo() {
+    const c = PK.icons.wordmark(12);
+    c.className = "pix";
+    c.setAttribute("aria-hidden", "true");
+    return c;
   }
 
   // Velké "404": jantar s odleskem nahoře, rudý stín vpravo dole a inkoustový obrys jako písmo v HUD.

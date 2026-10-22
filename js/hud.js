@@ -869,13 +869,16 @@
 
   /* ---------- title logo (for the page header) ---------- */
   function drawLogo(canvas) {
-    const scale = 4;
-    const label = "GORALIA";
-    const tw = PK.textWidth(label, "5", scale);
-    const E = 24 * 4; // znak G, zvětšený po pixelech
-    const emblem = PK.icons.ringEmblem(24, C.a[2], C.a[4]);
-    const w = Math.max(tw + 24, E + 24);
-    const h = E + 52;
+    // znak G i nápis mají stejný pixel: jemná mřížka znaku a nápis F=24, obojí 2x
+    const Z = 2;
+    const emblem = PK.hdOf(PK.icons.ringEmblem(24, C.a[2], C.a[4]));
+    const word = PK.icons.wordmark(24);
+    const E = emblem.width * Z;
+    const ww = word.width * Z;
+    const w = Math.max(ww, E) + 8;
+    const wy = E + 6;
+    const ly = wy + word.height * Z + 6;
+    const h = ly + 4;
 
     canvas.width = w;
     canvas.height = h;
@@ -883,15 +886,15 @@
     g.imageSmoothingEnabled = false;
     g.clearRect(0, 0, w, h);
 
-    g.drawImage(emblem, Math.round((w - E) / 2), 0, E, E);
+    const mid = (w / 2) & ~1;
+    g.drawImage(emblem, mid - E / 2, 0, E, E);
+    g.drawImage(word, mid - ((ww / 2) & ~1), wy, ww, word.height * Z);
 
-    PK.text(g, label, w / 2, E + 10, 0xffe08a, { align: "center", scale, shadow: 0x6e1f2c, outline: C.ink });
-
-    // brass underline
+    // mosazná linka pod nápisem
     g.fillStyle = css(BR[1]);
-    g.fillRect(Math.round(w / 2) - 40, h - 6, 80, 2);
+    g.fillRect(mid - 40, ly, 80, 4);
     g.fillStyle = css(BR[3]);
-    g.fillRect(Math.round(w / 2) - 40, h - 6, 80, 1);
+    g.fillRect(mid - 40, ly, 80, 2);
   }
 
   /* ---------- public ---------- */

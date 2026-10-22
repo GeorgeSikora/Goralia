@@ -893,7 +893,7 @@ a.btn { display: block; text-align: center; text-decoration: none; }
 }
 
 .ld-logo {
-  height: 148px;
+  height: 170px; /* = výška plátna loga, ať je pixel 1:1 */
   image-rendering: pixelated;
   opacity: 0;
   transition: opacity 0.25s;
@@ -990,7 +990,7 @@ a.btn { display: block; text-align: center; text-decoration: none; }
 }
 
 @media (max-height: 420px) {
-  .ld-logo { height: 96px; }
+  .ld-logo { height: 85px; }
   .ld-road { margin-top: 80px; }
 }
 
