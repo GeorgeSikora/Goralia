@@ -1596,6 +1596,8 @@
 
     }
     for (const entry of rec.doodads.scatter) scatter(...entry);
+    // sezónní výzdoba (halloween.js) až nakonec, ať nemění rozmístění ostatních kulis
+    if (PK.halloween && PK.halloween.doodads) PK.halloween.doodads({ add, layout, W, H });
 
     list.sort((a, b) => a.y - b.y);
     world.doodads = list;
