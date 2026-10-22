@@ -1094,14 +1094,14 @@
   /* Písmena ve stylu znaku G: stejně tlusté tahy (t = F/6), zaoblené rohy se stejným
    * poloměrem, příčky G, R a A v jedné výšce. Mezery optické: kulatá strana písmene
    * má menší odstup než rovná, otevřená (pravá strana L) nejmenší. F = výška písmene
-   * v px, vrací se plátno přesně v px (pro zvětšení jen celočíselně). */
+   * v px (depth = 1 px jantarové hrany dole), vrací se plátno přesně v px (pro zvětšení jen celočíselně). */
   const wordCache = new Map();
 
-  function wordmark(F, word = "GORALIA", { color = C.a[2], depth = F >= 16 } = {}) {
+  function wordmark(F, word = "GORALIA", { color = C.a[2], depth = false } = {}) {
     const key = `${F}|${word}|${color}|${depth}`;
     if (wordCache.has(key)) return wordCache.get(key);
 
-    const t = Math.max(2, Math.round(F / 6));
+    const t = Math.max(2, Math.ceil(F / 6));
     const rr = Math.round(F * 0.42); // poloměr vnějších rohů
     const barT = Math.round(F / 2 - t / 2); // horní hrana příček
     const barB = barT + t;

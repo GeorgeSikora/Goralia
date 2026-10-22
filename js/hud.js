@@ -869,16 +869,14 @@
 
   /* ---------- title logo (for the page header) ---------- */
   function drawLogo(canvas) {
-    // znak G i nápis mají stejný pixel: jemná mřížka znaku a nápis F=24, obojí 2x
+    // původní rozměry (188 x 148): znak G 96 px, nápis 28 px vysoký; obojí 2 px na pixel
     const Z = 2;
+    const E = 24 * 4;
     const emblem = PK.hdOf(PK.icons.ringEmblem(24, C.a[2], C.a[4]));
-    const word = PK.icons.wordmark(24);
-    const E = emblem.width * Z;
+    const word = PK.icons.wordmark(14);
     const ww = word.width * Z;
-    const w = Math.max(ww, E) + 8;
-    const wy = E + 6;
-    const ly = wy + word.height * Z + 6;
-    const h = ly + 4;
+    const w = Math.max(ww + 8, E + 24);
+    const h = E + 52;
 
     canvas.width = w;
     canvas.height = h;
@@ -888,13 +886,13 @@
 
     const mid = (w / 2) & ~1;
     g.drawImage(emblem, mid - E / 2, 0, E, E);
-    g.drawImage(word, mid - ((ww / 2) & ~1), wy, ww, word.height * Z);
+    g.drawImage(word, mid - ((ww / 2) & ~1), E + 6, ww, word.height * Z);
 
-    // mosazná linka pod nápisem
+    // brass underline
     g.fillStyle = css(BR[1]);
-    g.fillRect(mid - 40, ly, 80, 4);
+    g.fillRect(mid - 40, h - 6, 80, 2);
     g.fillStyle = css(BR[3]);
-    g.fillRect(mid - 40, ly, 80, 2);
+    g.fillRect(mid - 40, h - 6, 80, 1);
   }
 
   /* ---------- public ---------- */
