@@ -75,11 +75,11 @@
 
   function emblem() {
     const target = document.querySelector(".brand .emblem");
-    const word = PK.icons.wordmark(12, "G");
+    const word = PK.icons.wordmark("G");
     word.className = "pix word";
     word.setAttribute("aria-hidden", "true");
-    word.style.width = `${word.width * 2}px`;
-    word.style.height = `${word.height * 2}px`;
+    word.style.width = `${word.width * 3}px`;
+    word.style.height = `${word.height * 3}px`;
     target.replaceWith(word);
     document.querySelector(".brand span").className = "sr-only";
   }
@@ -256,7 +256,7 @@
   /* ---------- logo v úvodu: stejný nápis jako v menu hry (PK.icons.wordmark) ---------- */
   function heroLogo() {
     const h = document.querySelector(".hero-logo");
-    const c = PK.icons.wordmark(24);
+    const c = PK.icons.wordmark();
     const w = c.width;
     const hh = c.height;
     c.className = "pix";

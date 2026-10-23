@@ -869,13 +869,13 @@
 
   /* ---------- title logo (for the page header) ---------- */
   function drawLogo(canvas) {
-    // původní rozměry (188 x 148): znak G 96 px, nápis 28 px vysoký; obojí 2 px na pixel
-    const Z = 2;
-    const E = 24 * 4;
-    const emblem = PK.hdOf(PK.icons.ringEmblem(24, C.a[2], C.a[4]));
-    const word = PK.icons.wordmark(14);
+    // původní rozměry: znak G 96 px, pod ním nápis; znak (32 px) i písmo loga 3x, stejný pixel
+    const Z = 3;
+    const E = 32 * Z;
+    const emblem = PK.icons.ringEmblem(32, C.a[2], C.a[4]);
+    const word = PK.icons.wordmark();
     const ww = word.width * Z;
-    const w = Math.max(ww + 8, E + 24);
+    const w = Math.max(ww + 6, E + 24);
     const h = E + 52;
 
     canvas.width = w;
@@ -884,15 +884,14 @@
     g.imageSmoothingEnabled = false;
     g.clearRect(0, 0, w, h);
 
-    const mid = (w / 2) & ~1;
-    g.drawImage(emblem, mid - E / 2, 0, E, E);
-    g.drawImage(word, mid - ((ww / 2) & ~1), E + 6, ww, word.height * Z);
+    g.drawImage(emblem, Math.round((w - E) / 2), 0, E, E);
+    g.drawImage(word, Math.round((w - ww) / 2), E + 4, ww, word.height * Z);
 
     // brass underline
     g.fillStyle = css(BR[1]);
-    g.fillRect(mid - 40, h - 6, 80, 2);
+    g.fillRect(Math.round(w / 2) - 40, h - 6, 80, 2);
     g.fillStyle = css(BR[3]);
-    g.fillRect(mid - 40, h - 6, 80, 1);
+    g.fillRect(Math.round(w / 2) - 40, h - 6, 80, 1);
   }
 
   /* ---------- public ---------- */

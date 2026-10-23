@@ -68,7 +68,7 @@
 
   // Nápis GORALIA stejný jako v menu hry a na úvodní stránce.
   function brandLogo() {
-    const c = PK.icons.wordmark(12);
+    const c = PK.icons.wordmark();
     c.className = "pix";
     c.setAttribute("aria-hidden", "true");
     return c;
@@ -102,7 +102,7 @@
     const brand = document.querySelector(".brand");
     if (code) pixelize(code, box => (box < 420 ? 10 : box < 760 ? 14 : 16), C.a[2], C.r[1]);
     if (title) pixelize(title, box => (box < 420 ? 3 : box < 760 ? 4 : 5), C.white, C.ink);
-    if (brand) pixelize(brand, () => 2, C.a[3], C.r[1]);
+    if (brand) pixelize(brand, () => 3, C.a[3], C.r[1]);
     for (const b of document.querySelectorAll(".btn[data-pix]")) pixelize(b, () => 3, C.a[4], C.r[1]);
   }
 
