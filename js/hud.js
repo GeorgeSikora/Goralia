@@ -869,12 +869,13 @@
 
   /* ---------- title logo (for the page header) ---------- */
   function drawLogo(canvas) {
-    const scale = 4;
-    const label = "GORALIA";
-    const tw = PK.textWidth(label, "5", scale);
-    const E = 24 * 4; // znak G, zvětšený po pixelech
-    const emblem = PK.icons.ringEmblem(24, C.a[2], C.a[4]);
-    const w = Math.max(tw + 24, E + 24);
+    // původní rozměry: znak G 96 px, pod ním nápis; znak (32 px) i písmo loga 3x, stejný pixel
+    const Z = 3;
+    const E = 32 * Z;
+    const emblem = PK.icons.ringEmblem(32, C.a[2], C.a[4]);
+    const word = PK.icons.wordmark();
+    const ww = word.width * Z;
+    const w = Math.max(ww + 6, E + 24);
     const h = E + 52;
 
     canvas.width = w;
@@ -884,8 +885,7 @@
     g.clearRect(0, 0, w, h);
 
     g.drawImage(emblem, Math.round((w - E) / 2), 0, E, E);
-
-    PK.text(g, label, w / 2, E + 10, 0xffe08a, { align: "center", scale, shadow: 0x6e1f2c, outline: C.ink });
+    g.drawImage(word, Math.round((w - ww) / 2), E + 4, ww, word.height * Z);
 
     // brass underline
     g.fillStyle = css(BR[1]);
