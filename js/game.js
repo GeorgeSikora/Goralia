@@ -865,10 +865,13 @@
     setCam(wx - ax / zoom, wy - ay / zoom);
   }
 
-  // nejmenší zoom = celá mapa se vejde na obrazovku, dál se neodzoomuje
+  // nejmenší zoom: celá mapa se vejde na obrazovku, ale nikdy se neodzoomuje pod 1 : 1,
+  // kdy 1 jemný px sprajtu (1 / HD art px) připadá na 1 fyzický px obrazovky
+  // (scale = fyzických px plátna na art px, devicePixelRatio je v něm už započtený)
   function zoomMin() {
     const fitZoom = Math.min(view.w / map.size[0], view.mapH / map.size[1]);
-    return clamp(fitZoom, 0.1, ZOOMS[ZOOMS.length - 1]);
+    const pixelZoom = HD / scale;
+    return clamp(Math.max(fitZoom, pixelZoom), 0.1, ZOOMS[ZOOMS.length - 1]);
   }
 
   function zoomLevels() {
@@ -4364,6 +4367,7 @@
     get me() { return me; },
     get map() { return map; },
     get cam() { return cam; },
+    get zoom() { return zoom; },
     online,
     cheat(k, v) { if (k === "gold") gold = v; if (k === "wood") wood = v; },
     select(list) { selected = list; },
