@@ -1090,6 +1090,67 @@
     return canvas;
   }
 
+  /* ---------- nápis GORALIA (logo) ---------- */
+  /* Pixelové písmo loga: písmena 9 px vysoká, tahy 2 px, kulaté G, O a A ladí s kruhovým
+   * znakem G. Světlo zleva shora, zářící horní hrana, tmavší spodní, obrys inkoustem.
+   * Vrací plátno přesně v px (zvětšovat jen celočíselně, v menu 3x jako znak ringEmblem(32)). */
+  const LOGO_FONT = {
+    G: ["..#####", ".##....", "##.....", "##.....", "##..###", "##...##", "##...##", ".##..##", "..####."],
+    O: ["..###..", ".##.##.", "##...##", "##...##", "##...##", "##...##", "##...##", ".##.##.", "..###.."],
+    R: ["#####..", "##..##.", "##...##", "##..##.", "#####..", "##.##..", "##..##.", "##...##", "##...##"],
+    A: ["..###..", ".##.##.", "##...##", "##...##", "#######", "##...##", "##...##", "##...##", "##...##"],
+    L: ["##....", "##....", "##....", "##....", "##....", "##....", "##....", "##....", "######"],
+    I: ["##", "##", "##", "##", "##", "##", "##", "##", "##"]
+  };
+  const wordCache = new Map();
+
+  function wordmark(word = "GORALIA", color = C.a[2]) {
+    const key = `${word}|${color}`;
+    if (wordCache.has(key)) return wordCache.get(key);
+
+    const gap = 1;
+    const pad = 2;
+    const rows = [...word].map(ch => LOGO_FONT[ch]);
+    const F = rows[0].length;
+    const W = rows.reduce((s, r) => s + r[0].length, 0) + gap * (rows.length - 1) + pad * 2;
+    const H = F + pad * 2;
+
+    // maska + střed písmene (světlá polovina je vlevo nahoře od středu)
+    const mask = new Int16Array(W * H).fill(-1);
+    const centers = [];
+    let ox = pad;
+    rows.forEach((r, i) => {
+      const w = r[0].length;
+      centers.push([ox + w / 2, pad + F / 2]);
+      r.forEach((line, y) => {
+        for (let x = 0; x < w; x++) if (line[x] === "#") mask[(pad + y) * W + ox + x] = i;
+      });
+      ox += w + gap;
+    });
+
+    const lit = mix(color, 0xffffff, 0.35);
+    const P = new Pix(W, H);
+    const empty = (x, y) => x < 0 || y < 0 || x >= W || y >= H || mask[y * W + x] < 0;
+
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = mask[y * W + x];
+        if (i < 0) continue;
+        const [cx, cy] = centers[i];
+        const upper = x + 0.5 - cx + (y + 0.5 - cy) < 0;
+        let col = upper ? lit : color;
+        // tahy jsou jen 2 px: horní hrana se rozzáří, spodní ztmavne, boční zůstávají v barvě
+        if (empty(x, y - 1)) col = upper ? mix(lit, WARM, 0.4) : mix(color, WARM, 0.2);
+        else if (empty(x, y + 1)) col = mix(color, C.dusk, 0.3);
+        P.set(x, y, col);
+      }
+    }
+    P.outline(C.ink, 0.72);
+    const canvas = P.rawCanvas();
+    wordCache.set(key, canvas);
+    return canvas;
+  }
+
   /* ---------- pixel cursors ---------- */
   const cursors = {};
 
@@ -1138,6 +1199,6 @@
     P.set(8, 8, C.white);
   }, "crosshair");
 
-  PK.icons = { big, bigOff, small, ringEmblem, glyph };
+  PK.icons = { big, bigOff, small, ringEmblem, wordmark, glyph };
   PK.cursors = cursors;
 })();
