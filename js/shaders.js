@@ -55,7 +55,9 @@
     let t = (p - p0) / (p1 - p0);
     t = t * t * (3 - 2 * t);
     const mix = (x, y) => x + (y - x) * t;
-    return { amb: [mix(a0[0], a1[0]), mix(a0[1], a1[1]), mix(a0[2], a1[2])], gain: mix(g0, g1), bloom: mix(b0, b1), rays: [mix(r0[0], r1[0]), mix(r0[1], r1[1]), mix(r0[2], r1[2])] };
+    let amb = [mix(a0[0], a1[0]), mix(a0[1], a1[1]), mix(a0[2], a1[2])];
+    if (PK.halloween && PK.halloween.tint) amb = PK.halloween.tint(amb);
+    return { amb, gain: mix(g0, g1), bloom: mix(b0, b1), rays: [mix(r0[0], r1[0]), mix(r0[1], r1[1]), mix(r0[2], r1[2])] };
   }
 
   const canvas = document.createElement("canvas");
@@ -496,6 +498,7 @@ void main() {
 
     const view = { x: cam.x, y: cam.y, w: w / zoom, h: mapH / zoom };
     const m = mood(time);
+    S.amb = m.amb; // poslední šero (halloween.js podle něj rozsvěcí dýně)
     const nl = pack(view, m.gain);
 
     gl.disable(gl.BLEND);

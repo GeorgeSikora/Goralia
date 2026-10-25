@@ -4051,6 +4051,7 @@
     g.translate(-cam.x, -cam.y);
 
     fx.drawAmbient(g, T);
+    if (PK.halloween && PK.halloween.draw) PK.halloween.draw(g, T, world, visible);
     if (shading) PK.shaders.end();
 
     for (const e of selected) if (alive(e) && e.kind === "building") drawBrackets(e);
