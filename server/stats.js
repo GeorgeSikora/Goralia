@@ -9,7 +9,7 @@ const MIN_DURATION = 15; // kratší zápasy (odchod v odpočtu) se nezapisují
 const TEAMS = require("../js/rules.js").TEAMS;
 
 const newStats = () => ({
-  games: 0, wins: 0, losses: 0, draws: 0, pvpGames: 0, pvpWins: 0, playSeconds: 0, aiSeconds: 0,
+  games: 0, wins: 0, losses: 0, draws: 0, pvpGames: 0, pvpWins: 0, aiGames: 0, aiWins: 0, playSeconds: 0, aiSeconds: 0,
   kills: 0, unitsLost: 0, buildingsDestroyed: 0, buildingsLost: 0, gold: 0, wood: 0, trained: 0, built: 0, heroLevel: 0,
   byMap: {}
 });
@@ -98,6 +98,31 @@ function createStats(store) {
     return match;
   }
 
+  // Hra proti AI v prohlížeči: server vidí jen výsledek a délku (hlásí klient, ověřuje api.js), proto se
+  // započítá do zápasů a výher (a tím do síně slávy), ale ne do podrobných součtů ani historie zápasů.
+  function recordAi(user, { map, result, duration }) {
+    if (!user || !["win", "loss", "draw"].includes(result) || int(duration) < MIN_DURATION) return false;
+
+    const s = user.stats;
+    s.games++;
+    s.aiGames++;
+    if (result === "win") {
+      s.wins++;
+      s.aiWins++;
+    } else if (result === "draw") s.draws++;
+    else s.losses++;
+
+    const id = String(map || "");
+    if (/^[a-z0-9_-]{1,40}$/i.test(id)) {
+      const m = s.byMap[id] || (s.byMap[id] = { games: 0, wins: 0 });
+      m.games++;
+      if (result === "win") m.wins++;
+    }
+
+    store.save();
+    return true;
+  }
+
   function recentFor(userId, limit = 15) {
     const out = [];
 
@@ -107,7 +132,7 @@ function createStats(store) {
       if (!mine) continue;
 
       out.push({
-        id: m.id, ended: m.ended, map: m.map, duration: m.duration, result: mine.result, pvp: m.humans >= 2,
+        id: m.id, ended: m.ended, map: m.map, duration: m.duration, result: mine.result, pvp: m.humans >= 2 && !m.coop,
         me: { kills: mine.kills, unitsLost: mine.unitsLost, buildingsDestroyed: mine.buildingsDestroyed, heroLevel: mine.heroLevel },
         players: m.players.map(p => ({ name: p.name, userId: p.userId, ai: p.ai, result: p.result }))
       });
@@ -134,7 +159,7 @@ function createStats(store) {
     return null;
   }
 
-  return { record, recentFor, getMatch };
+  return { record, recordAi, recentFor, getMatch };
 }
 
 module.exports = { createStats, newStats, MAX_MATCHES, MAX_DETAILED, MIN_DURATION };

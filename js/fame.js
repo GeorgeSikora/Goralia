@@ -25,6 +25,8 @@
   const teamOf = id => TEAMS[(id * 5) % TEAMS.length];
   const typeOf = (id, rank) => (rank <= 3 ? PODIUM_TYPES[rank - 1] : TYPES[(id * 3) % TYPES.length]);
   const fmt = n => n.toLocaleString("cs-CZ");
+  // české tvary: 1 zápas, 2–4 zápasy, 0 a 5+ zápasů
+  const count = (n, one, few, many) => `${fmt(n)} ${n === 1 ? one : n >= 2 && n <= 4 ? few : many}`;
 
   /* ---------- pixelový text ---------- */
   function pixelText(str, { color = C.a[2], scale = 1, zoom = 4, shadow = C.ink } = {}) {
@@ -197,7 +199,7 @@
       const who = el("span", "rank-who");
       const name = el("span", "rank-name", p.name);
       badges(p, name);
-      const parts = [`${fmt(p.pvpWins)} výher proti lidem`, `${fmt(p.otherWins)} proti AI`, `${fmt(p.games)} zápasů`];
+      const parts = [count(p.pvpWins, "výhra", "výhry", "výher") + " proti lidem", `${fmt(p.otherWins)} proti AI`, count(p.games, "zápas", "zápasy", "zápasů")];
       if (p.medals.played) parts.push(`${p.medals.played} ${p.medals.played === 1 ? "turnaj" : p.medals.played < 5 ? "turnaje" : "turnajů"}`);
       who.append(name, el("span", "rank-parts", parts.join(" · ")));
 

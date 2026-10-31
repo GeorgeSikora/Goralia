@@ -178,6 +178,7 @@
   const teamCss = team => PK.css(PK.TEAM[team].ui);
 
   function reset() {
+    abandonAi();
     spectator = false;
     specEcon = new Map();
     endWinner = -1;
@@ -247,6 +248,15 @@
       }).catch(() => {});
     } catch (err) { /* statistiky nejsou důležité */ }
   }
+
+  // Rozehraná hra proti AI, kterou hráč opustí (nová hra, zavření karty), je prohra, stejně jako odchod ze zápasu na serveru.
+  function abandonAi() {
+    if (mode !== "ai" || !simMatch || matchOver || spectator || simMatch.cheated || simMatch.reported) return;
+    simMatch.reported = true; // po návratu na stránku (bfcache) se hra dohraje, ale znovu se nehlásí
+    reportAi("end", { result: "loss", quit: true, duration: Math.round(simMatch.elapsed) });
+  }
+
+  window.addEventListener("pagehide", abandonAi);
 
   /* ---------- příprava zápasu (načítací obrazovka) ----------
    * Sprity jednotek a budov se kreslí až při prvním použití a jemný terén se
@@ -394,7 +404,8 @@
     }
 
     // zápas změněný příkazem správce se do statistik nepočítá
-    if (mode === "ai" && !(simMatch && simMatch.cheated)) {
+    if (mode === "ai" && simMatch && !simMatch.cheated && !simMatch.reported) {
+      simMatch.reported = true;
       reportAi("end", { result: state === "win" ? "win" : state === "draw" ? "draw" : "loss", duration: simMatch ? Math.round(simMatch.elapsed) : 0 });
     }
 
