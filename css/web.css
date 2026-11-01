@@ -151,6 +151,14 @@ a:hover { color: var(--amber-l); }
   opacity: 0.85;
 }
 .nav a:hover, .nav a.on { color: var(--amber); opacity: 1; }
+.top .lang {
+  font: 600 12px var(--mono);
+  color: var(--text);
+  background: rgba(21, 18, 31, 0.7);
+  border: 2px solid var(--brass-d);
+  padding: 4px 6px;
+  cursor: pointer;
+}
 
 /* ---------- hero ---------- */
 .hero {
@@ -579,7 +587,7 @@ p { margin: 0 0 16px; }
 /* ---------- mobil ---------- */
 @media (max-width: 980px) {
   .nav { display: none; }
-  .top .btn-play { margin-left: auto; }
+  .top .lang { margin-left: auto; }
   .two, .feat { grid-template-columns: 1fr; gap: 28px; }
   .feat.flip .feat-media { order: 0; }
   .feat { margin: 56px 0; }

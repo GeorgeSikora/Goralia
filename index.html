@@ -97,6 +97,7 @@
         <a id="m-admin" class="btn big" href="/admin" target="_blank" rel="noopener" hidden>Server panel</a>
         <button id="m-settings" class="btn big" type="button">Nastavení</button>
         <button id="m-help" class="btn big" type="button">Ovládání</button>
+        <select id="m-lang" class="field lang-pick" aria-label="Jazyk"></select>
       </section>
 
       <section id="panel-online" class="page" data-page="online" hidden>
@@ -145,7 +146,7 @@
           <p id="a-status" class="status" aria-live="polite"></p>
           <button id="a-submit" class="btn big" type="submit">Přihlásit se</button>
           <button id="a-toggle" class="btn" type="button">Nemáš účet? Zaregistruj se</button>
-          <p class="status small legal">Přihlášením nebo registrací souhlasíš s <a href="/terms" target="_blank" rel="noopener">podmínkami užívání</a> a bereš na vědomí <a href="/privacy" target="_blank" rel="noopener">zásady ochrany soukromí</a>.</p>
+          <p class="status small legal" data-i18n-html="account.legal">Přihlášením nebo registrací souhlasíš s <a href="/terms" target="_blank" rel="noopener">podmínkami užívání</a> a bereš na vědomí <a href="/privacy" target="_blank" rel="noopener">zásady ochrany soukromí</a>.</p>
         </form>
         <button class="btn big" type="button" data-back>Zpět</button>
       </section>
@@ -250,6 +251,10 @@
       <section id="panel-settings" class="page" data-page="settings" hidden>
         <h2>Nastavení</h2>
         <label class="row">
+          <span>Jazyk</span>
+          <select id="s-lang" class="field" aria-label="Jazyk"></select>
+        </label>
+        <label class="row">
           <span>Hlasitost</span>
           <input id="s-volume" type="range" min="0" max="100" step="5">
           <output id="s-volume-out">100 %</output>
@@ -318,14 +323,14 @@
 
       <section id="panel-help" class="page" data-page="help" hidden>
         <h2>Ovládání</h2>
-        <p class="goal">
+        <p class="goal" data-i18n-html="help.controls">
           <b>Levé tlačítko</b> vybírá (tažením rámeček), <b>pravé</b> vydává rozkazy, <b>kolečko</b> mění zoom.
           Kameru posouvají <b>šipky</b>, <b>okraj obrazovky</b>, <b>prostřední tlačítko</b> a <b>minimapa</b>.
           Vyhrává poslední, komu zůstane hlavní budova. Přes vodu se chodí jen po brodech.
           Avatar ve výběru vybere jednu jednotku (Shift ji odebere, Ctrl vybere stejný typ).
         </p>
         <h3 class="touch-title">Dotykové ovládání</h3>
-        <ul class="touch-help">
+        <ul class="touch-help" data-i18n-html="help.touch">
           <li><b>Klepnutí</b> vybere jednotku či budovu, na zem, nepřítele nebo surovinu vydá rozkaz.</li>
           <li><b>Dvojité klepnutí</b> vybere všechny jednotky stejného typu, do prázdna zruší výběr.</li>
           <li><b>Tažení</b> posouvá mapu, <b>podržení a tažení</b> vybírá rámečkem.</li>
@@ -359,10 +364,13 @@
         <button class="btn big" type="button" data-back>Zpět</button>
       </section>
     </div>
-    <p class="footer"><a href="/">Goralia</a> &middot; Esc otevře menu &middot; <a href="/editor" target="_blank" rel="noopener">Editor map</a> &middot; <a href="/terms" target="_blank" rel="noopener">Podmínky</a> &middot; <a href="/privacy" target="_blank" rel="noopener">Soukromí</a></p>
+    <p class="footer" data-i18n-html="menu.footer"><a href="/">Goralia</a> &middot; Esc otevře menu &middot; <a href="/editor" target="_blank" rel="noopener">Editor map</a> &middot; <a href="/terms" target="_blank" rel="noopener">Podmínky</a> &middot; <a href="/privacy" target="_blank" rel="noopener">Soukromí</a></p>
   </div>
 </div>
 
+<script src="js/i18n.js"></script>
+<script src="js/lang/en.js"></script>
+<script src="js/lang/szl.js"></script>
 <script src="js/loader.js"></script>
 </body>
 </html>

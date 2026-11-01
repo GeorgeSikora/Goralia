@@ -50,6 +50,7 @@
     <a href="#pribeh">Příběh</a>
     <a href="#proc">Proč vznikla</a>
   </nav>
+  <select class="lang" id="lang" aria-label="Jazyk"></select>
   <a class="btn btn-play small" href="/play" data-pix="Hrát">Hrát</a>
 </header>
 
@@ -245,6 +246,10 @@
   <div class="lb-body"></div>
 </div>
 
+<script src="/js/i18n.js"></script>
+<script src="/js/lang/en.js"></script>
+<script src="/js/lang/szl.js"></script>
+<script>PK.i18n.bindSelect(document.getElementById("lang"));</script>
 <script src="/js/rules.js"></script>
 <script src="/js/pixel.js"></script>
 <script src="/js/font.js"></script>

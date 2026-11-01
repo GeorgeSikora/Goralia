@@ -34,7 +34,7 @@
   const LINE = 12;
 
   function pixelLines(lines, color, shadow) {
-    const w = Math.max(...lines.map(l => PK.textWidth(l.toUpperCase(), "5"))) + 3;
+    const w = Math.max(...lines.map(l => PK.textWidth(l, "5"))) + 3;
     const { c, g } = PK.makeCanvas(w, lines.length * LINE + 2);
     lines.forEach((line, i) => PK.text(g, line, Math.floor(w / 2), 3 + i * LINE, color, { shadow, align: "center" }));
     c.className = "pix";
@@ -52,7 +52,7 @@
 
     const box = el.parentElement.clientWidth;
     const zoom = zoomOf(box);
-    const lines = el.classList.contains("title") ? PK.wrap(el.dataset.text.toUpperCase(), Math.floor(box / zoom) - 6) : [el.dataset.text];
+    const lines = el.classList.contains("title") ? PK.wrap(el.dataset.text, Math.floor(box / zoom) - 6) : [el.dataset.text];
     const key = `${zoom}|${lines.join("/")}`;
     if (el.dataset.key === key) return;
     el.dataset.key = key;
@@ -506,6 +506,7 @@
 
   safe(texts);
   safe(scene);
+  addEventListener("pk-lang", () => safe(texts));
   let raf = 0;
   addEventListener("resize", () => {
     cancelAnimationFrame(raf);
