@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Goralia · Editor map</title>
   <link rel="stylesheet" href="css/editor.css">
+  <link rel="stylesheet" href="css/flags.css">
 </head>
 <body>
   <header class="bar">
@@ -17,7 +18,7 @@
     <button id="e-title" type="button" class="title" title="Vlastnosti mapy"></button>
     <span class="grow"></span>
     <span id="e-perm" class="perm" hidden></span>
-    <select id="e-lang" class="lang" aria-label="Jazyk"></select>
+    <div id="e-lang" class="lang lang-flags compact" aria-label="Jazyk"></div>
     <button id="e-save" type="button" class="primary" title="Ctrl+S">Uložit</button>
     <a id="e-play" class="button" href="#" target="_blank" rel="noopener" hidden>Hrát</a>
   </header>
@@ -131,7 +132,8 @@
   <script src="js/i18n.js"></script>
   <script src="js/lang/en.js"></script>
   <script src="js/lang/szl.js"></script>
-  <script>PK.i18n.bindSelect(document.getElementById("e-lang"));</script>
+  <script src="js/flags.js"></script>
+  <script>PK.i18n.bindPicker(document.getElementById("e-lang"));</script>
   <script src="js/pixel.js"></script>
   <script src="js/font.js"></script>
   <script src="js/props.js"></script>

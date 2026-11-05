@@ -151,14 +151,7 @@ a:hover { color: var(--amber-l); }
   opacity: 0.85;
 }
 .nav a:hover, .nav a.on { color: var(--amber); opacity: 1; }
-.top .lang {
-  font: 600 12px var(--mono);
-  color: var(--text);
-  background: rgba(21, 18, 31, 0.7);
-  border: 2px solid var(--brass-d);
-  padding: 4px 6px;
-  cursor: pointer;
-}
+.top .lang { display: flex; }
 
 /* ---------- hero ---------- */
 .hero {

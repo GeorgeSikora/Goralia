@@ -3072,8 +3072,8 @@
     $("s-shaders-label").textContent = shOk ? "Světla a stíny (shadery)" : "Světla a stíny (prohlížeč nepodporuje WebGL 2)";
   }
 
-  PK.i18n.bindSelect($("s-lang"));
-  PK.i18n.bindSelect($("m-lang"));
+  PK.i18n.bindPicker($("s-lang"));
+  PK.i18n.bindPicker($("m-lang"));
 
   volumeEl.addEventListener("input", () => {
     audio.unlock();

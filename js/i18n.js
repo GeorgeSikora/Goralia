@@ -12,6 +12,7 @@
  * a atributy title / aria-label / placeholder / alt se hledají ve slovníku podle původního českého
  * znění. Odstavce s vnořeným HTML mají data-i18n-html="klíč" a překlad je HTML.
  * Volba jazyka je v localStorage "pk-lang"; změnu hlásí událost "pk-lang" na window.
+ * Přepínač jazyka je řada vlajek (PK.i18n.bindPicker, vlajky kreslí js/flags.js).
  */
 (() => {
   "use strict";
@@ -263,26 +264,63 @@
     if (id === lang) { patterns = null; memo = new Map(); upper = null; }
   }
 
-  // přepínač jazyka: <select> naplněný jazyky, změna se hned projeví
-  function bindSelect(sel) {
-    if (!sel) return;
-    sel.innerHTML = "";
-    for (const l of LANGS) {
-      const o = document.createElement("option");
-      o.value = l.id;
-      o.textContent = l.name;
-      sel.appendChild(o);
+  // přepínač jazyka: řada tlačítek s vlajkou a jménem jazyka (jméno v daném jazyce, nepřekládá se),
+  // aktivní jazyk je zvýrazněný; klik přepne hned, bez obnovení stránky
+  function bindPicker(host) {
+    if (!host) return;
+    if (host.tagName === "SELECT") {
+      const div = document.createElement("div");
+      div.id = host.id;
+      div.className = host.className;
+      host.replaceWith(div);
+      host = div;
     }
-    sel.value = lang;
-    sel.setAttribute("data-i18n-skip", "");
-    sel.addEventListener("change", () => set(sel.value));
-    window.addEventListener("pk-lang", () => { sel.value = lang; });
+    host.classList.add("lang-flags");
+    host.setAttribute("role", "group");
+    if (!host.hasAttribute("aria-label")) host.setAttribute("aria-label", "Jazyk");
+    host.innerHTML = "";
+
+    const buttons = LANGS.map(l => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "flag";
+      b.dataset.lang = l.id;
+      b.title = l.name;
+      b.setAttribute("aria-label", l.name);
+      b.setAttribute("data-i18n-skip", "");
+      const url = PK.flags ? PK.flags.url(l.id) : "";
+      if (url) {
+        const img = document.createElement("img");
+        img.src = url;
+        img.width = PK.flags.W;
+        img.height = PK.flags.H;
+        img.alt = "";
+        img.draggable = false;
+        b.appendChild(img);
+      }
+      const name = document.createElement("span");
+      name.textContent = l.name;
+      b.appendChild(name);
+      b.addEventListener("click", () => set(l.id));
+      host.appendChild(b);
+      return b;
+    });
+
+    const sync = () => {
+      for (const b of buttons) {
+        const on = b.dataset.lang === lang;
+        b.classList.toggle("on", on);
+        b.setAttribute("aria-pressed", on ? "true" : "false");
+      }
+    };
+    sync();
+    window.addEventListener("pk-lang", sync);
   }
 
   PK.i18n = {
     LANGS,
     get lang() { return lang; },
-    set, add, apply, bindSelect, form, tr,
+    set, add, apply, bindPicker, bindSelect: bindPicker, form, tr,
     dict
   };
   PK.t = t;
