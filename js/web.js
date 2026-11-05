@@ -121,7 +121,7 @@
     { type: "worker", name: "Dělník", role: "Těží zlato, kácí dřevo, staví a opravuje budovy. Náklad nosí na zádech." },
     { type: "soldier", name: "Voják", role: "Pěšák se štítem a mečem, páteř každé armády." },
     { type: "archer", name: "Lučištník", role: "Střílí z dálky. S výzkumem Střelba víc a dál." },
-    { type: "hero", name: "Hrdina", role: "Sbírá zkušenosti a úrovně, umí ohnivou kouli a léčení.", cast: true },
+    { type: "hero", name: "Hrdina", role: "Pěší rytíř se štítem: výpad, bojový pokřik a štítová zeď. Roste do 5. úrovně.", cast: true },
     { type: "monk", name: "Mnich", role: "Požehnáním léčí raněné spojence v okolí.", cast: true },
     { type: "knight", name: "Rytíř", role: "Rychlý jezdec. Po rozjezdu udeří s bonusem za nápor." },
     { type: "catapult", name: "Katapult", role: "Kámen dopadá na plochu a budovám ubere 2,5× víc." }
@@ -131,7 +131,7 @@
     { type: "skeleton", name: "Kostlivý střelec", role: "Luk z kostí a mířidla bez očí." },
     { type: "abomination", name: "Zrůda", role: "Sešitá z těl, s řetězem a ohromnou výdrží." },
     { type: "banshee", name: "Přízrak", role: "Kvílící duch, který útočí z dálky." },
-    { type: "lich", name: "Pekelný lich", role: "Pán nemrtvých s pekelným výbuchem.", cast: true }
+    { type: "lich", name: "Pekelný lich", role: "Hrdina nemrtvých: ohnivá koule, vyvolání kostlivců a mrazivá aura.", cast: true }
   ];
 
   const sprites = new Set();

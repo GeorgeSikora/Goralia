@@ -30,10 +30,17 @@ const UD = R.UNDEAD;
 const UNIT_RADIUS = 15; // nejmenší odstup středů dvou jednotek
 const EDGE_STOP = 10; // jak blízko k okraji budovy dojde dělník nebo voják na blízko
 
+const H = R.HERO;
+const HERO_TYPES = new Set(Object.values(H.types)); // typy jednotek, které jsou hrdinou své frakce
+const FROST_ATTACK = H.abilities.lich[2].attack; // o kolik déle se nabíjí útok zmrazené jednotky
+// stav jednotky ve snímku (bitová maska): pokřik, štít, zpomalení, aura licha, vyvolaná, výpad
+const ST = { cry: 1, guard: 2, slow: 4, aura: 8, summoned: 16, dash: 32 };
+
 const alive = entity => !!entity && entity.hp > 0;
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
-const xpNeeded = level => level * 40;
+const xpNeeded = H.xpNeeded;
+const round2 = v => Math.round(v * 100) / 100;
 const round1 = v => Math.round(v * 10) / 10;
 const isNum = v => typeof v === "number" && Number.isFinite(v);
 const teamIndex = team => R.TEAMS.indexOf(team);
@@ -99,9 +106,15 @@ class Match {
       if (undead) this.brains[team] = { horde: true, ...hordeBrain() };
       else if (this.players[i].ai) this.brains[team] = AI.createBrain(team);
 
-      this.createBuilding(undead ? UD.hq : slot.hq.type, team, slot.hq.x, slot.hq.y, false);
+      const hq = this.createBuilding(undead ? UD.hq : slot.hq.type, team, slot.hq.x, slot.hq.y, false);
       for (const b of slot.buildings) this.createBuilding(b.type, team, b.x, b.y, false);
       for (const u of slot.units) this.createUnit(u.type, team, u.x, u.y);
+
+      // hrdina lidí stojí u gminy hned od začátku (lich nemrtvým povstane s prvním krokem pevnosti)
+      if (!undead && opts.heroes !== false && !slot.units.some(u => u.type === "hero")) {
+        this.createUnit("hero", team, hq.x + slot.spawn[0], hq.y + slot.spawn[1]);
+        this.stats[team].heroLevel = 1;
+      }
     });
 
     for (const [x, y, amount] of map.gold) {
@@ -210,11 +223,21 @@ class Match {
     const unit = {
       id: this.nextId++, kind: "unit", type, team, x, y,
       hp: s.hp, maxHp: s.hp, speed: s.speed, damage: s.damage, range: s.range,
-      attackDelay: s.delay, cooldown: 0, fireCooldown: 0, healCooldown: 0,
+      attackDelay: s.delay, cooldown: 0,
+      dmgT: 0, dmgK: 0, guardT: 0, guardK: 0, slowT: 0, slowK: 0, // pokřik, štítová zeď, mráz
       order: null, harvestTimer: 0, repairTimer: 0, carry: null, working: false, building: false, repairing: false,
       path: null, pathGoal: -1, pathCd: 0, px: 0, py: 0,
       level: 1, xp: 0, facing: this.slotOf(team).facing
     };
+    if (HERO_TYPES.has(type)) {
+      unit.hero = true;
+      unit.maxMana = H.mana.base;
+      unit.mana = unit.maxMana;
+      unit.cds = [0, 0, 0];
+      unit.auraT = 0;
+      unit.auraK = 0;
+      unit.dash = null;
+    }
     this.units.push(unit);
     this.eject(unit);
     if (type === "knight") unit.charge = R.KNIGHT.charge; // rytíř přijíždí rozjetý
@@ -251,7 +274,7 @@ class Match {
   }
 
   heroOf(team) {
-    return this.units.find(u => u.team === team && u.type === "hero" && alive(u));
+    return this.units.find(u => u.team === team && u.hero && alive(u));
   }
 
   // Limit jednotek roste s každou dostavěnou chatrčí.
@@ -294,8 +317,7 @@ class Match {
       case "research": return this.research(team, msg.kind, msg.src);
       case "build": return this.build(team, msg);
       case "order": return this.order(team, msg);
-      case "fire": return this.fire(team, msg);
-      case "heal": return this.heal(team);
+      case "cast": return this.cast(team, msg);
       case "surrender": return this.resign(team, "surrender");
       default:
     }
@@ -326,6 +348,8 @@ class Match {
   train(team, type, srcId) {
     if (!HUMAN_UNITS.includes(type) || this.faction[team] !== "human") return;
 
+    if (type === "hero") return this.trainHero(team);
+
     const done = b => b.team === team && alive(b) && b.progress >= 1;
     const at = R.TRAINED_AT[type];
     const source = type === "worker"
@@ -338,11 +362,6 @@ class Match {
     }
 
     const mine = this.units.filter(u => u.team === team && alive(u));
-
-    if (type === "hero" && mine.some(u => u.type === "hero")) {
-      return this.note(team, "Současně můžeš mít jen jednoho hrdinu.");
-    }
-
     const cap = this.supplyCap(team);
     if (mine.length >= cap) return this.note(team, `Maximum jednotek je ${cap}. Postav budu.`);
     if (!this.pay(team, type)) return;
@@ -351,11 +370,34 @@ class Match {
     this.createUnit(type, team, source.x + spawn[0], source.y + spawn[1]);
     this.stats[team].trained++;
     this.stats[team].trainedBy[type] = (this.stats[team].trainedBy[type] || 0) + 1;
+  }
 
-    if (type === "hero") {
-      this.stats[team].heroLevel = Math.max(this.stats[team].heroLevel, 1);
-      this.note(team, "Hrdina připraven: A ohnivá koule, S léčení.");
-    }
+  // Hrdina se cvičí v hlavní budově (H.train s), jen jeden najednou a jen když žádný nežije.
+  trainHero(team) {
+    const hq = this.hqOf(team);
+    if (!hq) return this.note(team, "Potřebuješ gminu.");
+    if (this.heroOf(team)) return this.note(team, "Současně můžeš mít jen jednoho hrdinu.");
+    if (hq.heroT) return this.note(team, "Hrdina se už cvičí.");
+
+    const cap = this.supplyCap(team);
+    if (this.units.filter(u => u.team === team && alive(u)).length >= cap) return this.note(team, `Maximum jednotek je ${cap}. Postav budu.`);
+    if (!this.pay(team, "hero")) return;
+
+    hq.heroT = { left: H.train, total: H.train };
+    this.note(team, `Výcvik hrdiny: ${H.train} s.`);
+  }
+
+  heroReady(hq) {
+    const team = hq.team;
+    hq.heroT = null;
+    if (this.heroOf(team)) return;
+
+    const spawn = this.slotOf(team).spawn;
+    this.createUnit(R.HERO.types[this.faction[team]], team, hq.x + spawn[0], hq.y + spawn[1]);
+    this.stats[team].trained++;
+    this.stats[team].trainedBy.hero = (this.stats[team].trainedBy.hero || 0) + 1;
+    this.stats[team].heroLevel = Math.max(this.stats[team].heroLevel, 1);
+    this.note(team, "Hrdina je připraven.");
   }
 
   // Výzkum v dostavěné budově (kovárna, gmina); každý druh jen jednou najednou, budova jeden výzkum.
@@ -521,28 +563,187 @@ class Match {
     }
   }
 
-  fire(team, msg) {
+  /* ---------- schopnosti hrdinů ---------- */
+  // Přebíjení se s úrovní zkracuje.
+  cdScale(hero) {
+    return 1 - H.cdPerLevel * (hero.level - 1);
+  }
+
+  // Seslání schopnosti k (0..2). Cílené schopnosti potřebují bod v dosahu hrdiny.
+  cast(team, msg) {
     const hero = this.heroOf(team);
+    if (!hero) return this.note(team, "Nemáš hrdinu.");
 
-    if (!hero) return this.note(team, "Nejdřív vyber hrdinu.");
-    if (!isNum(msg.x) || !isNum(msg.y)) return;
+    const k = msg.k;
+    const list = H.abilities[hero.type];
+    if (!list || !Number.isInteger(k) || !list[k] || hero.dash) return;
 
-    if (hero.fireCooldown > 0) {
-      return this.note(team, `Ohnivá koule: ještě ${Math.ceil(hero.fireCooldown)} s.`);
+    const ab = list[k];
+    if (hero.cds[k] > 0) return this.note(team, `${ab.name}: ještě ${Math.ceil(hero.cds[k])} s.`);
+    if (hero.mana < ab.mana) return this.note(team, `${ab.name}: chybí mana.`);
+
+    let point = null;
+
+    if (ab.target) {
+      if (!isNum(msg.x) || !isNum(msg.y)) return;
+      point = { x: clamp(msg.x, 12, this.LW - 12), y: clamp(msg.y, 38, this.LH - 14) };
+      if (distance(hero, point) > ab.range) return this.note(team, "Cíl je příliš daleko od hrdiny.");
+      hero.facing = point.x < hero.x ? -1 : 1;
     }
 
-    const point = { x: msg.x, y: msg.y };
+    hero.mana -= ab.mana;
+    hero.cds[k] = round2(ab.cd * this.cdScale(hero));
+    const ev = { e: "cast", h: hero.id, k };
+    if (point) {
+      ev.x = round1(point.x);
+      ev.y = round1(point.y);
+    }
 
-    if (distance(hero, point) > 180) return this.note(team, "Cíl je příliš daleko od hrdiny.");
+    const lv = hero.level - 1;
 
-    hero.fireCooldown = 10;
-    hero.facing = point.x < hero.x ? -1 : 1;
-    this.events.push({ e: "fire", h: hero.id, x: round1(point.x), y: round1(point.y) });
+    if (ab.id === "lunge") {
+      hero.dash = { x: point.x, y: point.y, t: 0.6, ab };
+      hero.order = null;
+      hero.path = null;
+    } else if (ab.id === "warcry") {
+      ev.ids = [];
+      for (const ally of this.unitsNear(hero, ab.radius, u => this.friendly(u.team, team))) {
+        ally.dmgT = ab.time;
+        ally.dmgK = Math.max(ally.dmgT > 0 ? ally.dmgK : 0, ab.bonus + ab.perLevel * lv);
+        ev.ids.push(ally.id);
+      }
+    } else if (ab.id === "shieldwall") {
+      ev.ids = [];
+      for (const ally of this.unitsNear(hero, ab.radius, u => this.friendly(u.team, team))) {
+        const k2 = (ally === hero ? ab.self : ab.allies) + ab.perLevel * lv;
+        ally.guardK = ally.guardT > 0 ? Math.max(ally.guardK, k2) : k2;
+        ally.guardT = ab.time;
+        ev.ids.push(ally.id);
+      }
+    } else if (ab.id === "fireball") {
+      this.blasts.push({
+        t: FIRE_FLIGHT, by: hero, team, x: point.x, y: point.y,
+        unitR: ab.unitR, buildingR: ab.buildingR, amount: ab.damage + ab.perLevel * lv, report: true
+      });
+    } else if (ab.id === "summon") {
+      ev.ids = [];
+      for (let i = 0; i < ab.count; i++) {
+        // kostlivci vylezou po stranách před lichem, směrem, kam se dívá
+        const a = (hero.facing < 0 ? Math.PI : 0) + (i - (ab.count - 1) / 2) * 1.3;
+        let x = clamp(hero.x + Math.cos(a) * 28, 12, this.LW - 12);
+        let y = clamp(hero.y + Math.sin(a) * 22 + 6, 38, this.LH - 14);
+        if (this.nav.isBlocked(x, y)) {
+          x = hero.x;
+          y = hero.y;
+        }
+        const s = this.createUnit("skeleton", team, x, y);
+        s.summoned = ab.life;
+        s.facing = hero.facing;
+        ev.ids.push(s.id);
+      }
+    } else if (ab.id === "frost") {
+      hero.auraT = ab.time;
+      hero.auraK = ab.slow + ab.perLevel * lv;
+    }
 
-    this.blasts.push({
-      t: FIRE_FLIGHT, by: hero, team, x: point.x, y: point.y,
-      unitR: 47, buildingR: 70, amount: 42 + hero.level * 10, report: true
-    });
+    this.events.push(ev);
+  }
+
+  // Živé jednotky v okruhu kolem bodu, které projdou filtrem (pořadí jako v this.units: deterministické).
+  unitsNear(at, radius, test) {
+    return this.units.filter(u => alive(u) && distance(u, at) <= radius && test(u));
+  }
+
+  // Rytíř ve výpadu letí přímo k cíli; voda nebo budova ho zastaví dřív. Po dopadu zasáhne okolí.
+  dashStep(unit, dt) {
+    const d = unit.dash;
+    d.t -= dt;
+    const left = distance(unit, d);
+    const step = d.ab.speed * dt;
+    let stop = d.t <= 0;
+
+    if (left <= step) {
+      if (!this.nav.isBlocked(d.x, d.y)) {
+        unit.x = d.x;
+        unit.y = d.y;
+      }
+      stop = true;
+    } else {
+      const nx = unit.x + (d.x - unit.x) / left * step;
+      const ny = unit.y + (d.y - unit.y) / left * step;
+      if (this.nav.isBlocked(nx, ny)) stop = true;
+      else {
+        unit.x = nx;
+        unit.y = ny;
+      }
+    }
+
+    if (!stop) return;
+
+    unit.dash = null;
+    unit.cooldown = Math.max(unit.cooldown, 0.25);
+    const ab = d.ab;
+    const amount = ab.damage + ab.perLevel * (unit.level - 1);
+    let hits = 0;
+
+    for (const e of [...this.units, ...this.buildings]) {
+      if (!alive(e) || this.friendly(e.team, unit.team)) continue;
+      const building = e.kind === "building";
+      if (building ? this.gap(unit, e) > 12 : distance(unit, e) > ab.radius) continue;
+      this.damage(unit, e, building ? Math.round(amount / 2) : amount, { silent: true });
+      hits++;
+    }
+
+    this.events.push({ e: "lunge", h: unit.id, x: round1(unit.x), y: round1(unit.y), n: hits });
+  }
+
+  // Hrdinové: mana a přebíjení; buffy všech jednotek dobíhají; aura licha zpomaluje nepřátele v okolí.
+  tickEffects(dt) {
+    for (const u of this.units) {
+      if (!alive(u)) continue;
+
+      if (u.dmgT > 0 && (u.dmgT -= dt) <= 0) u.dmgT = u.dmgK = 0;
+      if (u.guardT > 0 && (u.guardT -= dt) <= 0) u.guardT = u.guardK = 0;
+      if (u.slowT > 0 && (u.slowT -= dt) <= 0) u.slowT = u.slowK = 0;
+
+      if (u.summoned != null && (u.summoned -= dt) <= 0) {
+        // vyvolaný kostlivec se po čase rozpadne (bez zabití a bez zkušeností)
+        u.hp = 0;
+        this.events.push({ e: "unsum", id: u.id });
+        continue;
+      }
+
+      if (!u.hero) continue;
+
+      u.mana = Math.min(u.maxMana, u.mana + (H.mana.regen + H.mana.regenPerLevel * (u.level - 1)) * dt);
+      for (let k = 0; k < 3; k++) if (u.cds[k] > 0) u.cds[k] = Math.max(0, u.cds[k] - dt);
+
+      if (u.auraT > 0) {
+        u.auraT = Math.max(0, u.auraT - dt);
+        const r = H.abilities.lich[2].radius;
+        for (const e of this.units) {
+          if (!alive(e) || this.friendly(e.team, u.team) || distance(e, u) > r) continue;
+          e.slowK = e.slowT > 0 ? Math.max(e.slowK, u.auraK) : u.auraK;
+          e.slowT = Math.max(e.slowT, 0.3);
+        }
+        if (u.auraT <= 0) u.auraK = 0;
+      }
+    }
+  }
+
+  levelUp(hero) {
+    const up = H.perLevel[hero.type] || H.perLevel.hero;
+    hero.level++;
+    hero.maxHp += up.hp;
+    hero.hp = Math.min(hero.maxHp, hero.hp + up.hp + 25);
+    hero.damage += up.damage;
+    hero.maxMana += H.mana.perLevel;
+    hero.mana = Math.min(hero.maxMana, hero.mana + H.mana.perLevel);
+    if (hero.level >= H.maxLevel) hero.xp = 0;
+    this.events.push({ e: "lvl", id: hero.id, l: hero.level });
+    const s = this.stats[hero.team];
+    if (s) s.heroLevel = Math.max(s.heroLevel, hero.level);
+    this.note(hero.team, `Hrdina dosáhl úrovně ${hero.level}!`);
   }
 
   // Dopad ohnivé koule: zásah se počítá podle toho, kdo v místě stojí teď, ne při výstřelu.
@@ -561,29 +762,6 @@ class Match {
     }
 
     if (blast.report) this.note(blast.team, hits ? `Ohnivá koule zasáhla ${hits} cílů!` : "Ohnivá koule minula.");
-  }
-
-  heal(team) {
-    const hero = this.heroOf(team);
-
-    if (!hero) return this.note(team, "Nejdřív vyber hrdinu.");
-
-    if (hero.healCooldown > 0) {
-      return this.note(team, `Léčení: ještě ${Math.ceil(hero.healCooldown)} s.`);
-    }
-
-    const amount = 42 + hero.level * 10;
-    const healed = [];
-
-    for (const ally of this.units) {
-      if (!this.friendly(ally.team, team) || !alive(ally) || distance(ally, hero) > 90 || ally.hp >= ally.maxHp) continue;
-      ally.hp = Math.min(ally.maxHp, ally.hp + amount);
-      healed.push(ally.id);
-    }
-
-    hero.healCooldown = 14;
-    this.events.push({ e: "heal", h: hero.id, ids: healed, n: amount });
-    this.note(team, `Vyléčeno spojenců: ${healed.length}.`);
   }
 
   /* ---------- simulation ---------- */
@@ -619,7 +797,8 @@ class Match {
     if (toAim < 0.001) return false;
     if (Math.abs(dx) > 0.4) unit.facing = dx < 0 ? -1 : 1;
 
-    const step = Math.min(unit.speed * dt, aim === goal && !solid ? Math.max(0, toAim - stop) : toAim);
+    const speed = unit.slowT > 0 ? unit.speed * (1 - unit.slowK) : unit.speed; // mrazivá aura
+    const step = Math.min(speed * dt, aim === goal && !solid ? Math.max(0, toAim - stop) : toAim);
     const nx = clamp(unit.x + dx / toAim * step, 12, this.LW - 12);
     const ny = clamp(unit.y + dy / toAim * step, 38, this.LH - 14);
 
@@ -724,27 +903,25 @@ class Match {
     if (target.kind !== "unit") return;
 
     const hero = this.heroOf(attacker.team);
-    if (!hero) return;
+    if (!hero || hero.level >= H.maxLevel) return;
     if (attacker !== hero && distance(hero, target) > 145) return;
 
-    hero.xp += 25;
-    this.events.push({ e: "xp", id: hero.id, n: 25 });
+    hero.xp += H.xpKill;
+    this.events.push({ e: "xp", id: hero.id, n: H.xpKill });
 
-    while (hero.xp >= xpNeeded(hero.level)) {
+    while (hero.level < H.maxLevel && hero.xp >= xpNeeded(hero.level)) {
       hero.xp -= xpNeeded(hero.level);
-      hero.level++;
-      hero.maxHp += 27;
-      hero.hp = Math.min(hero.maxHp, hero.hp + 55);
-      hero.damage += 3;
-      this.events.push({ e: "lvl", id: hero.id, l: hero.level });
-      this.stats[hero.team].heroLevel = Math.max(this.stats[hero.team].heroLevel, hero.level);
-      this.note(hero.team, `Hrdina dosáhl úrovně ${hero.level}!`);
+      this.levelUp(hero);
     }
   }
 
   damage(attacker, target, amount, opts = {}) {
     if (!alive(target)) return;
     if (this.cheats && this.cheats.god.has(target.team)) return; // příkaz správce /god
+
+    // bojový pokřik útočníka a štítová zeď cíle
+    if (attacker && attacker.dmgT > 0) amount = Math.round(amount * (1 + attacker.dmgK));
+    if (target.guardT > 0) amount = Math.max(1, Math.round(amount * (1 - target.guardK)));
 
     if (target.kind === "unit" && R.MELEE.includes(target.type)) {
       const armor = this.upgrades[target.team].armor;
@@ -781,7 +958,7 @@ class Match {
 
   strike(unit, target) {
     unit.facing = target.x < unit.x ? -1 : 1;
-    unit.cooldown = unit.attackDelay;
+    unit.cooldown = unit.attackDelay * (unit.slowT > 0 ? FROST_ATTACK : 1);
 
     if (unit.type === "catapult") return this.hurl(unit, target);
 
@@ -1053,6 +1230,8 @@ class Match {
       }
     }
 
+    this.tickEffects(dt);
+
     for (const team of this.active) {
       const brain = this.brains[team];
       if (!brain || this.out.has(team)) continue;
@@ -1064,6 +1243,8 @@ class Match {
       if (!alive(building)) continue;
 
       building.cooldown -= dt;
+
+      if (building.heroT && (building.heroT.left -= dt) <= 0) this.heroReady(building);
 
       if (building.research && building.progress >= 1) {
         building.research.left -= dt;
@@ -1107,14 +1288,16 @@ class Match {
       if (!alive(unit)) continue;
 
       unit.cooldown -= dt;
-      unit.fireCooldown = Math.max(0, unit.fireCooldown - dt);
-      unit.healCooldown = Math.max(0, unit.healCooldown - dt);
       unit.working = false;
       unit.building = false;
       unit.repairing = false;
       unit.pathCd = Math.max(0, unit.pathCd - dt);
 
       if (unit.type === "worker" && this.gather(unit, dt)) continue;
+      if (unit.dash) {
+        this.dashStep(unit, dt);
+        continue;
+      }
 
       const ox = unit.x;
       const oy = unit.y;
@@ -1322,20 +1505,8 @@ class Match {
         brain.lichT = UD.lichRespawn;
         this.events.push({ e: "lich", id: lich.id });
       }
-    } else if (lich.fireCooldown <= 0) {
-      // pekelný výbuch kolem licha, když jsou nepřátelé blízko
-      const near = [...this.units, ...this.buildings].filter(e =>
-        alive(e) && !this.friendly(e.team, team) && distance(e, lich) <= UD.novaRadius + (e.kind === "building" ? 20 : 0));
-
-      if (near.length) {
-        lich.fireCooldown = UD.novaEvery;
-        this.events.push({ e: "fire", h: lich.id, x: round1(lich.x), y: round1(lich.y), nova: 1 });
-        const dmg = Math.round(35 + this.elapsed / 40);
-        this.blasts.push({
-          t: FIRE_FLIGHT, by: lich, team, x: lich.x, y: lich.y,
-          unitR: UD.novaRadius, buildingR: UD.novaRadius + 20, amount: dmg, buildingAmount: Math.round(dmg * 0.6)
-        });
-      }
+    } else {
+      this.lichThink(team, lich);
     }
 
     // obrana: kdo se přiblíží k pevnosti, na toho se vrhnou všichni doma
@@ -1406,6 +1577,33 @@ class Match {
     }
   }
 
+  // Lich používá schopnosti sám: mráz na shluk u sebe, kostlivce na blízké nepřátele, ohnivou kouli na nejhustší skupinu.
+  lichThink(team, lich) {
+    if (lich.dash) return;
+    const ab = H.abilities.lich;
+    const enemyUnits = this.units.filter(e => alive(e) && !this.friendly(e.team, team));
+    const near = r => enemyUnits.filter(e => distance(e, lich) <= r).length;
+    const ready = k => lich.cds[k] <= 0 && lich.mana >= ab[k].mana;
+
+    if (ready(2) && near(ab[2].radius) >= 2) return this.cast(team, { k: 2 });
+    if (ready(1) && near(220) >= 1) return this.cast(team, { k: 1 });
+    if (!ready(0)) return;
+
+    let best = null;
+    let bestScore = 0;
+    for (const e of [...enemyUnits, ...this.buildings.filter(b => alive(b) && !this.friendly(b.team, team))]) {
+      if (distance(e, lich) > ab[0].range) continue;
+      let score = e.kind === "building" ? 0.8 : 0;
+      for (const o of enemyUnits) if (distance(o, e) <= ab[0].unitR) score += o.hero ? 1.5 : 1;
+      if (score > bestScore) {
+        best = e;
+        bestScore = score;
+      }
+    }
+
+    if (best && bestScore >= 1.5) this.cast(team, { k: 0, x: best.x, y: best.y });
+  }
+
   // Směr od Nekropole ke středu mapy (tam stojí fronta a staví se nové budovy).
   hordeFront(necro) {
     const dx = this.LW / 2 - necro.x;
@@ -1430,7 +1628,8 @@ class Match {
   }
 
   /* ---------- state sent to clients ---------- */
-  // Jednotka: [id, typ, tým, x, y, hp, maxHp, facing, nese, úroveň, xp, rozkaz, oheň, léčení, práce (1 těžba, 2 stavba, 3 oprava), poškození]
+  // Jednotka: [id, typ, tým, x, y, hp, maxHp, facing, nese, úroveň, xp, rozkaz, stav (bity ST), mana,
+  //           práce (1 těžba, 2 stavba, 3 oprava), poškození] a u hrdiny navíc [přebíjení Q, W, E, max. mana]
   // full = false: suroviny jen ty, které se v tomto kroku změnily (stromy se kácejí, ale jinak jsou stále stejné).
   snapshot(team, full = true) {
     const eco = this.econ[team] || { gold: 0, wood: 0 };
@@ -1444,7 +1643,8 @@ class Match {
       w: eco.wood,
       sc: this.supplyCap(team),
       up: RESEARCH_KINDS.map(k => this.level(team, k)),
-      u: this.units.map(u => [
+      u: this.units.map(u => {
+        const row = [
         u.id,
         UNIT_TYPES.indexOf(u.type),
         teamIndex(u.team),
@@ -1457,12 +1657,17 @@ class Match {
         u.level,
         u.xp,
         u.order ? ORDER_CODES[u.order.type] : 0,
-        round1(u.fireCooldown),
-        round1(u.healCooldown),
+        (u.dmgT > 0 ? ST.cry : 0) | (u.guardT > 0 ? ST.guard : 0) | (u.slowT > 0 ? ST.slow : 0) |
+          (u.auraT > 0 ? ST.aura : 0) | (u.summoned != null ? ST.summoned : 0) | (u.dash ? ST.dash : 0),
+        u.hero ? Math.floor(u.mana) : 0,
         u.working ? 1 : u.building ? 2 : u.repairing ? 3 : 0,
         u.damage
-      ]),
-      // Budova: [id, typ, tým, x, y, hp, maxHp, postup stavby 0..1, výzkum (0 žádný, jinak index v RESEARCH_KINDS + 1), postup výzkumu 0..1]
+        ];
+        if (u.hero) row.push(round1(u.cds[0]), round1(u.cds[1]), round1(u.cds[2]), u.maxMana);
+        return row;
+      }),
+      // Budova: [id, typ, tým, x, y, hp, maxHp, postup stavby 0..1, výzkum (0 žádný, jinak index v RESEARCH_KINDS + 1), postup výzkumu 0..1,
+      //          výcvik hrdiny v hlavní budově (0 žádný, jinak postup 0.01..1)]
       b: this.buildings.map(b => [
         b.id,
         BUILDING_TYPES.indexOf(b.type),
@@ -1473,7 +1678,8 @@ class Match {
         b.maxHp,
         Math.round(b.progress * 100) / 100,
         b.research ? RESEARCH_KINDS.indexOf(b.research.kind) + 1 : 0,
-        b.research ? Math.round((1 - b.research.left / b.research.total) * 100) / 100 : 0
+        b.research ? Math.round((1 - b.research.left / b.research.total) * 100) / 100 : 0,
+        b.heroT ? Math.max(0.01, round2(1 - b.heroT.left / b.heroT.total)) : 0
       ]),
       // Surovina: [id, typ (0 zlato, 1 dřevo), x, y, množství]
       rf: full ? 1 : 0,
@@ -1496,5 +1702,5 @@ class Match {
   }
 }
 
-return { Match, TICK, UNIT_TYPES, BUILDING_TYPES, RESEARCH_KINDS, HUMAN_UNITS, HUMAN_BUILDS };
+return { Match, TICK, UNIT_TYPES, BUILDING_TYPES, RESEARCH_KINDS, HUMAN_UNITS, HUMAN_BUILDS, ST };
 });
