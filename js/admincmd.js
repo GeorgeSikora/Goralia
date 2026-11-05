@@ -233,6 +233,19 @@ const COMMANDS = [
     }
   },
   {
+    name: "zima", aliases: ["winter", "snih"], args: "[on|off|auto]",
+    desc: "Vynutí zimní sezónu (sníh, výzdoba, dárky) nebo ji vypne; auto = podle kalendáře (1. 12. – 6. 1.). Online platí i pro další zápasy na serveru.",
+    run: (m, team, [arg]) => {
+      const a = String(arg || "").toLowerCase();
+      const auto = a === "auto" || a === "kalendar";
+      const on = auto ? R.isWinter() : toggle(a, m.winter);
+      m.winterForce = auto ? "auto" : on; // server si volbu zapamatuje pro další zápasy
+      m.setWinter(on);
+      const how = auto ? " (podle kalendáře)" : "";
+      return on ? `Zima zapnuta${how}: sníh, výzdoba a ${m.gifts.length} dárky na mapě.` : `Zima vypnuta${how}.`;
+    }
+  },
+  {
     name: "win", aliases: ["vyhra"], args: "",
     desc: "Zničí sídla všech nepřátel, takže zápas hned vyhraješ.",
     run: (m, team) => {

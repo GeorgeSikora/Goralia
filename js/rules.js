@@ -169,9 +169,21 @@
 
   const supplyCap = huts => Math.min(SUPPLY_MAX, SUPPLY_BASE + SUPPLY_PER_HUT * huts);
 
+  // Zimní sezóna (1. 12. - 6. 1.): vzhled kreslí js/winter.js, herně se mění jen dárky.
+  // Dárek leží volně na mapě, sebere ho dělník, který k němu dojde, a jeho tým dostane zlato.
+  const WINTER = {
+    gold: 40,      // zlato za jeden dárek
+    first: 3,      // dárků na mapě hned od startu
+    every: 50,     // s: po jak dlouhé době přibude další
+    max: 5,        // nejvýš tolik dárků najednou
+    reach: 16,     // jak blízko musí dělník dojít (logické px)
+    fromBase: 200  // dárek nespadne blíž než tolik ke kterékoli hlavní budově
+  };
+  const isWinter = (d = new Date()) => (d.getMonth() === 11) || (d.getMonth() === 0 && d.getDate() <= 6);
+
   return {
     UNDEAD, COSTS, TRAINED_AT, REQUIRES, UPGRADES, ARMOR_PER_LEVEL, WEAPON_PER_LEVEL, MELEE, ARCHERY, TOOLS_PER_LEVEL, MASONRY,
     TOWER, KNIGHT, CATAPULT, MONK, UNITS, BUILDING_HP, FOOTPRINT, footRect, footFree, BUILD_TIME, REPAIR, TEAMS, HQ, TEAM_NAMES, MAX_PLAYERS, BASE_GOLD, BASE_WOOD, GOLD_AMOUNT,
-    SUPPLY_BASE, SUPPLY_PER_HUT, SUPPLY_MAX, supplyCap, MAX_BUILDINGS, COUNTDOWN
+    SUPPLY_BASE, SUPPLY_PER_HUT, SUPPLY_MAX, supplyCap, MAX_BUILDINGS, COUNTDOWN, WINTER, isWinter
   };
 });

@@ -62,6 +62,7 @@
   let units;
   let buildings;
   let resources;
+  let gifts = []; // zimní dárky ze simulace: { id, x, y, k }
   let selected;
   const groups = new Map(); // číslo skupiny (0-9) -> id jednotek a budov
   let lastGroupTap = { n: -1, t: 0 };
@@ -184,6 +185,7 @@
     units = [];
     buildings = [];
     resources = [];
+    gifts = [];
     selected = [];
     groups.clear();
     lastGroupTap = { n: -1, t: 0 };
@@ -309,7 +311,7 @@
         const p = players.find(q => q.slot === i);
         return p ? { name: p.name, ai: p.ai } : null;
       });
-      simMatch = new sim.Match(map, roster, { countdown: 0 });
+      simMatch = new sim.Match(map, roster, { countdown: 0, winter: !!(PK.winter && PK.winter.on) });
       applySnapshot(simMatch.snapshot(me));
       simMatch.endTick();
       reportAi("start");
@@ -344,6 +346,11 @@
     if (mode === "online") return net.send({ t: "admin", text });
     if (!simMatch) return;
     const result = PK.admincmd.run(simMatch, me, text);
+    // /zima v zápase proti AI: volba se zapamatuje i pro menu a další hry
+    if (simMatch.winterForce != null && PK.winter) {
+      PK.winter.force(simMatch.winterForce === "auto" ? null : simMatch.winterForce);
+      simMatch.winterForce = null;
+    }
     PK.adminbar.receive(result);
     if (result.changed) {
       applySnapshot(simMatch.snapshot(me));
@@ -726,9 +733,16 @@
     return findEntity(x, y, buildings.filter(b => b.team === me && b.progress >= 1 && b.hp < b.maxHp), 46);
   }
 
+  // zimní dárek pod kurzorem (sebere ho dělník, který k němu dojde)
+  function giftAt(x, y) {
+    return gifts.find(gf => Math.hypot(gf.x - x, gf.y - y) < 18);
+  }
+
   function issueOrder(x, y) {
     const enemy = enemyAt(x, y);
     const resource = resourceAt(x, y);
+    const gift = !enemy && !resource ? giftAt(x, y) : null;
+    if (gift) { x = gift.x; y = gift.y; }
     let ordered = false;
     let kind = "move";
     let wreck = null;
@@ -765,6 +779,7 @@
       if (kind === "attack") fx.ping(enemy.x, enemy.y + 12, "attack");
       else if (kind === "gather") fx.ping(resource.x, resource.y + (resource.type === "gold" ? 26 : 28), "gather");
       else if (kind === "repair") fx.ping(wreck.x, wreck.y + 30, "gather");
+      else if (gift) fx.ping(gift.x, gift.y + 6, "gather");
       else fx.ping(x, y, "move");
       audio.play("order", { x });
       speak(selected, "order");
@@ -2163,6 +2178,7 @@
 
     if (PK.loader && PK.loader.busy) return;
     lastOffline = { mapId: c.mapId, slots: c.slots.map(s => ({ ...s })) };
+    if (PK.winter) PK.winter.set(PK.winter.season()); // hra proti AI: zima podle kalendáře / volby
     prepareMatch(next, roster.map(p => p.slot), () => beginMatch({ mode: "ai", map: next, slot: 0, players: roster }));
   }
 
@@ -2196,6 +2212,9 @@
       refreshCustomMaps().then(() => { if (MAPS.get(m.map)) beginOnlineMatch(m); });
       return;
     }
+
+    // online rozhoduje o zimě server (kalendář nebo příkaz /zima), vzhled se mu přizpůsobí
+    if (PK.winter) PK.winter.set(!!m.winter);
 
     // zprávy ze serveru během přípravy počkají a projdou až po startu zápasu
     netHold = netHold || [];
@@ -2345,6 +2364,18 @@
         break;
       }
 
+      case "gift": {
+        // dárek sebraný dělníkem: záblesk, zlaťáky a zvuk mince
+        if (PK.winter) PK.winter.burst(e.x / 2, e.y / 2);
+        fx.coin(e.x, e.y - 6, `+${e.n}`, false);
+        const unit = unitMap.get(e.id);
+        if (unit && unit.team === me) {
+          audio.play("coin", { x: e.x });
+          announce(`Dárek! +${e.n} zlata`);
+        }
+        break;
+      }
+
       case "coin": {
         const unit = unitMap.get(e.id);
         if (!unit) return;
@@ -2386,6 +2417,10 @@
 
     // Po startu se kamera znovu vycentruje na vlastní základnu (rozměry okna se mohly od načtení mapy změnit).
     if (first && map && map.slots[mySlot]) centerCamera(map.slots[mySlot].hq.x, map.slots[mySlot].hq.y);
+
+    // zima zapnutá/vypnutá příkazem správce uprostřed zápasu: překreslit krajinu a budovy
+    if (s.wi != null && PK.winter && !!s.wi !== PK.winter.on) PK.winter.set(!!s.wi);
+    gifts = s.gf ? s.gf.map(([id, x, y, k]) => ({ id, x, y, k })) : [];
 
     for (const e of s.e) netEvent(e);
     for (const note of s.n) announce(note);
@@ -3120,7 +3155,8 @@
       const oy = Math.round(b.y / 2) + 19 - spr.ay;
       const frac = b.hp / b.maxHp;
 
-      b.smokeAcc += dt * ((spr.smoke.length ? 2.4 : 0) + (frac < 0.5 ? 4 : 0) + (frac < 0.25 ? 4 : 0));
+      // v zimě se v kamnech topí víc: z komínů jde hustší kouř
+      b.smokeAcc += dt * ((spr.smoke.length ? (PK.winter && PK.winter.on ? 4.2 : 2.4) : 0) + (frac < 0.5 ? 4 : 0) + (frac < 0.25 ? 4 : 0));
 
       while (b.smokeAcc >= 1) {
         b.smokeAcc -= 1;
@@ -3473,6 +3509,8 @@
       S.occluder(o.x / 2, o.y / 2 + 14, 4.5, 24 * stage);
     } else if (it.k === 1) {
       S.occluder(o.x / 2, o.y / 2 + 9, 11, 16);
+    } else if (it.k === 5) {
+      S.occluder(o.x / 2, o.y / 2 + 2, 3, 5);
     } else {
       const s = o.spr;
       if (!s.glow && s.h > 8) S.occluder(o.x, o.y - 1, Math.max(2, s.w * 0.3), s.h * 0.8);
@@ -3920,6 +3958,7 @@
     if (it.k === 3) return [Math.round(o.x / 2), Math.round(o.y / 2) + 19, PK.buildings.get(o.type, o.team).w / 2];
     if (it.k === 0) return [Math.round(o.x / 2), Math.round(o.y / 2) + 15, 10];
     if (it.k === 1) return [Math.round(o.x / 2), Math.round(o.y / 2) + 13, 14];
+    if (it.k === 5) return [Math.round(o.x / 2), Math.round(o.y / 2) + 3, 5];
     return [o.x, o.y, o.spr.w / 2];
   }
 
@@ -3959,6 +3998,7 @@
       else if (it.k === 1) drawMine(it.o);
       else if (it.k === 2) drawDoodad(it.o);
       else if (it.k === 3) drawBuilding(it.o);
+      else if (it.k === 5) { if (PK.winter) PK.winter.drawGift(g, it.o, clock, reflecting); }
       else drawUnit(it.o);
       rg.restore();
     }
@@ -4022,6 +4062,7 @@
     list.length = 0;
     for (const r of resources) if (visible(r.x / 2, r.y / 2)) list.push({ y: r.y / 2 + (r.type === "gold" ? 13.5 : 15), k: r.type === "gold" ? 1 : 0, o: r });
     for (const d of world.doodads) if (visible(d.x, d.y)) list.push({ y: d.y, k: 2, o: d });
+    for (const gf of gifts) if (visible(gf.x / 2, gf.y / 2)) list.push({ y: gf.y / 2 + 3, k: 5, o: gf });
     for (const b of buildings) if (visible(b.x / 2, b.y / 2)) list.push({ y: b.y / 2 + 19.5, k: 3, o: b });
     for (const u of units) if (visible(u.x / 2, u.y / 2)) list.push({ y: u.y / 2 + 6, k: 4, o: u });
     list.sort((a, b) => a.y - b.y);
@@ -4033,6 +4074,7 @@
       else if (it.k === 1) drawMine(it.o);
       else if (it.k === 2) drawDoodad(it.o);
       else if (it.k === 3) drawBuilding(it.o);
+      else if (it.k === 5) { if (PK.winter) PK.winter.drawGift(g, it.o, clock, reflecting); }
       else drawUnit(it.o);
     }
 
@@ -4055,6 +4097,7 @@
 
     fx.drawAmbient(g, T);
     if (PK.halloween && PK.halloween.draw) PK.halloween.draw(g, T, world, visible);
+    if (PK.winter && PK.winter.on) PK.winter.draw(g, T, world, visible, { units, buildings, gifts, cam, zoom, vw, vh });
     if (shading) PK.shaders.end();
 
     for (const e of selected) if (alive(e) && e.kind === "building") drawBrackets(e);
@@ -4362,6 +4405,7 @@
     get units() { return units; },
     get buildings() { return buildings; },
     get resources() { return resources; },
+    get gifts() { return gifts; },
     get selected() { return selected; },
     get mode() { return mode; },
     get me() { return me; },
