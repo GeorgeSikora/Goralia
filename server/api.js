@@ -11,7 +11,7 @@ const { cookie, parseCookies, clientIp, sameOrigin, sendJson, readJson } = requi
 const SID = "goralia_sid";
 const PLAYER_LIMIT = 1000;
 
-function createApi({ accounts, stats, hall, events, store, live, traffic, adminMaps, isLocalRequest, publicUrl }) {
+function createApi({ accounts, stats, hall, events, store, live, traffic, tutorial, adminMaps, isLocalRequest, publicUrl }) {
   const passwordFails = new Limiter(10, 10 * 60 * 1000);
   const beaconIp = new Limiter(120, 10 * 60 * 1000);
   const aiStarts = new Map(); // id hráče -> čas začátku hry proti AI (pro odehraný čas)
@@ -125,7 +125,7 @@ function createApi({ accounts, stats, hall, events, store, live, traffic, adminM
         player: {
           id: user.id, name: user.name, admin: user.role === "admin", created: user.created, lastSeen: user.lastSeen,
           online: live.isOnline(user.id), banned: viewer ? !!user.banned : undefined,
-          stats: user.stats, recent: stats.recentFor(user.id, 15)
+          stats: user.stats, recent: stats.recentFor(user.id, 15), titles: accounts.titlesOf(user)
         }
       });
     },
@@ -144,6 +144,18 @@ function createApi({ accounts, stats, hall, events, store, live, traffic, adminM
       if (ctx.user) aiTime(ctx.user, ctx.body);
       const ok = traffic ? traffic.aiEvent(ctx.body) : false;
       sendJson(ctx.res, ok ? 200 : 400, { ok });
+    },
+
+    // Hlášení z prohlížeče o tutoriálu (start, kroky, přeskočení, dokončení); přihlášený účet dostane titul.
+    tutorial(ctx) {
+      if (beaconIp.blocked(ctx.ip)) return sendJson(ctx.res, 202, { ok: false });
+      beaconIp.add(ctx.ip);
+      const result = tutorial ? tutorial.handle(ctx.body, ctx.user) : null;
+      sendJson(ctx.res, result ? 200 : 400, result || { ok: false });
+    },
+
+    adminTutorial(ctx) {
+      sendJson(ctx.res, 200, tutorial ? tutorial.report(clamp(ctx.query.get("days"), 1, 365, 30)) : {});
     },
 
     /* ---------- administrace ---------- */
@@ -323,6 +335,8 @@ function createApi({ accounts, stats, hall, events, store, live, traffic, adminM
     ["GET", /^\/api\/players\/(\d{1,9})$/, "none", handlers.player],
     ["GET", /^\/api\/matches\/(\d{1,9})$/, "none", handlers.match],
     ["POST", /^\/api\/beacon$/, "none", handlers.beacon],
+    ["POST", /^\/api\/tutorial$/, "none", handlers.tutorial],
+    ["GET", /^\/api\/admin\/tutorial$/, "admin", handlers.adminTutorial],
     ["GET", /^\/api\/mapconfig$/, "none", handlers.mapConfig],
     ["GET", /^\/api\/admin\/overview$/, "admin", handlers.overview],
     ["GET", /^\/api\/admin\/users$/, "admin", handlers.users],

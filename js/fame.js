@@ -123,9 +123,26 @@
     return box;
   }
 
+  // Tituly účtu (pole titles ze serveru): id -> název a popisek. Další tituly se přidají sem.
+  const TITLES = {
+    novacek: { name: "Nováček", tip: "Titul za dokončený tutoriál" }
+  };
+  const tr = s => (PK.t ? PK.t(s) : s);
+
+  function titleBadges(p, node) {
+    for (const id of p.titles || []) {
+      const def = TITLES[id];
+      if (!def) continue;
+      const b = el("span", `badge title title-${id}`, tr(def.name));
+      b.title = tr(def.tip);
+      node.append(b);
+    }
+  }
+
   function badges(p, nameNode) {
     if (p.role === "admin") nameNode.append(el("span", "badge admin", "admin"));
     if (p.online) nameNode.append(el("span", "badge online", "online"));
+    titleBadges(p, nameNode);
   }
 
   /* ---------- stupně vítězů ---------- */
@@ -224,5 +241,5 @@
     return box;
   }
 
-  window.GFame = { title, podium, list, sprite, portrait, medals, pixelText, typeOf, teamOf };
+  window.GFame = { title, podium, list, sprite, portrait, medals, pixelText, typeOf, teamOf, TITLES, titleBadges };
 })();

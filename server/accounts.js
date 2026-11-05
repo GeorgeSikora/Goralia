@@ -374,6 +374,17 @@ function createAccounts(store, options = {}) {
     store.save();
   }
 
+  // Tituly účtu (síň slávy): seznam id, např. "novacek" za dokončený tutoriál. Každý titul jen jednou.
+  const titlesOf = user => (Array.isArray(user.titles) ? user.titles : []);
+
+  function grantTitle(user, id) {
+    const key = String(id || "").slice(0, 32);
+    if (!user || !key || titlesOf(user).includes(key)) return false;
+    user.titles = [...titlesOf(user), key];
+    store.save();
+    return true;
+  }
+
   function addAiTime(user, seconds) {
     if (!(seconds > 0)) return;
     user.stats.aiSeconds += Math.round(seconds);
@@ -501,7 +512,8 @@ function createAccounts(store, options = {}) {
   /* ---------- veřejné pohledy ---------- */
   const selfView = user => ({
     id: user.id, name: user.name, email: user.email, role: user.role,
-    hasPassword: !!user.passHash, google: !!user.google, facebook: !!user.facebook
+    hasPassword: !!user.passHash, google: !!user.google, facebook: !!user.facebook,
+    games: user.stats.games, titles: titlesOf(user)
   });
 
   function getUser(id) {
@@ -516,7 +528,8 @@ function createAccounts(store, options = {}) {
     users.sort((a, b) => b.stats.pvpWins - a.stats.pvpWins || b.stats.wins - a.stats.wins || b.stats.games - a.stats.games || a.name.localeCompare(b.name));
 
     return users.slice(0, limit).map(u => ({
-      id: u.id, name: u.name, admin: u.role === "admin", games: u.stats.games, wins: u.stats.wins, pvpGames: u.stats.pvpGames, pvpWins: u.stats.pvpWins
+      id: u.id, name: u.name, admin: u.role === "admin", games: u.stats.games, wins: u.stats.wins, pvpGames: u.stats.pvpGames, pvpWins: u.stats.pvpWins,
+      titles: titlesOf(u)
     }));
   }
 
@@ -531,7 +544,7 @@ function createAccounts(store, options = {}) {
 
   return {
     register, login, loginWithProvider, createSession, userFromToken, destroySession, destroyUserSessions,
-    rename, changePassword, touch, addOnline, addAiTime, seedAdmin, resetAdminPassword,
+    rename, changePassword, touch, addOnline, addAiTime, grantTitle, titlesOf, seedAdmin, resetAdminPassword,
     listUsers, setBanned, setRole, resetPassword, deleteUser, audit, adminView,
     selfView, getUser, leaderboard, counts,
     adminEmail, adminName, SESSION_TTL

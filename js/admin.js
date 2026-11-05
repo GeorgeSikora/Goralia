@@ -946,7 +946,48 @@
   });
 
   /* ---------- záložky ---------- */
-  const loaders = { overview: loadOverview, traffic: loadTraffic, users: loadUsers, live: loadLive, matches: loadMatches, tournaments: loadTournaments, maps: loadMapsTab, audit: loadAudit };
+  /* ---------- tutoriál ---------- */
+  const TUT_STEPS = {
+    select: "Výběr dělníka", wood: "Těžba dřeva", gold: "Těžba zlata", hut: "Stavba budy", barracks: "Stavba kasáren",
+    train: "Výcvik vojáků", research: "Výzkum", attack: "Útok na věž", victory: "Vítězství"
+  };
+
+  async function loadTutorial() {
+    const d = await api("GET", "/api/admin/tutorial?days=30");
+    const pct = (a, b) => (b ? `${Math.round((a / b) * 100)} %` : "–");
+    const tiles = [
+      ["Začalo", d.started, "hráčů (první spuštění)"],
+      ["Dokončilo", d.finished, `${pct(d.finished, d.started)} z těch, kdo začali`],
+      ["Přeskočilo", d.skipped, pct(d.skipped, d.started)],
+      ["Odešlo uprostřed", d.quit, "zavřeli hru nebo menu"],
+      ["Spuštění celkem", d.runs, `${d.replays} opakovaně (z nastavení)`],
+      ["Účty s titulem Nováček", d.accounts.titled, `${d.accounts.started} účtů začalo, ${d.accounts.finished} dokončilo`]
+    ];
+
+    const cards = el("div", "cards");
+    for (const [label, value, hint] of tiles) {
+      const card = el("div", "card");
+      card.append(el("div", "label", label), el("div", "value", Number(value || 0).toLocaleString("cs-CZ")), el("div", "hint", hint));
+      cards.append(card);
+    }
+
+    const names = d.steps.map((id, i) => `${i + 1}. ${TUT_STEPS[id] || id}`);
+    const labels = d.steps.map((_, i) => String(i + 1)); // pod sloupci jen číslo kroku, název v tooltipu a v legendě
+    const grid = el("div", "chart-grid");
+    grid.append(
+      chartCard("Kam hráči došli", "kolik hráčů se dostalo ke kroku (jen první průchod)", GChart.bars({
+        labels, values: d.reached, color: PALETTE[0], name: "hráčů", every: 1, tipTitle: i => names[i], empty: "Zatím nikdo."
+      })),
+      chartCard("Kde přeskočili", "u kterého kroku hráč tutoriál přeskočil", GChart.bars({
+        labels, values: d.skippedAt, color: PALETTE[1], name: "přeskočení", every: 1, tipTitle: i => names[i], empty: "Zatím nikdo."
+      })),
+      dayChart(d.days, "Tutoriál po dnech", "začali, dokončili a přeskočili za den (30 dní)", [["Začali", "started"], ["Dokončili", "finished"], ["Přeskočili", "skipped"]])
+    );
+
+    $("tutorial").replaceChildren(cards, grid, el("p", "muted", `Kroky: ${names.join(" · ")}`));
+  }
+
+  const loaders = { overview: loadOverview, traffic: loadTraffic, users: loadUsers, live: loadLive, matches: loadMatches, tournaments: loadTournaments, tutorial: loadTutorial, maps: loadMapsTab, audit: loadAudit };
 
   function refresh() {
     return loaders[tab]().catch(fail);

@@ -191,6 +191,7 @@
     p.title.textContent = player.name;
     const meta = [player.admin ? "Admin" : "", player.online ? "právě online" : player.lastSeen ? `naposledy ${fmtDate(player.lastSeen)}` : "", `od ${fmtDate(player.created)}`, player.banned ? "zablokovaný" : ""];
     p.meta.textContent = meta.filter(Boolean).join(" · ");
+    if (window.GFame && GFame.titleBadges) GFame.titleBadges(player, p.meta);
 
     const rows = [
       ["Zápasy", s.games], ["Výhry", `${s.wins} (${rate} %)`], ["Prohry", s.losses], ["Remízy", s.draws],

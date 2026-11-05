@@ -113,3 +113,18 @@
   .fame-tour { grid-template-columns: 1fr; gap: 2px; }
   .fame-tour-places { justify-content: flex-start; }
 }
+
+/* tituly účtu (Nováček za tutoriál a další) */
+.badge.title {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  vertical-align: middle;
+  color: #ffe08a;
+  background: #3a2d14;
+  box-shadow: inset 0 0 0 1px #c09c5a;
+}
+.badge.title-novacek { color: #b8f0c0; background: #173226; box-shadow: inset 0 0 0 1px #5fb070; }

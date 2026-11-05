@@ -55,7 +55,8 @@ function createHallOfFame(store, accounts) {
     const rows = Object.values(data.users)
       .filter(u => !u.banned)
       .map(u => ({ user: u, ...scoreOf(u, tours[u.id]) }))
-      .filter(r => r.score > 0);
+      // i hráč s nulovým skóre se ukáže, když má titul (např. Nováček za tutoriál)
+      .filter(r => r.score > 0 || accounts.titlesOf(r.user).length > 0);
 
     rows.sort((a, b) => b.score - a.score || b.pvpWins - a.pvpWins || b.medals.gold - a.medals.gold || a.user.name.localeCompare(b.user.name));
 
@@ -67,7 +68,7 @@ function createHallOfFame(store, accounts) {
       // jen veřejné údaje: síň slávy vidí každý návštěvník hry
       return {
         rank, id: user.id, name: user.name, admin: user.role === "admin",
-        playSeconds: user.stats.playSeconds, aiSeconds: user.stats.aiSeconds, ...rest
+        playSeconds: user.stats.playSeconds, aiSeconds: user.stats.aiSeconds, titles: accounts.titlesOf(user), ...rest
       };
     });
   }
