@@ -111,6 +111,82 @@ class Match {
     for (const [x, y] of map.trees) {
       this.resources.push({ id: this.nextId++, type: "wood", x, y, amount: 100 });
     }
+
+    // Zimní sezóna: po mapě leží dárky (jediná herní změna zimy, viz R.WINTER).
+    this.gifts = [];
+    this.giftT = R.WINTER.every;
+    this.giftSeed = (this.LW * 31 + this.LH * 17 + map.gold.length * 7 + map.trees.length) >>> 0;
+    this.winter = false;
+    if (opts.winter) this.setWinter(true);
+  }
+
+  /* ---------- zimní dárky ---------- */
+  // Zapne nebo vypne zimu v rozehraném zápase (start, příkaz správce /zima).
+  setWinter(on) {
+    on = !!on;
+    if (on === this.winter) return;
+    this.winter = on;
+    this.gifts = [];
+    this.giftT = R.WINTER.every;
+    if (on) for (let i = 0; i < R.WINTER.first; i++) this.dropGift();
+  }
+
+  // deterministický generátor jen pro dárky (mulberry32), ať nemění jinou náhodu
+  giftRandom() {
+    let t = (this.giftSeed = (this.giftSeed + 0x6d2b79f5) >>> 0);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }
+
+  // Dárek padne na volné místo: ne do vody a skal, ne k budovám a surovinám, daleko od všech základen
+  // a zhruba stejně daleko od dvou nejbližších (nikdo ho nemá "doma").
+  dropGift() {
+    const W = R.WINTER;
+    const hqs = this.buildings.filter(b => b.type === "hall" || b.type === "citadel" || b.type === UD.hq);
+    for (let tries = 0; tries < 160; tries++) {
+      const x = 40 + this.giftRandom() * (this.LW - 80);
+      const y = 70 + this.giftRandom() * (this.LH - 110);
+      if (this.nav.isBlockedArea(x, y, 14)) continue;
+      if (this.buildings.some(b => Math.abs(b.x - x) < 70 && Math.abs(b.y - y) < 60)) continue;
+      if (this.resources.some(r => distance(r, { x, y }) < (r.type === "gold" ? 60 : 34))) continue;
+      // ne pod korunou stromu (koruna sahá kus nad patu kmene), ať je dárek vidět
+      if (this.resources.some(r => r.type === "wood" && Math.abs(r.x - x) < 46 && y - r.y > -64 && y - r.y < 26)) continue;
+      if (this.gifts.some(g => distance(g, { x, y }) < 120)) continue;
+      const ds = hqs.map(b => distance(b, { x, y })).sort((a, b) => a - b);
+      const relax = tries > 110; // na malé mapě se podmínky trochu povolí
+      if (ds.length && ds[0] < W.fromBase * (relax ? 0.6 : 1)) continue;
+      if (ds.length > 1 && !relax && ds[0] / ds[1] < 0.55) continue;
+      const gift = { id: this.nextId++, x: Math.round(x), y: Math.round(y), k: Math.floor(this.giftRandom() * 4) };
+      this.gifts.push(gift);
+      return gift;
+    }
+    return null;
+  }
+
+  // Dělník, který dojde k dárku, ho sebere a jeho tým dostane zlato.
+  pickGifts(dt) {
+    const W = R.WINTER;
+    this.giftT -= dt;
+    if (this.giftT <= 0) {
+      this.giftT += W.every;
+      if (this.gifts.length < W.max) this.dropGift();
+    }
+    if (!this.gifts.length) return;
+    this.gifts = this.gifts.filter(g => {
+      let best = null;
+      let bestD = W.reach;
+      for (const u of this.units) {
+        if (u.type !== "worker" || !alive(u) || !this.econ[u.team] || this.out.has(u.team)) continue;
+        const d = distance(u, g);
+        if (d <= bestD) { best = u; bestD = d; }
+      }
+      if (!best) return true;
+      this.econ[best.team].gold += W.gold;
+      this.stats[best.team].gifts = (this.stats[best.team].gifts || 0) + 1;
+      this.events.push({ e: "gift", id: best.id, g: g.id, n: W.gold, x: g.x, y: g.y });
+      return false;
+    });
   }
 
   slotOf(team) {
@@ -1123,6 +1199,7 @@ class Match {
     }
 
     this.separate(dt);
+    if (this.winter) this.pickGifts(dt);
 
     this.units = this.units.filter(alive);
     for (const b of this.buildings) if (!alive(b)) this.unplace(b);
@@ -1485,7 +1562,10 @@ class Match {
         r.amount
       ]),
       e: this.events,
-      n: this.notes[team] || []
+      n: this.notes[team] || [],
+      // zima: 1/0 a dárky [id, x, y, druh] (jen v zimě, je jich pár)
+      wi: this.winter ? 1 : 0,
+      gf: this.winter ? this.gifts.map(g => [g.id, g.x, g.y, g.k]) : undefined
     };
   }
 

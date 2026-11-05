@@ -872,8 +872,13 @@
     // původní rozměry: znak G 96 px, pod ním nápis; znak (32 px) i písmo loga 3x, stejný pixel
     const Z = 3;
     const E = 32 * Z;
-    const emblem = PK.icons.ringEmblem(32, C.a[2], C.a[4]);
-    const word = PK.icons.wordmark();
+    let emblem = PK.icons.ringEmblem(32, C.a[2], C.a[4]);
+    let word = PK.icons.wordmark();
+    // zima (winter.js): na znaku i nápisu leží čepička sněhu, rozměry zůstávají
+    if (PK.winter && PK.winter.on && PK.winter.capLogo) {
+      emblem = PK.winter.capLogo(emblem);
+      word = PK.winter.capLogo(word);
+    }
     const ww = word.width * Z;
     const w = Math.max(ww + 6, E + 24);
     const h = E + 52;

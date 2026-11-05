@@ -75,9 +75,21 @@
     }
   }
 
+  // zima (js/winter.js, 1. 12. - 6. 1. nebo ?zima=1): na logu čepička sněhu, v úvodu sněží
+  const WINTER = !!(PK.winter && PK.winter.on);
+  const snowy = c => {
+    if (!WINTER || !PK.winter.capLogo) return c;
+    const s = PK.winter.capLogo(c);
+    const out = document.createElement("canvas");
+    out.width = s.width;
+    out.height = s.height;
+    out.getContext("2d").drawImage(s, 0, 0);
+    return out;
+  };
+
   function emblem() {
     const target = document.querySelector(".brand .emblem");
-    const word = PK.icons.wordmark("G");
+    const word = snowy(PK.icons.wordmark("G"));
     word.className = "pix word";
     word.setAttribute("aria-hidden", "true");
     word.style.width = `${word.width * 3}px`;
@@ -258,7 +270,7 @@
   /* ---------- logo v úvodu: stejný nápis jako v menu hry (PK.icons.wordmark) ---------- */
   function heroLogo() {
     const h = document.querySelector(".hero-logo");
-    const c = PK.icons.wordmark();
+    const c = snowy(PK.icons.wordmark());
     const w = c.width;
     const hh = c.height;
     c.className = "pix";
@@ -280,13 +292,26 @@
   function embers(c) {
     const g = c.getContext("2d");
     const story = !!c.closest(".story");
+    const snow = WINTER && !story; // v zimě v úvodu místo jisker padá sníh
     const P = 4; // jedna jiskra = 1 px plátna = 4 css px
     let W = 0;
     let H = 0;
     let parts = [];
-    const COLORS = story ? ["#5ff0c0", "#cfffe8", "#ffbf45"] : ["#ffbf45", "#ffe08a", "#d65a3c", "#ff8f4a"];
+    const COLORS = snow ? ["#ffffff", "#e2eaf5", "#c3d1e6"] : story ? ["#5ff0c0", "#cfffe8", "#ffbf45"] : ["#ffbf45", "#ffe08a", "#d65a3c", "#ff8f4a"];
 
     function spawn(anywhere) {
+      if (snow) {
+        return {
+          x: Math.random() * W,
+          y: anywhere ? Math.random() * H : -2,
+          vy: 4 + Math.random() * 7,
+          vx: 1 + Math.random() * 1.5,
+          life: 30,
+          age: anywhere ? 2 : 0,
+          col: COLORS[Math.floor(Math.random() * COLORS.length)],
+          flick: Math.random() * 6
+        };
+      }
       return {
         x: Math.random() * W,
         y: anywhere ? Math.random() * H : H + 2,
@@ -304,7 +329,7 @@
       H = Math.ceil(c.clientHeight / P);
       c.width = W;
       c.height = H;
-      const n = Math.round((W * H) / (story ? 900 : 700));
+      const n = Math.round((W * H) / (story ? 900 : snow ? 260 : 700));
       parts = Array.from({ length: n }, () => spawn(true));
     }
 
@@ -320,9 +345,9 @@
         p.age += dt;
         p.x += (p.vx + Math.sin(now / 900 + p.flick) * 1.5) * dt;
         p.y += p.vy * dt;
-        if (p.age > p.life || p.y < -2) { parts[i] = spawn(false); continue; }
+        if (p.age > p.life || p.y < -2 || p.y > H + 2) { parts[i] = spawn(false); continue; }
         const fade = Math.min(1, p.age / 1.2, (p.life - p.age) / 1.5);
-        g.globalAlpha = Math.max(0, fade * (0.55 + 0.45 * Math.sin(now / 140 + p.flick)));
+        g.globalAlpha = snow ? 0.9 : Math.max(0, fade * (0.55 + 0.45 * Math.sin(now / 140 + p.flick)));
         g.fillStyle = p.col;
         g.fillRect(Math.round(p.x), Math.round(p.y), 1, 1);
       }
@@ -353,6 +378,11 @@
   /* ---------- videa: načíst a pustit jen když jsou na obrazovce ---------- */
   function videos() {
     const hero = document.querySelector(".hero-video");
+    // v zimě zasněžený sestřih z klipů a zimní plakát
+    if (WINTER && hero.dataset.winter) {
+      hero.dataset.src = hero.dataset.winter;
+      hero.poster = hero.dataset.winterPoster;
+    }
     if (!reduced && !saveData) {
       hero.src = hero.dataset.src;
       hero.addEventListener("playing", () => hero.classList.add("playing"), { once: true });

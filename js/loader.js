@@ -14,7 +14,7 @@
 
   const SCRIPTS = [
     "rules", "maps", "nav", "ai", "sim", "admincmd", "audio", "music", "pixel", "shaders", "font", "keys",
-    "units", "fame", "buildings", "props", "halloween", "icons", "world", "fx", "hud", "net", "menubg",
+    "units", "fame", "buildings", "props", "halloween", "winter", "icons", "world", "fx", "hud", "net", "menubg",
     "custommaps", "charts", "matchview", "account", "events", "voice", "chat", "voicechat", "adminbar", "game"
   ];
 
@@ -35,6 +35,14 @@
   // Halloween (20. 10. - 2. 11.): sezónní tip; halloween.js se načítá až s ostatními skripty
   const hd = new Date();
   if ((hd.getMonth() === 9 && hd.getDate() >= 20) || (hd.getMonth() === 10 && hd.getDate() <= 2)) TIPS.push("Halloween! Na mapách svítí dýně a v noci létají netopýři.");
+  // Zima (1. 12. - 6. 1., nebo ?zima=1): tip na dárky
+  let snowy = hd.getMonth() === 11 || (hd.getMonth() === 0 && hd.getDate() <= 6);
+  try {
+    const q = new URLSearchParams(location.search).get("zima");
+    const f = q === "1" || q === "0" ? q : localStorage.getItem("pk-winter");
+    if (f === "1" || f === "0") snowy = f === "1";
+  } catch (e) { /* kalendář */ }
+  if (snowy) TIPS.push("Zima! Na mapě leží dárky. Pošli pro ně dělníka a dostaneš zlato.");
 
   const root = document.querySelector("#loading");
   if (!root) return;

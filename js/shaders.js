@@ -57,6 +57,7 @@
     const mix = (x, y) => x + (y - x) * t;
     let amb = [mix(a0[0], a1[0]), mix(a0[1], a1[1]), mix(a0[2], a1[2])];
     if (PK.halloween && PK.halloween.tint) amb = PK.halloween.tint(amb);
+    if (PK.winter && PK.winter.on) amb = PK.winter.tint(amb);
     return { amb, gain: mix(g0, g1), bloom: mix(b0, b1), rays: [mix(r0[0], r1[0]), mix(r0[1], r1[1]), mix(r0[2], r1[2])] };
   }
 
@@ -499,7 +500,8 @@ void main() {
     const view = { x: cam.x, y: cam.y, w: w / zoom, h: mapH / zoom };
     const m = mood(time);
     S.amb = m.amb; // poslední šero (halloween.js podle něj rozsvěcí dýně)
-    const nl = pack(view, m.gain);
+    // sníh světlo odráží víc než tráva: v zimě světla slabší, ať se závěje kolem lamp nepřepálí do bílé
+    const nl = pack(view, m.gain * (PK.winter && PK.winter.on ? PK.winter.gain : 1));
 
     gl.disable(gl.BLEND);
     // 1) osvětlení; zdroj má řádek 0 nahoře, framebuffery mají y zdola,

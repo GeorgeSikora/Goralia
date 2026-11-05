@@ -166,9 +166,74 @@ function testSimulation() {
   testNewTroops();
   testNewResearch();
   testAdminCommands();
+  testWinter();
 }
 
 // Budovy nejdou procházet: jednotky je obcházejí, k okraji ale dojdou (těžba, stavba, útok).
+/* ---------- zima: kalendář, dárky, příkaz /zima ---------- */
+function testWinter() {
+  const d = (m, day) => new Date(2026, m - 1, day, 12);
+  assert(R.isWinter(d(12, 1)) && R.isWinter(d(12, 24)) && R.isWinter(d(1, 6)), "zima 1. 12. - 6. 1.");
+  assert(!R.isWinter(d(11, 30)) && !R.isWinter(d(1, 7)) && !R.isWinter(d(7, 1)), "mimo zimu");
+
+  const map = MAPS.get("crowns");
+  const players = [{ name: "A" }, { name: "B" }, null, null];
+
+  // bez zimy žádné dárky a nic jiného se nemění
+  const plain = new Match(map, players, { countdown: 0 });
+  assert.strictEqual(plain.gifts.length, 0);
+  assert.strictEqual(plain.snapshot("blue").wi, 0);
+  assert.strictEqual(plain.snapshot("blue").gf, undefined);
+  for (let i = 0; i < 200; i++) { plain.step(TICK); plain.endTick(); }
+  assert.strictEqual(plain.gifts.length, 0, "mimo zimu dárky nepadají");
+
+  // v zimě leží od startu R.WINTER.first dárků, daleko od základen a na průchozím místě
+  const m = new Match(map, players, { countdown: 0, winter: true });
+  assert.strictEqual(m.gifts.length, R.WINTER.first);
+  const halls = m.buildings.filter(b => b.type === "hall");
+  for (const g of m.gifts) {
+    assert(!m.nav.isBlocked(g.x, g.y), "dárek není ve vodě ani ve skále");
+    assert(halls.every(b => distance(b, g) >= R.WINTER.fromBase * 0.6), "dárek není u základny");
+  }
+  const snap = m.snapshot("blue");
+  assert.strictEqual(snap.wi, 1);
+  assert.strictEqual(snap.gf.length, R.WINTER.first);
+
+  // dělník dojde k dárku: tým dostane zlato, dárek zmizí, přijde událost
+  const gift = m.gifts[0];
+  const worker = m.units.find(u => u.team === "blue" && u.type === "worker");
+  const gold = m.econ.blue.gold;
+  worker.x = gift.x + 4;
+  worker.y = gift.y;
+  worker.order = null;
+  m.step(TICK);
+  assert.strictEqual(m.econ.blue.gold, gold + R.WINTER.gold, "dárek přinese zlato");
+  assert(!m.gifts.includes(gift), "sebraný dárek zmizí");
+  assert(m.events.some(e => e.e === "gift" && e.id === worker.id && e.n === R.WINTER.gold));
+  m.endTick();
+
+  // vojáci dárky nesbírají
+  const soldier = m.createUnit("soldier", "blue", m.gifts[0].x, m.gifts[0].y);
+  const left = m.gifts.length;
+  m.step(TICK);
+  assert.strictEqual(m.gifts.length, left, "voják dárek nesebere");
+  soldier.hp = 0;
+  m.endTick();
+
+  // nové dárky přibývají po R.WINTER.every s, nejvýš R.WINTER.max najednou
+  for (let t = 0; t < R.WINTER.every * (R.WINTER.max + 2); t += TICK) { m.step(TICK); m.endTick(); }
+  assert.strictEqual(m.gifts.length, R.WINTER.max, "dárků je nejvýš R.WINTER.max");
+
+  // příkaz správce /zima: vypne a zapne zimu v zápase, volbu si server vezme pro další zápasy
+  let r = ADMIN.run(m, "blue", "/zima off");
+  assert(r.ok && r.changed && !m.winter && m.gifts.length === 0 && m.winterForce === false);
+  r = ADMIN.run(m, "blue", "/zima on");
+  assert(r.ok && m.winter && m.gifts.length === R.WINTER.first && m.winterForce === true);
+  r = ADMIN.run(m, "blue", "/zima auto");
+  assert(r.ok && m.winterForce === "auto" && m.winter === R.isWinter());
+  assert(m.cheated, "zápas s /zima se nepočítá do statistik");
+}
+
 function testCollisions() {
   const run = (m, seconds, each) => {
     for (let t = 0; t < seconds; t += TICK) { m.step(TICK); m.endTick(); if (each) each(); }
