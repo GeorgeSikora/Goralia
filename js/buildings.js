@@ -209,6 +209,7 @@
     const seed = o.seed || 3;
     const face = o.face || ZERO;
     const base = o.base != null ? o.base : 2.6;
+    const snow = PK.winter && PK.winter.on && ramp !== OBS && ramp !== BAS ? PK.winter : null; // zima: sníh na taškách
 
     P.poly(pts, (x, y) => {
       const r = Math.floor((y - y0) / th);
@@ -228,11 +229,13 @@
       else if (ly === th - 2) t += 1;
       else if (lx === 0) t += 0.4;
       if (o.moss && ly <= 1 && hash(x, y, seed + 9) < o.moss(x, y)) {
-        return hash(x, y, seed + 8) > 0.5 ? C.g[3] : C.g[2];
+        return snow ? snow.roof(C.g[2], x, y, ly, lx, th, f, 0) : hash(x, y, seed + 8) > 0.5 ? C.g[3] : C.g[2];
       }
 
-      return pick(ramp, clamp(t, 0, ramp.length - 1));
+      const c = pick(ramp, clamp(t, 0, ramp.length - 1));
+      return snow ? snow.roof(c, x, y, ly, lx, th, f, hash(k, r, seed + 5)) : c;
     });
+    if (snow) snow.eave(P, pts);
   }
 
   /* Došková střecha: svislá stébla ve vrstvách, spodní hrana každé vrstvy stínem. */
@@ -241,6 +244,7 @@
     const lh = o.lh || 6;
     const seed = o.seed || 4;
     const face = o.face || ZERO;
+    const snow = PK.winter && PK.winter.on ? PK.winter : null;
 
     P.poly(pts, (x, y) => {
       const r = Math.floor(y / lh);
@@ -252,8 +256,10 @@
       else if (ly <= 1) t += 0.6;
       if ((x + r * 3) % 3 === 0) t -= 0.5;
       if (hash(x, y, seed + 2) > 0.94) t += 1;
-      return pick(ramp, clamp(t, 0, ramp.length - 1));
+      const c = pick(ramp, clamp(t, 0, ramp.length - 1));
+      return snow ? snow.roof(c, x, y, Math.min(ly, lh - 1), x % 6, lh, f, hash(x >> 2, r, seed + 5)) : c;
     });
+    if (snow) snow.eave(P, pts);
   }
 
   /* Hladká omítka: velmi jemný bayer přechod, vlasové praskliny, místy opadaná na cihlu. */
@@ -2316,8 +2322,18 @@
   function get(type, team = "blue") {
     team = PK.skin(team); // barva týmu navíc z výzev
     const key = `${type}|${team}`;
-    if (!cache[key]) cache[key] = BUILD[type](team);
+    if (!cache[key]) {
+      cache[key] = BUILD[type](team);
+      // zima (winter.js): sníh na hranách, světýlka na hlavní budově
+      if (PK.winter && PK.winter.on) PK.winter.building(type, cache[key]);
+    }
     return cache[key];
+  }
+
+  // Zima se přepnula: sprity se nakreslí znovu.
+  function reset() {
+    for (const k of Object.keys(cache)) delete cache[k];
+    blueprints.clear();
   }
 
   /*
@@ -2352,6 +2368,7 @@
     flag: flagFrames,
     rubble,
     blueprint,
+    reset,
     teamOf: type => (type === "citadel" ? "red" : "blue")
   };
 })();

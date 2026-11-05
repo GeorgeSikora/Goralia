@@ -703,6 +703,9 @@
       }
     }
 
+    if (PK.winter && PK.winter.on) {
+      PK.winter.snowTerrain(T, zone, b, { grass: Z_GRASS, path: Z_PATH, plaza: Z_PLAZA, terrace: Z_TERRACE, bank: Z_BANK, rock: Z_ROCK, wall: Z_WALL, frame: Z_FRAME }, 1);
+    }
     const canvas = T.toCanvas();
     // terén peče world.prepare po kouscích (nebo první vykreslení), ne hromadné hdBakeAll
     if (W * H * 4 <= FINE_MAX) {
@@ -1348,6 +1351,11 @@
       }
     }
 
+    // zima (winter.js): sníh na trávě, ušlapané cesty, poprašek na kamenech
+    if (PK.winter && PK.winter.on) {
+      PK.winter.snowTerrain(P, zF, b, { grass: Z_GRASS, path: Z_PATH, plaza: Z_PLAZA, terrace: Z_TERRACE, bank: Z_BANK, rock: Z_ROCK, wall: Z_WALL, frame: Z_FRAME });
+    }
+
     yield 0.85;
     b.water = yield* span(buildWaterSteps(b, zF, bil, (fy) => { r0 = Y0[fy]; r1 = Y1[fy]; wy = WY[fy]; }), 0.85, 1);
     b.F = null; // pole z art průchodu už nejsou potřeba
@@ -1363,6 +1371,7 @@
     const out = [];
     const { a: NA } = noiseTex();
     const V = C.v;
+    const ice = PK.winter && PK.winter.on ? PK.winter.iceAt : null; // zamrzlé okraje
 
     for (let cy = 0; cy < FH; cy += CS) {
       for (let cx = 0; cx < FW; cx += CS) {
@@ -1398,6 +1407,7 @@
               if (e < 0.32 && e > 0.08 && hash(fx, fy, 72) > 0.985) c = mix(D[3], V[2], 0.4);
               // záblesky na hřebenech
               if (hash(fx + f * 7, fy, 71) > 0.9965) c = C.white;
+              if (ice) { const ic = ice(e, fx, fy); if (ic) c = ic; }
               P.set(x, y, c);
             }
           }
@@ -1416,6 +1426,7 @@
   /* ---------- grass tufts that sway ---------- */
   function buildTufts() {
     const frames = [];
+    const G = PK.winter && PK.winter.on ? PK.winter.TUFT : C.g; // v zimě suchá ojíněná tráva
 
     // trs 7x6 art px v jemné mřížce: sedm stébel různé výšky, ohýbají se od paty ke špičce
     const blades = [[6, 10, 3], [8, 8, 4], [4, 8, 3], [10, 6, 3], [2, 5, 2], [7, 5, 2], [12, 4, 2]];
@@ -1598,6 +1609,7 @@
     for (const entry of rec.doodads.scatter) scatter(...entry);
     // sezónní výzdoba (halloween.js) až nakonec, ať nemění rozmístění ostatních kulis
     if (PK.halloween && PK.halloween.doodads) PK.halloween.doodads({ add, layout, W, H });
+    if (PK.winter && PK.winter.doodads) PK.winter.doodads({ add, layout, W, H });
 
     list.sort((a, b) => a.y - b.y);
     world.doodads = list;
@@ -1825,6 +1837,15 @@
 
   const preview = (map, maxW, maxH) => scaled(bundleFor(map).canvas, maxW, maxH);
 
+  // Zima zapnutá/vypnutá za běhu (winter.js): všechny terény upéct znovu, rozehranou mapu hned.
+  function reseason() {
+    bundles.clear();
+    forestPattern = null;
+    const m = world.ready ? world.map : null;
+    world.ready = false;
+    if (m) build(m);
+  }
+
   // Upravená mapa se stejným id se musí upečt znovu.
   function forget(id) {
     bundles.delete(id);
@@ -2000,7 +2021,7 @@
   }
 
   Object.assign(world, {
-    build, prepare, isPrepared, preview, forget, drawGround, drawClouds, drawMist, drawGrade, light, glow, shadow,
+    build, prepare, isPrepared, preview, forget, reseason, drawGround, drawClouds, drawMist, drawGrade, light, glow, shadow,
     zoneAt: (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? Z_FRAME : zone[(y | 0) * W + (x | 0)]),
     Z: { GRASS: Z_GRASS, PATH: Z_PATH, PLAZA: Z_PLAZA, WATER: Z_WATER, FRAME: Z_FRAME, TERRACE: Z_TERRACE, BANK: Z_BANK, ROCK: Z_ROCK, WALL: Z_WALL }
   });

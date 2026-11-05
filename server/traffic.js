@@ -177,8 +177,11 @@ function createTraffic(store, geo = null) {
     if (kind === "start") {
       day.aiStarted++;
     } else if (kind === "end") {
-      day.aiFinished++;
-      if (body.result === "win") day.aiWins++;
+      // opuštěná hra (zavřená karta, nová hra) se nepočítá jako dohraná
+      if (!body.quit) {
+        day.aiFinished++;
+        if (body.result === "win") day.aiWins++;
+      }
       const sec = Number(body.duration);
       if (Number.isFinite(sec) && sec > 0) day.aiSeconds += Math.min(Math.round(sec), 6 * 3600);
     } else {

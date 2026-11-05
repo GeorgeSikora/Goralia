@@ -509,6 +509,8 @@ PK.i18n.add("en", {
   "Vyhrává poslední, komu zůstane hlavní budova.": "The last one with a main building standing wins.",
   "Kolečkem myši měníš přiblížení, prostředním tlačítkem posouváš mapu.": "The mouse wheel zooms, the middle button moves the map.",
   "Halloween! Na mapách svítí dýně a v noci létají netopýři.": "Halloween! Pumpkins glow on the maps and bats fly at night.",
+  "Dárek! +{0} zlata": "Gift! +{0} gold",
+  "Zima! Na mapě leží dárky. Pošli pro ně dělníka a dostaneš zlato.": "Winter! Gifts lie on the map. Send a worker to fetch them for gold.",
   "Hru se nepodařilo načíst. Zkus obnovit stránku.": "The game failed to load. Try reloading the page.",
   "Načítám hlasy postav…": "Loading unit voices…",
   "Tip: {0}": "Tip: {0}",

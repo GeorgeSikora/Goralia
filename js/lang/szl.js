@@ -514,6 +514,8 @@ PK.i18n.add("szl", {
   "Vyhrává poslední, komu zůstane hlavní budova.": "Vygrovo łostatni, kěrymu zostaně głóvny budynek.",
   "Kolečkem myši měníš přiblížení, prostředním tlačítkem posouváš mapu.": "Kółkym na myši mjyniš přibližyni, postřednim kneflym posuvoš mape.",
   "Halloween! Na mapách svítí dýně a v noci létají netopýři.": "Halloween! Na mapach švjyčóm baňe a v nocy lotajóm gacopjyře.",
+  "Dárek! +{0} zlata": "Dar! +{0} złota",
+  "Zima! Na mapě leží dárky. Pošli pro ně dělníka a dostaneš zlato.": "Žyma! Na mapje ležóm dary. Pošli po ně robotnika a dostaneš złoto.",
   "Hru se nepodařilo načíst. Zkus obnovit stránku.": "Gra se něnačitała. Spróbuj strónke načitač zaš.",
   "Načítám hlasy postav…": "Načitóm głosy postav…",
   "Tip: {0}": "Tip: {0}",

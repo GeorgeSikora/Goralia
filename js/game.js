@@ -62,6 +62,7 @@
   let units;
   let buildings;
   let resources;
+  let gifts = []; // zimní dárky ze simulace: { id, x, y, k }
   let selected;
   const groups = new Map(); // číslo skupiny (0-9) -> id jednotek a budov
   let lastGroupTap = { n: -1, t: 0 };
@@ -205,6 +206,7 @@
   }
 
   function reset() {
+    abandonAi();
     spectator = false;
     for (const k of Object.keys(PK.skins)) delete PK.skins[k];
     flagDesigns = {};
@@ -214,6 +216,7 @@
     units = [];
     buildings = [];
     resources = [];
+    gifts = [];
     selected = [];
     groups.clear();
     lastGroupTap = { n: -1, t: 0 };
@@ -281,6 +284,15 @@
     } catch (err) { /* statistiky nejsou důležité */ }
   }
 
+  // Rozehraná hra proti AI, kterou hráč opustí (nová hra, zavření karty), je prohra, stejně jako odchod ze zápasu na serveru.
+  function abandonAi() {
+    if (mode !== "ai" || !simMatch || matchOver || spectator || simMatch.cheated || simMatch.reported) return;
+    simMatch.reported = true; // po návratu na stránku (bfcache) se hra dohraje, ale znovu se nehlásí
+    reportAi("end", { result: "loss", quit: true, duration: Math.round(simMatch.elapsed) });
+  }
+
+  window.addEventListener("pagehide", abandonAi);
+
   /* ---------- příprava zápasu (načítací obrazovka) ----------
    * Sprity jednotek a budov se kreslí až při prvním použití a jemný terén se
    * peče při načtení mapy; obojí by v prvních snímcích zápasu cuklo. Proto se
@@ -343,7 +355,7 @@
         const p = players.find(q => q.slot === i);
         return p ? { name: p.name, ai: p.ai } : null;
       });
-      simMatch = new sim.Match(map, roster, { countdown: 0 });
+      simMatch = new sim.Match(map, roster, { countdown: 0, winter: !!(PK.winter && PK.winter.on) });
       applySnapshot(simMatch.snapshot(me));
       simMatch.endTick();
       reportAi("start");
@@ -378,6 +390,11 @@
     if (mode === "online") return net.send({ t: "admin", text });
     if (!simMatch) return;
     const result = PK.admincmd.run(simMatch, me, text);
+    // /zima v zápase proti AI: volba se zapamatuje i pro menu a další hry
+    if (simMatch.winterForce != null && PK.winter) {
+      PK.winter.force(simMatch.winterForce === "auto" ? null : simMatch.winterForce);
+      simMatch.winterForce = null;
+    }
     PK.adminbar.receive(result);
     if (result.changed) {
       applySnapshot(simMatch.snapshot(me));
@@ -428,27 +445,54 @@
     }
 
     // zápas změněný příkazem správce se do statistik nepočítá
-    if (mode === "ai" && !(simMatch && simMatch.cheated)) {
+    if (mode === "ai" && simMatch && !simMatch.cheated && !simMatch.reported) {
+      simMatch.reported = true;
       // statistiky zápasu ověří a vyhodnotí server (výzvy), viz api.js aiChallenges
       reportAi("end", {
-        result: state === "win" ? "win" : state === "draw" ? "draw" : "loss", duration: simMatch ? Math.round(simMatch.elapsed) : 0,
-        stats: simMatch && me ? simMatch.stats[me] : null
+        result: state === "win" ? "win" : state === "draw" ? "draw" : "loss", duration: Math.round(simMatch.elapsed),
+        stats: me ? simMatch.stats[me] : null
       });
     }
 
     syncMenu();
   }
 
+  // Stav tlačítek schopností vybraného hrdiny: přebíjení, mana, zvolený cíl.
+  function abilityButtons(hero) {
+    const out = {};
+    if (!hero) return out;
+    (R.HERO.abilities[hero.type] || []).forEach((ab, k) => {
+      out[ab.id] = {
+        enabled: !(hero.st & sim.ST.dash),
+        cd: hero.cds[k],
+        cdMax: ab.cd * (1 - R.HERO.cdPerLevel * (hero.level - 1)),
+        mana: ab.mana,
+        manaOk: hero.mana >= ab.mana,
+        active: spellMode === ab.id
+      };
+    });
+    return out;
+  }
+
   function selectedHero() {
     return selected.find(entity =>
       entity.kind === "unit" &&
-      entity.type === "hero" &&
+      entity.hero &&
       alive(entity)
     );
   }
 
+  // Schopnost hrdiny podle typu tlačítka: { hero, k, ab } nebo null.
+  function heroAbility(type, hero = selectedHero()) {
+    const list = hero && R.HERO.abilities[hero.type];
+    const k = list ? list.findIndex(a => a.id === type) : -1;
+    return k >= 0 ? { hero, k, ab: list[k] } : null;
+  }
+
+  const ABILITIES = new Set(Object.values(R.HERO.abilities).flat().map(a => a.id));
+
   // Typ, který se právě ovládá (nabídka tlačítek); Tab přepíná mezi typy ve výběru.
-  const FOCUS_ORDER = ["hero", "worker", "knight", "soldier", "archer", "monk", "catapult", "hall", "citadel", "barracks", "stable", "workshop", "tower", "hut", "smithy"];
+  const FOCUS_ORDER = ["hero", "lich", "worker", "knight", "soldier", "archer", "monk", "catapult", "hall", "citadel", "barracks", "stable", "workshop", "tower", "hut", "smithy"];
 
   function selectionTypes() {
     const present = new Set(selected.map(e => e.type));
@@ -480,7 +524,7 @@
     const e = selected.find(s => s.type === f);
     if (!e) return "none";
 
-    if (e.kind === "unit") return f === "hero" ? "hero" : f === "worker" ? "worker" : "army";
+    if (e.kind === "unit") return f === "hero" || f === "lich" ? f : f === "worker" ? "worker" : "army";
     if (e.progress < 1) return "none";
     return f === "hall" || f === "citadel" ? "hq" : ["barracks", "smithy", "stable", "workshop"].includes(f) ? f : "none";
   }
@@ -580,38 +624,29 @@
       return;
     }
 
-    if (type === "fire") {
+    if (ABILITIES.has(type)) {
       const hero = selectedHero();
-
       if (!hero) return announce("Nejdřív vyber hrdinu.");
+      const pick = heroAbility(type, hero);
+      if (!pick) return;
+      const { k, ab } = pick;
 
-      if (hero.fireCooldown > 0) {
-        return announce(
-          `Ohnivá koule: ještě ${Math.ceil(hero.fireCooldown)} s.`
-        );
-      }
+      if (hero.cds[k] > 0) return announce(`${ab.name}: ještě ${Math.ceil(hero.cds[k])} s.`);
+      if (hero.mana < ab.mana) return announce(`${ab.name}: chybí mana.`);
 
-      spellMode = "fire";
+      audio.play("click");
       placement = null;
       commandMode = false;
-      audio.play("click");
-      announce("Klikni na místo dopadu ohnivé koule.");
-      return;
-    }
 
-    if (type === "heal") {
-      const hero = selectedHero();
-
-      if (!hero) return announce("Nejdřív vyber hrdinu.");
-
-      if (hero.healCooldown > 0) {
-        return announce(
-          `Léčení: ještě ${Math.ceil(hero.healCooldown)} s.`
-        );
+      // cílená schopnost čeká na klik (klepnutí) na mapu, ostatní se sešlou hned
+      if (ab.target) {
+        spellMode = type;
+        aim = null;
+        announce(`Klikni na cíl: ${ab.name}.`);
+      } else {
+        spellMode = null;
+        sendCmd({ c: "cast", k });
       }
-
-      audio.play("click");
-      sendCmd({ c: "heal" });
       return;
     }
 
@@ -764,9 +799,16 @@
     return findEntity(x, y, buildings.filter(b => b.team === me && b.progress >= 1 && b.hp < b.maxHp), 46);
   }
 
+  // zimní dárek pod kurzorem (sebere ho dělník, který k němu dojde)
+  function giftAt(x, y) {
+    return gifts.find(gf => Math.hypot(gf.x - x, gf.y - y) < 18);
+  }
+
   function issueOrder(x, y) {
     const enemy = enemyAt(x, y);
     const resource = resourceAt(x, y);
+    const gift = !enemy && !resource ? giftAt(x, y) : null;
+    if (gift) { x = gift.x; y = gift.y; }
     let ordered = false;
     let kind = "move";
     let wreck = null;
@@ -803,6 +845,7 @@
       if (kind === "attack") fx.ping(enemy.x, enemy.y + 12, "attack");
       else if (kind === "gather") fx.ping(resource.x, resource.y + (resource.type === "gold" ? 26 : 28), "gather");
       else if (kind === "repair") fx.ping(wreck.x, wreck.y + 30, "gather");
+      else if (gift) fx.ping(gift.x, gift.y + 6, "gather");
       else fx.ping(x, y, "move");
       audio.play("order", { x });
       speak(selected, "order");
@@ -857,19 +900,20 @@
     audio.play("click");
   }
 
-  function castFire(x, y) {
-    const hero = selectedHero();
+  // Cílená schopnost (výpad, ohnivá koule) na bod mapy.
+  function castAt(x, y) {
+    const pick = heroAbility(spellMode);
     spellMode = null;
 
-    if (!hero) {
+    if (!pick) {
       return announce("Hrdina už není k dispozici.");
     }
 
-    if (distance(hero, { x, y }) > 180) {
+    if (distance(pick.hero, { x, y }) > pick.ab.range) {
       return announce("Cíl je příliš daleko od hrdiny.");
     }
 
-    sendCmd({ c: "fire", x: Math.round(x), y: Math.round(y) });
+    sendCmd({ c: "cast", k: pick.k, x: Math.round(x), y: Math.round(y) });
   }
 
   /* ======================= camera ======================= */
@@ -1146,8 +1190,8 @@
       return;
     }
 
-    if (spellMode === "fire") {
-      castFire(world_.x, world_.y);
+    if (spellMode) {
+      castAt(world_.x, world_.y);
       return;
     }
 
@@ -1433,7 +1477,7 @@
 
     const w = toWorld(pointerPosition(event));
 
-    if (placement || spellMode === "fire") {
+    if (placement || spellMode) {
       aimTap(w);
       return;
     }
@@ -1523,7 +1567,7 @@
       placeBuilding(at.x, at.y);
       if (placement) aim = at;
     } else {
-      castFire(at.x, at.y);
+      castAt(at.x, at.y);
     }
   }
 
@@ -1566,8 +1610,9 @@
     }
 
     // zkratky si hráč může přenastavit (PK.keys); platí jen pro tlačítko, které je ve vybrané nabídce
-    const type = PK.hud.types.find(t => PK.keys.is(event, t));
-    if (type && PK.hud.cardHas(type)) {
+    // (Q/W/E cvičí v gmině a kasárnách, u vybraného hrdiny sesílají schopnosti)
+    const type = PK.hud.types.find(t => PK.keys.is(event, t) && PK.hud.cardHas(t));
+    if (type) {
       keyPress = { type, t: 0.14 };
       action(type);
     }
@@ -2201,6 +2246,7 @@
 
     if (PK.loader && PK.loader.busy) return;
     lastOffline = { mapId: c.mapId, slots: c.slots.map(s => ({ ...s })) };
+    if (PK.winter) PK.winter.set(PK.winter.season()); // hra proti AI: zima podle kalendáře / volby
     // barvy navíc už pro přípravu spritů (načítací obrazovka), aby se nepekly až ve hře
     applyLooks(roster.map(p => ({ ...p, team: R.TEAMS[p.slot], me: p.slot === 0 })), true);
     prepareMatch(next, roster.map(p => p.slot), () => beginMatch({ mode: "ai", map: next, slot: 0, players: roster }));
@@ -2237,6 +2283,9 @@
       return;
     }
 
+    // online rozhoduje o zimě server (kalendář nebo příkaz /zima), vzhled se mu přizpůsobí
+    if (PK.winter) PK.winter.set(!!m.winter);
+
     // zprávy ze serveru během přípravy počkají a projdou až po startu zápasu
     netHold = netHold || [];
     applyLooks(m.players.map(p => ({ ...p, team: R.TEAMS[p.slot] })), false);
@@ -2259,7 +2308,8 @@
     return {
       id, kind: "unit", type, team, x, y, sx: x, sy: y,
       hp: s.hp, maxHp: s.hp, speed: s.speed, damage: s.damage, range: s.range,
-      attackDelay: s.delay, cooldown: 0, fireCooldown: 0, healCooldown: 0,
+      attackDelay: s.delay, cooldown: 0,
+      hero: R.HERO.types.human === type || R.HERO.types.undead === type, mana: 0, maxMana: 0, cds: [0, 0, 0], st: 0, trail: null,
       order: null, carry: null, level: 1, xp: 0, walkCycle: 0,
       facing: map.slots[R.TEAMS.indexOf(team)].facing,
       atk: 0, castT: 0, flashT: 0, workT: 0, fxT: 0, moveT: 0, wd: 0, lx: x, ly: y, stepT: 0
@@ -2320,43 +2370,34 @@
         break;
       }
 
-      case "fire": {
+      // schopnost hrdiny: animace sesílání a efekt podle druhu (viz rules.js HERO.abilities)
+      case "cast": {
         const hero = unitMap.get(e.h);
         if (!hero) return;
-        hero.castT = 0.5;
-
-        // pekelný výbuch licha: kruh ohně kolem něj
-        if (e.nova) {
-          for (let k = 0; k < 6; k++) {
-            const a = k / 6 * Math.PI * 2;
-            fx.fireball(hero.x, hero.y - 10, e.x + Math.cos(a) * 60, e.y + Math.sin(a) * 42 + 8, 36);
-          }
-          audio.play("fireCast", { x: hero.x });
-          fx.later(0.3, () => audio.play("explosion", { x: e.x }));
-          break;
-        }
-
-        hero.facing = e.x < hero.x ? -1 : 1;
-        fx.fireball(hero.x + hero.facing * 14, hero.y - 6, e.x, e.y + 8, 47);
-        audio.play("fireCast", { x: hero.x });
-        fx.later(0.3, () => audio.play("explosion", { x: e.x }));
+        const ab = (R.HERO.abilities[hero.type] || [])[e.k];
+        if (!ab) return;
+        heroCast(hero, ab, e);
         break;
       }
 
-      case "heal": {
+      // rytíř dopadl z výpadu: rána do okolí
+      case "lunge": {
         const hero = unitMap.get(e.h);
-        if (!hero) return;
-
-        for (const id of e.ids) {
-          const ally = unitMap.get(id);
-          if (!ally) continue;
-          fx.healOn(ally.x, ally.y + 4);
-          fx.text(ally.x, ally.y - 30, `+${e.n}`, 0x9ef7c8);
+        fx.lungeImpact(e.x, e.y, R.HERO.abilities.hero[0].radius, e.n);
+        audio.play(e.n ? "hitHeavy" : "hit", { x: e.x });
+        if (hero) {
+          hero.atk = 0.3;
+          hero.trailEnd = 0.25;
         }
+        break;
+      }
 
-        hero.castT = 0.5;
-        fx.healBurst(hero.x, hero.y + 8, 90);
-        audio.play("heal", { x: hero.x });
+      // vyvolaný kostlivec se rozpadl
+      case "unsum": {
+        const u = unitMap.get(e.id);
+        if (!u) return;
+        u.crumbled = true;
+        fx.crumble(u.x, u.y);
         break;
       }
 
@@ -2386,6 +2427,18 @@
         break;
       }
 
+      case "gift": {
+        // dárek sebraný dělníkem: záblesk, zlaťáky a zvuk mince
+        if (PK.winter) PK.winter.burst(e.x / 2, e.y / 2);
+        fx.coin(e.x, e.y - 6, `+${e.n}`, false);
+        const unit = unitMap.get(e.id);
+        if (unit && unit.team === me) {
+          audio.play("coin", { x: e.x });
+          announce(`Dárek! +${e.n} zlata`);
+        }
+        break;
+      }
+
       case "coin": {
         const unit = unitMap.get(e.id);
         if (!unit) return;
@@ -2410,10 +2463,56 @@
         break;
       }
 
-      case "lich":
+      case "lich": {
         announce("Pekelný lich povstal z Nekropole!");
+        const lich = unitMap.get(e.id);
+        if (lich) fx.summon(lich.x, lich.y, true);
         break;
+      }
 
+      default:
+    }
+  }
+
+  // Sesílání schopnosti: póza hrdiny (castKind vybere animaci v unitAnim) a efekt v jemné mřížce.
+  function heroCast(hero, ab, e) {
+    hero.castT = ab.id === "lunge" ? 0 : 0.5;
+    hero.castKind = ab.id;
+    if (e.x != null) hero.facing = e.x < hero.x ? -1 : 1;
+    const allies = (e.ids || []).map(id => unitMap.get(id)).filter(Boolean);
+
+    switch (ab.id) {
+      case "lunge":
+        hero.trail = [];
+        hero.trailEnd = 0;
+        fx.lungeStart(hero.x, hero.y, e.x, e.y);
+        audio.play("lunge", { x: hero.x });
+        break;
+      case "warcry":
+        fx.warcry(hero.x, hero.y, ab.radius, allies);
+        audio.play("warcry", { x: hero.x });
+        break;
+      case "shieldwall":
+        fx.shieldwall(hero.x, hero.y, ab.radius, allies.filter(u => u !== hero));
+        audio.play("shield", { x: hero.x });
+        break;
+      case "fireball":
+        fx.fireball(hero.x + hero.facing * 14, hero.y - 6, e.x, e.y + 8, ab.unitR);
+        audio.play("fireCast", { x: hero.x });
+        fx.later(0.3, () => audio.play("explosion", { x: e.x }));
+        break;
+      case "summon":
+        for (const u of allies) {
+          u.riseT = 0.9; // kostlivec se prohrabe ze země (viz drawUnit)
+          fx.summon(u.x, u.y);
+        }
+        fx.castGlow(hero.x, hero.y, 0x5ff0c0);
+        audio.play("summon", { x: hero.x });
+        break;
+      case "frost":
+        fx.frostNova(hero.x, hero.y, ab.radius);
+        audio.play("frost", { x: hero.x });
+        break;
       default:
     }
   }
@@ -2427,6 +2526,10 @@
 
     // Po startu se kamera znovu vycentruje na vlastní základnu (rozměry okna se mohly od načtení mapy změnit).
     if (first && map && map.slots[mySlot]) centerCamera(map.slots[mySlot].hq.x, map.slots[mySlot].hq.y);
+
+    // zima zapnutá/vypnutá příkazem správce uprostřed zápasu: překreslit krajinu a budovy
+    if (s.wi != null && PK.winter && !!s.wi !== PK.winter.on) PK.winter.set(!!s.wi);
+    gifts = s.gf ? s.gf.map(([id, x, y, k]) => ({ id, x, y, k })) : [];
 
     for (const e of s.e) netEvent(e);
     for (const note of s.n) announce(note);
@@ -2445,7 +2548,7 @@
     const seenUnits = new Set();
 
     for (const d of s.u) {
-      const [id, t, team, x, y, hp, maxHp, face, carry, level, xp, order, fcd, hcd, work, dmg] = d;
+      const [id, t, team, x, y, hp, maxHp, face, carry, level, xp, order, st, mana, work, dmg, c0, c1, c2, maxMana] = d;
       let u = unitMap.get(id);
 
       if (!u) {
@@ -2474,8 +2577,15 @@
       u.level = level;
       u.xp = xp;
       u.order = order ? { type: ORDER_TYPES[order] } : null;
-      u.fireCooldown = fcd;
-      u.healCooldown = hcd;
+      u.st = st || 0;
+      u.summoned = !!(u.st & sim.ST.summoned);
+      if (u.hero) {
+        u.mana = mana;
+        u.maxMana = maxMana || 0;
+        u.cds[0] = c0 || 0;
+        u.cds[1] = c1 || 0;
+        u.cds[2] = c2 || 0;
+      }
       u.working = work === 1;
       u.building = work === 2 || work === 3;
       u.repairing = work === 3;
@@ -2490,7 +2600,7 @@
     const seenBuildings = new Set();
 
     for (const d of s.b) {
-      const [id, t, team, x, y, hp, maxHp, progress, research, researchT] = d;
+      const [id, t, team, x, y, hp, maxHp, progress, research, researchT, heroT] = d;
       let b = buildingMap.get(id);
 
       if (!b) {
@@ -2512,6 +2622,7 @@
       b.maxHp = maxHp;
       b.progress = progress;
       b.research = research ? { kind: sim.RESEARCH_KINDS[research - 1], frac: researchT } : null;
+      b.heroT = heroT || 0;
     }
 
     if (seenBuildings.size !== buildings.length) {
@@ -3107,6 +3218,112 @@
     }
   }
 
+  /* ======================= schopnosti: stav na jednotkách ======================= */
+  const ST = sim.ST;
+
+  // Stopa výpadu, vstávání vyvolaných kostlivců a jemné částice buffů (pokřik, mráz).
+  function heroVisuals(u, dt) {
+    if (u.riseT > 0) u.riseT = Math.max(0, u.riseT - dt);
+
+    if (u.st & ST.dash) {
+      u.dashT = (u.dashT || 0) + dt;
+      if (!u.trail) u.trail = [];
+      u.trail.push({ x: u.x, y: u.y, t: 0 });
+      if (u.trail.length > 7) u.trail.shift();
+    } else {
+      u.dashT = 0;
+    }
+
+    if (u.trail) {
+      for (const p of u.trail) p.t += dt;
+      u.trail = u.trail.filter(p => p.t < 0.28);
+      if (!u.trail.length) u.trail = null;
+    }
+
+    // jiskry jen občas, ať se buffy čtou, ale nezahltí obraz
+    u.fxAcc = (u.fxAcc || 0) + dt;
+    if (u.fxAcc < 0.12) return;
+    u.fxAcc = 0;
+    if (u.st & ST.cry && Math.random() < 0.45) fx.cryMote(u.x, u.y);
+    if (u.st & ST.slow && Math.random() < 0.35) fx.frostMote(u.x, u.y, false);
+    if (u.st & ST.aura) for (let i = 0; i < 2; i++) fx.frostMote(u.x, u.y, true);
+  }
+
+  // Ledový kruh mrazivé aury na zemi pod lichem (radius v logických jednotkách).
+  function drawFrostAura(u) {
+    const r = R.HERO.abilities.lich[2].radius / 2;
+    const cx = Math.round(u.x / 2);
+    const cy = Math.round(u.y / 2) + 6;
+    const pulse = 0.5 + 0.5 * Math.sin(clock * 3);
+    // jinovatka uvnitř: řídké ditherované body, víc u okraje
+    g.fillStyle = "rgba(198,240,238,0.55)";
+    for (let yy = -r * 0.6; yy <= r * 0.6; yy += 1) {
+      for (let xx = -r; xx <= r; xx += 1) {
+        const d = Math.hypot(xx / r, yy / (r * 0.6));
+        if (d > 1) continue;
+        const k = hash3(Math.floor(xx * 2) + 400, Math.floor(yy * 2) + 400, 17);
+        if (k > 0.1 + d * d * 0.3) continue;
+        g.fillRect(Math.round((cx + xx) * 2) / 2, Math.round((cy + yy) * 2) / 2, 0.5, 0.5);
+      }
+    }
+    g.globalAlpha = 0.55 + 0.35 * pulse;
+    ringPx(cx, cy, r, 0.6, "#c6f0ee", 18, clock * 0.6);
+    g.globalAlpha = 0.45;
+    ringPx(cx, cy, r - 1.5, 0.6, "#79c4cc", 0, 0);
+    g.globalAlpha = 1;
+  }
+
+  // Elipsa z jemných bodů (squash = poměr výšky), dash = počet čárek, rot = posun čárek.
+  function ringPx(cx, cy, r, squash, color, dash, rot) {
+    g.fillStyle = color;
+    const steps = Math.ceil(r * 2 * 7);
+    let lx = null;
+    let ly = null;
+    for (let i = 0; i < steps; i++) {
+      const a = i / steps * Math.PI * 2;
+      if (dash && Math.floor((a + rot) / (Math.PI * 2) * dash * 2) % 2) continue;
+      const x = Math.round((cx + Math.cos(a) * r) * HD) / HD;
+      const y = Math.round((cy + Math.sin(a) * r * squash) * HD) / HD;
+      if (x === lx && y === ly) continue;
+      g.fillRect(x, y, 0.5, 0.5);
+      lx = x;
+      ly = y;
+    }
+  }
+
+  // Bariéra štítové zdi: kopule z šestiúhelníkových dílků kolem jednotky, zadní polovina se kreslí před sprajtem.
+  function drawGuard(u, footX, footY, front) {
+    const big = u.type === "hero";
+    const rx = big ? 12 : 9;
+    const ry = big ? 17 : 13;
+    const cy = footY - ry + 3;
+    const pulse = 0.5 + 0.5 * Math.sin(clock * 4 + u.id);
+    for (let i = 0; i < 64; i++) {
+      const a = i / 64 * Math.PI * 2;
+      const fr = Math.sin(a) > -0.15; // spodní oblouk = přední strana kopule
+      if (fr !== front) continue;
+      const x = Math.round((footX + Math.cos(a) * rx) * 2) / 2;
+      const y = Math.round((cy + Math.sin(a) * ry) * 2) / 2;
+      const seam = i % 8 === 0;
+      g.globalAlpha = (front ? 0.55 : 0.3) + (seam ? 0.3 : 0) * pulse;
+      g.fillStyle = seam ? "#e8f4ff" : i % 2 ? "#6fb2f0" : "#b4e0ff";
+      g.fillRect(x, y, 0.5, 0.5);
+    }
+    // dílky na povrchu kopule (jen vpředu)
+    if (front) {
+      g.fillStyle = "#b4e0ff";
+      for (let k = 0; k < 6; k++) {
+        const a = k / 6 * Math.PI + clock * 0.8;
+        const x = Math.round((footX + Math.cos(a) * rx * 0.7) * 2) / 2;
+        const y = Math.round((cy + Math.sin(a) * ry * 0.35 + ry * 0.3) * 2) / 2;
+        g.globalAlpha = 0.35 + 0.3 * pulse;
+        g.fillRect(x, y, 0.5, 0.5);
+        g.fillRect(x + 0.5, y, 0.5, 0.5);
+      }
+    }
+    g.globalAlpha = 1;
+  }
+
   /* ======================= visual state ======================= */
   function updateVisuals(dt) {
     clock += dt;
@@ -3119,6 +3336,7 @@
     for (const u of units) {
       u.atk = Math.max(0, u.atk - dt);
       u.castT = Math.max(0, u.castT - dt);
+      heroVisuals(u, dt);
       u.flashT = Math.max(0, u.flashT - dt);
       u.workT = Math.max(0, u.workT - dt);
 
@@ -3170,7 +3388,8 @@
       const oy = Math.round(b.y / 2) + 19 - spr.ay;
       const frac = b.hp / b.maxHp;
 
-      b.smokeAcc += dt * ((spr.smoke.length ? 2.4 : 0) + (frac < 0.5 ? 4 : 0) + (frac < 0.25 ? 4 : 0));
+      // v zimě se v kamnech topí víc: z komínů jde hustší kouř
+      b.smokeAcc += dt * ((spr.smoke.length ? (PK.winter && PK.winter.on ? 4.2 : 2.4) : 0) + (frac < 0.5 ? 4 : 0) + (frac < 0.25 ? 4 : 0));
 
       while (b.smokeAcc >= 1) {
         b.smokeAcc -= 1;
@@ -3228,6 +3447,11 @@
     // snímky rovnoměrně přes průběh akce (animace mají mezisnímky, viz units.js)
     const at = (anim, p) => [anim, Math.min(U.frameCount(anim) - 1, Math.floor(clamp(p, 0, 0.999) * U.frameCount(anim)))];
 
+    // rytíř: výpad (rozběh a bodnutí), štítová zeď (štít vpřed), pokřik (meč nad hlavou = cast)
+    if (u.type === "hero") {
+      if (u.st & ST.dash) return at("lunge", Math.min(0.999, (u.dashT || 0) / 0.3));
+      if (u.castT > 0) return at(u.castKind === "shieldwall" ? "guard" : "cast", 1 - u.castT / 0.5);
+    }
     if (u.castT > 0 && (u.type === "hero" || u.type === "lich")) return at("cast", 1 - u.castT / 0.5);
     if (u.atk > 0) return ["attack", U.attackFrame(1 - u.atk / 0.3)];
 
@@ -3236,6 +3460,8 @@
     const load = u.type === "worker" && u.carry ? "_" + u.carry : "";
     // jeden cyklus chůze (dva kroky) na 22 logických jednotek dráhy = délka kroku spritu
     if (u.moveT > 0) return ["walk" + load, Math.floor(u.wd / 22 * U.frameCount("walk")) % U.frameCount("walk")];
+    // rytíř se zvednutým štítem drží kryt, dokud štítová zeď trvá
+    if (u.type === "hero" && u.st & ST.guard) return ["guard", U.frameCount("guard") - 1];
     return ["idle" + load, Math.floor(clock * 1.4 + u.id * 0.37) & 1];
   }
 
@@ -3246,14 +3472,63 @@
     const flip = u.facing < 0;
 
     const sh = world.shadow("ellipse", BIG[u.type] || 13, 5);
-    if (!reflecting) g.drawImage(sh, footX - (sh.width >> 1), footY - (sh.height >> 1));
+    if (!reflecting && !(u.riseT > 0.3)) g.drawImage(sh, footX - (sh.width >> 1), footY - (sh.height >> 1));
 
     const [anim, idx] = unitAnim(u);
     const rec = U.frame(u.type, u.team, anim, idx);
     const img = u.flashT > 0 ? U.flash(rec, flip) : flip ? rec.cf : rec.c;
     const ox = flip ? U.CELL - 1 - U.AX : U.AX;
 
-    g.drawImage(img, footX - ox, footY - U.AY);
+    // stopa výpadu: bledé siluety rytíře v místech, kudy prolétl
+    if (u.trail && !reflecting) {
+      const ghost = U.flash(rec, flip);
+      for (const p of u.trail) {
+        g.globalAlpha = 0.42 * (1 - p.t / 0.28);
+        g.drawImage(ghost, Math.round(p.x / 2 * HD) / HD - ox, Math.round(p.y / 2 * HD) / HD + 6 - U.AY);
+      }
+      g.globalAlpha = 1;
+    }
+
+    const guard = (u.st & ST.guard) && !reflecting;
+    if (guard) drawGuard(u, footX, footY, false);
+
+    if (u.riseT > 0) {
+      // vyvolaný kostlivec se prohrabává ze země: vidět je jen část nad zemí
+      const k = u.riseT / 0.9;
+      g.save();
+      g.beginPath();
+      g.rect(footX - 20, footY - 40, 40, 41);
+      g.clip();
+      g.drawImage(img, footX - ox, footY - U.AY + Math.round(k * 26 * HD) / HD);
+      g.restore();
+    } else {
+      g.drawImage(img, footX - ox, footY - U.AY);
+    }
+
+    if (guard) drawGuard(u, footX, footY, true);
+
+    if ((u.st & ST.cry) && !reflecting) {
+      // pokřik: rudozlatý žár pod nohama a jiskřička nad hlavou
+      const ph = (clock * 2 + u.id * 0.3) % 1;
+      g.globalAlpha = 0.5 + 0.3 * Math.sin(clock * 8 + u.id);
+      ringPx(footX, footY + 0.5, u.type === "hero" ? 9 : 7, 0.35, "#ff8f4a", 10, clock * 2);
+      g.globalAlpha = 1 - ph;
+      g.fillStyle = "#ffd27a";
+      g.fillRect(footX - 0.5, footY - (HB_TOP[u.type] || 28) - 4 - Math.round(ph * 6) / 2, 0.5, 0.5);
+      g.globalAlpha = 1;
+      world.light(g, footX, footY - 6, 9, 0xff8f4a, 0.22, 6);
+    }
+
+    if ((u.st & ST.slow) && !reflecting) {
+      // zmrazený: ledové krystalky u nohou
+      g.fillStyle = "#c6f0ee";
+      for (const [dx, h] of [[-4, 2], [-1.5, 3], [2, 2.5], [4.5, 1.5]]) {
+        for (let y = 0; y < h; y += 0.5) g.fillRect(footX + dx, footY - y, 0.5, 0.5);
+      }
+      g.fillStyle = "#ffffff";
+      g.fillRect(footX - 1.5, footY - 3, 0.5, 0.5);
+      g.fillRect(footX + 2, footY - 2.5, 0.5, 0.5);
+    }
 
     const meta = rec.meta || {};
     // poloha jemného bodu buňky (art px, může být .5); zrcadlení po jemných px
@@ -3286,9 +3561,10 @@
       world.light(g, hx, hy, meta.halo[2] ? 16 : 8, 0xffe9a0, meta.halo[2] ? 0.7 : 0.3, footY - hy, false, 0.45);
     }
 
-    if (u.type === "hero" && !reflecting) {
-      g.drawImage(PK.icons.small.star, footX - 8, footY - 41);
-      PK.text(g, String(u.level), footX + 2, footY - 40, 0xffe08a, { font: "3", outline: C.ink, shadow: null });
+    if (u.hero && !reflecting) {
+      const top = u.type === "lich" ? 44 : 41;
+      g.drawImage(PK.icons.small.star, footX - 8, footY - top);
+      PK.text(g, String(u.level), footX + 2, footY - top + 1, 0xffe08a, { font: "3", outline: C.ink, shadow: null });
     }
   }
 
@@ -3523,6 +3799,8 @@
       S.occluder(o.x / 2, o.y / 2 + 14, 4.5, 24 * stage);
     } else if (it.k === 1) {
       S.occluder(o.x / 2, o.y / 2 + 9, 11, 16);
+    } else if (it.k === 5) {
+      S.occluder(o.x / 2, o.y / 2 + 2, 3, 5);
     } else {
       const s = o.spr;
       if (!s.glow && s.h > 8) S.occluder(o.x, o.y - 1, Math.max(2, s.w * 0.3), s.h * 0.8);
@@ -3823,27 +4101,52 @@
   }
 
   function drawSpellTarget() {
-    if (spellMode !== "fire") return;
-    const hero = selectedHero();
-    if (!hero) return;
+    const pick = spellMode && heroAbility(spellMode);
+    if (!pick) return;
+    const { hero, ab } = pick;
+    const lunge = ab.id === "lunge";
+    const hot = lunge ? "#e8f4ff" : "#ff8f4a";
+    // jemné body mají pod sebou tmavý stín, aby byly vidět na trávě i na sněhu
+    const ring = (x, y, r, col, dash) => {
+      circlePx(x, y + 1, r, "rgba(16,12,28,0.55)", dash);
+      circlePx(x, y + 0.5, r, col, dash);
+      circlePx(x, y, r, col, dash);
+    };
 
-    circlePx(Math.round(hero.x / 2), Math.round(hero.y / 2) + 4, 90, "rgba(255,191,69,0.5)", 30);
+    ring(Math.round(hero.x / 2), Math.round(hero.y / 2) + 4, ab.range / 2, lunge ? "rgba(214,232,255,0.85)" : "rgba(255,191,69,0.85)", 30);
 
     if (!hoverWorld) return;
 
-    const inRange = distance(hero, hoverWorld) <= 180;
+    const inRange = distance(hero, hoverWorld) <= ab.range;
     const ax = Math.round(hoverWorld.x / 2);
     const ay = Math.round(hoverWorld.y / 2);
-    const col = inRange ? "#ff8f4a" : "#8a8085";
+    const col = inRange ? hot : "#8a8085";
+    const r = (lunge ? ab.radius : ab.unitR) / 2;
+    const dot = (x, y, c) => {
+      g.fillStyle = "rgba(16,12,28,0.55)";
+      g.fillRect(x, y + 0.5, 1, 0.5);
+      g.fillStyle = c;
+      g.fillRect(x, y, 1, 0.5);
+    };
 
-    circlePx(ax, ay, 23.5, col, 12);
-    circlePx(ax, ay, 23, inRange ? "rgba(255,143,74,0.4)" : "rgba(138,128,133,0.4)", 12);
-    g.fillStyle = inRange ? "#ffd27a" : "#8a8085";
-    g.fillRect(ax, ay, 0.5, 0.5);
+    // výpad: tečkovaná dráha od rytíře k místu dopadu
+    if (lunge && inRange) {
+      const hx = hero.x / 2;
+      const hy = hero.y / 2;
+      const n = Math.floor(Math.hypot(ax - hx, ay - hy) / 2);
+      for (let i = 1; i < n; i++) {
+        if ((i + Math.floor(clock * 12)) % 3 === 0) continue;
+        dot(Math.round((hx + (ax - hx) * i / n) * 2) / 2, Math.round((hy + (ay - hy) * i / n) * 2) / 2, "rgba(240,248,255,0.95)");
+      }
+    }
+
+    ring(ax, ay, r + 0.5, col, 12);
+    circlePx(ax, ay, r - 0.5, inRange ? (lunge ? "rgba(232,244,255,0.45)" : "rgba(255,143,74,0.45)") : "rgba(138,128,133,0.45)", 12);
+    dot(ax, ay, inRange ? (lunge ? "#ffffff" : "#ffd27a") : "#8a8085");
 
     // zaměřovací kříž: čtyři krátká ramena z jemných bodů
     for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
-      for (let k = 3; k <= 5; k += 0.5) g.fillRect(ax + dx * k, ay + dy * k, 0.5, 0.5);
+      for (let k = 2.5; k <= 5; k += 0.5) dot(ax + dx * k, ay + dy * k, col);
     }
   }
 
@@ -3855,7 +4158,7 @@
     hoverWorld = null;
 
     // na dotyku nahrazuje kurzor rozpracovaný cíl stavby nebo kouzla
-    if (!placement && spellMode !== "fire") aim = null;
+    if (!placement && !spellMode) aim = null;
 
     if (aim) {
       hoverWorld = { x: aim.x, y: aim.y };
@@ -3894,6 +4197,8 @@
   }
 
   function drawGroundMarks() {
+    for (const u of units) if (u.st & ST.aura) drawFrostAura(u);
+
     // faint team rings keep factions readable at a glance
     for (const u of units) {
       const rx = u.type === "hero" ? 10 : 8;
@@ -3970,6 +4275,7 @@
     if (it.k === 3) return [Math.round(o.x / 2), Math.round(o.y / 2) + 19, PK.buildings.get(o.type, o.team).w / 2];
     if (it.k === 0) return [Math.round(o.x / 2), Math.round(o.y / 2) + 15, 10];
     if (it.k === 1) return [Math.round(o.x / 2), Math.round(o.y / 2) + 13, 14];
+    if (it.k === 5) return [Math.round(o.x / 2), Math.round(o.y / 2) + 3, 5];
     return [o.x, o.y, o.spr.w / 2];
   }
 
@@ -4009,6 +4315,7 @@
       else if (it.k === 1) drawMine(it.o);
       else if (it.k === 2) drawDoodad(it.o);
       else if (it.k === 3) drawBuilding(it.o);
+      else if (it.k === 5) { if (PK.winter) PK.winter.drawGift(g, it.o, clock, reflecting); }
       else drawUnit(it.o);
       rg.restore();
     }
@@ -4072,6 +4379,7 @@
     list.length = 0;
     for (const r of resources) if (visible(r.x / 2, r.y / 2)) list.push({ y: r.y / 2 + (r.type === "gold" ? 13.5 : 15), k: r.type === "gold" ? 1 : 0, o: r });
     for (const d of world.doodads) if (visible(d.x, d.y)) list.push({ y: d.y, k: 2, o: d });
+    for (const gf of gifts) if (visible(gf.x / 2, gf.y / 2)) list.push({ y: gf.y / 2 + 3, k: 5, o: gf });
     for (const b of buildings) if (visible(b.x / 2, b.y / 2)) list.push({ y: b.y / 2 + 19.5, k: 3, o: b });
     for (const u of units) if (visible(u.x / 2, u.y / 2)) list.push({ y: u.y / 2 + 6, k: 4, o: u });
     list.sort((a, b) => a.y - b.y);
@@ -4083,6 +4391,7 @@
       else if (it.k === 1) drawMine(it.o);
       else if (it.k === 2) drawDoodad(it.o);
       else if (it.k === 3) drawBuilding(it.o);
+      else if (it.k === 5) { if (PK.winter) PK.winter.drawGift(g, it.o, clock, reflecting); }
       else drawUnit(it.o);
     }
 
@@ -4105,6 +4414,7 @@
 
     fx.drawAmbient(g, T);
     if (PK.halloween && PK.halloween.draw) PK.halloween.draw(g, T, world, visible);
+    if (PK.winter && PK.winter.on) PK.winter.draw(g, T, world, visible, { units, buildings, gifts, cam, zoom, vw, vh });
     if (shading) PK.shaders.end();
 
     for (const e of selected) if (alive(e) && e.kind === "building") drawBrackets(e);
@@ -4132,7 +4442,9 @@
     const hasWorker = selected.some(e => e.type === "worker" && alive(e));
     const hall = buildings.some(b => b.team === me && b.type === R.HQ[me] && alive(b));
     const barracks = buildings.some(b => b.team === me && b.type === "barracks" && alive(b));
-    const heroAlive = units.some(u => u.team === me && u.type === "hero" && alive(u));
+    const heroAlive = units.some(u => u.team === me && u.hero && alive(u));
+    const myHq = buildings.find(b => b.team === me && b.type === R.HQ[me] && alive(b));
+    const heroTraining = myHq ? myHq.heroT : 0;
     const afford = type => gold >= costs[type].gold && wood >= costs[type].wood;
     const ready = type => buildings.some(b => b.team === me && b.type === type && b.progress >= 1 && alive(b));
     const vmCosts = { ...costs };
@@ -4175,7 +4487,7 @@
       worker: { afford: afford("worker"), enabled: hall },
       soldier: { afford: afford("soldier"), enabled: barracks },
       archer: { afford: afford("archer"), enabled: barracks },
-      hero: { afford: afford("hero"), enabled: barracks && !heroAlive },
+      hero: { afford: afford("hero"), enabled: hall && !heroAlive && !heroTraining, cd: heroTraining ? R.HERO.train * (1 - heroTraining) : 0, cdMax: R.HERO.train },
       tower: { afford: afford("tower"), enabled: hasWorker, active: placement === "tower" },
       barracks: { afford: afford("barracks"), enabled: hasWorker, active: placement === "barracks" },
       hut: { afford: afford("hut"), enabled: hasWorker, active: placement === "hut" },
@@ -4186,10 +4498,17 @@
       knight: { afford: afford("knight"), enabled: ready("stable") },
       catapult: { afford: afford("catapult"), enabled: ready("workshop") },
       ...research,
-      fire: { enabled: !!hero, cd: hero ? hero.fireCooldown : 0, cdMax: 10, active: spellMode === "fire" },
-      heal: { enabled: !!hero, cd: hero ? hero.healCooldown : 0, cdMax: 14 },
+      ...abilityButtons(hero),
       command: { enabled: true, active: commandMode }
     };
+
+    if (heroTraining) vmCosts.hero = null; // místo ceny ukáže tlačítko průběh výcviku
+    if (hero) {
+      for (const ab of R.HERO.abilities[hero.type] || []) {
+        vmTips[ab.id] = `${PK.hud.tip(ab.id)} Mana ${ab.mana}, přebíjení ${Math.round(ab.cd * (1 - R.HERO.cdPerLevel * (hero.level - 1)))} s.`;
+      }
+    }
+    vmTips.hero = `${PK.hud.tip("hero")} Výcvik v gmině trvá ${R.HERO.train} s.`;
 
     PK.hud.setCard(cardContext());
 
@@ -4209,6 +4528,7 @@
       primary: selected.find(e => e.type === focus) || selected[0],
       state, elapsed, selected, units, buildings, resources,
       message, messageTimer, placement, spellMode, commandMode, names, costs: vmCosts, titles: vmTitles, tips: vmTips, btn,
+      spellTitle: spellMode && heroAbility(spellMode) ? heroAbility(spellMode).ab.name : "",
       hoverBtn: hoverBtnObj ? hoverBtnObj.type : null,
       pressedBtn: pressed,
       myTeam: specTeam || me,
@@ -4412,6 +4732,7 @@
     get units() { return units; },
     get buildings() { return buildings; },
     get resources() { return resources; },
+    get gifts() { return gifts; },
     get selected() { return selected; },
     get mode() { return mode; },
     get me() { return me; },
@@ -4422,6 +4743,7 @@
     cheat(k, v) { if (k === "gold") gold = v; if (k === "wood") wood = v; },
     select(list) { selected = list; },
     look(x, y) { centerCamera(x, y); },
+    get match() { return simMatch; },
     step(seconds) { if (simMatch) for (let t = 0; t < seconds; t += sim.TICK) simMatch.step(sim.TICK); },
     startOffline,
     command: cmd => sendCmd(cmd), // rozkaz jako z ovládání (testy, náhledy)

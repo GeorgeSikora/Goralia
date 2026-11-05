@@ -409,6 +409,11 @@ function adminCommand(client, room, text, viaChat) {
 
   const match = room && room.match;
   const result = ADMIN.run(match, client.team, text);
+  // /zima: volba platí i pro další zápasy na serveru (do restartu)
+  if (result.ok && match && match.winterForce != null) {
+    winterForce = match.winterForce === "auto" ? null : !!match.winterForce;
+    match.winterForce = null;
+  }
   if (result.changed) {
     match.recorded = true;
     accounts.audit(client.user, "admin-cmd", `${text.slice(0, 60)} · místnost ${room.id} (${room.map.id})`);
@@ -563,6 +568,10 @@ function changeMap(room, map) {
   room.slots = next;
 }
 
+// Zimní sezóna: podle kalendáře serveru, admin ji může příkazem /zima vynutit nebo vypnout.
+let winterForce = null;
+const winterNow = () => (winterForce == null ? R.isWinter() : winterForce);
+
 function startMatch(room) {
   const players = room.slots.map((slot, i) => {
     if (slot.kind === "human") return { name: slot.client.name, look: challenges.lookOf(slot.client.user) };
@@ -570,7 +579,7 @@ function startMatch(room) {
     return null;
   });
 
-  room.match = new Match(room.map, players);
+  room.match = new Match(room.map, players, { winter: winterNow() });
   room.started = Date.now();
   room.cmds = {};
   room.out = {};
@@ -590,7 +599,7 @@ function startMatch(room) {
   room.slots.forEach((slot, i) => {
     if (slot.kind !== "human") return;
     slot.client.team = R.TEAMS[i];
-    send(slot.client, { t: "match", map: room.map.id, slot: i, players: roster });
+    send(slot.client, { t: "match", map: room.map.id, slot: i, players: roster, winter: room.match.winter });
   });
 
   broadcastRooms();
@@ -972,7 +981,7 @@ wss.on("connection", (ws, req) => {
       unwatch(client);
       client.watching = target;
       target.spectators.add(client);
-      send(client, { t: "match", map: target.map.id, slot: -1, spectate: true, players: target.roster });
+      send(client, { t: "match", map: target.map.id, slot: -1, spectate: true, players: target.roster, winter: !!(target.match && target.match.winter) });
       broadcastRooms();
       return;
     }

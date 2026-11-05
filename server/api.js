@@ -6,6 +6,7 @@
 
 const { Limiter } = require("./accounts.js");
 const { createOAuth } = require("./oauth.js");
+const { createAiGames } = require("./aigames.js");
 const { cookie, parseCookies, clientIp, sameOrigin, sendJson, readJson } = require("./httputil.js");
 const MAPS = require("../js/maps.js");
 
@@ -15,8 +16,7 @@ const PLAYER_LIMIT = 1000;
 function createApi({ accounts, stats, hall, events, challenges, store, live, traffic, adminMaps, isLocalRequest, publicUrl }) {
   const passwordFails = new Limiter(10, 10 * 60 * 1000);
   const beaconIp = new Limiter(120, 10 * 60 * 1000);
-  const aiStarts = new Map(); // id hráče -> čas začátku hry proti AI (pro odehraný čas)
-  const AI_MAX = 6 * 3600;
+  const aiGames = createAiGames({ accounts, stats }); // hry proti AI v prohlížeči
 
   const tokenOf = req => parseCookies(req.headers.cookie)[SID];
   const userOf = req => accounts.userFromToken(tokenOf(req));
@@ -39,21 +39,6 @@ function createApi({ accounts, stats, hall, events, challenges, store, live, tra
   const fail = (ctx, status, error) => sendJson(ctx.res, status, { error });
 
   /* ---------- účet ---------- */
-  // Hra proti AI běží v prohlížeči, takže délku hlásí klient. Připíše se nejvýš skutečně uplynulý
-  // čas od nahlášeného startu; konec bez startu (restart serveru, podvržené hlášení) se nepočítá.
-  function aiTime(user, body) {
-    const now = Date.now();
-    if (body.e === "start") {
-      aiStarts.set(user.id, now);
-      if (aiStarts.size > 10000) aiStarts.delete(aiStarts.keys().next().value);
-    } else if (body.e === "end") {
-      const start = aiStarts.get(user.id);
-      aiStarts.delete(user.id);
-      const sec = Number(body.duration);
-      if (start && Number.isFinite(sec) && sec > 0) accounts.addAiTime(user, Math.min(sec, (now - start) / 1000 + 5, AI_MAX));
-    }
-  }
-
   /*
    * Výzvy z hry proti AI v prohlížeči. Simulace tu běží u hráče, takže statistiky zápasu posílá
    * prohlížeč; server je ale sám ověří a vyhodnotí: konec musí navázat na nahlášený start, délka
@@ -196,11 +181,11 @@ function createApi({ accounts, stats, hall, events, challenges, store, live, tra
       sendJson(ctx.res, 200, { match: m });
     },
 
-    // Hlášení z prohlížeče o hře proti AI (start/konec), funguje i bez přihlášení.
+    // Hlášení z prohlížeče o hře proti AI (start/konec), funguje i bez přihlášení; přihlášenému se hra započítá.
     beacon(ctx) {
       if (beaconIp.blocked(ctx.ip)) return sendJson(ctx.res, 202, { ok: false });
       beaconIp.add(ctx.ip);
-      if (ctx.user) aiTime(ctx.user, ctx.body);
+      if (ctx.user) aiGames.report(ctx.user, ctx.body);
       const finished = ctx.user && !ctx.user.banned ? aiChallenges(ctx.user, ctx.body) : null;
       const ok = traffic ? traffic.aiEvent(ctx.body) : false;
       const done = finished && finished.length ? finished[0].done : undefined;
