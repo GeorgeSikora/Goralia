@@ -194,7 +194,8 @@
 
     const rows = [
       ["Zápasy", s.games], ["Výhry", `${s.wins} (${rate} %)`], ["Prohry", s.losses], ["Remízy", s.draws],
-      ["Výhry proti lidem", `${s.pvpWins} z ${s.pvpGames}`], ["Odehráno", fmtTime(s.playSeconds)],
+      ["Výhry proti lidem", `${s.pvpWins} z ${s.pvpGames}`], ["Výhry proti AI v prohlížeči", `${s.aiWins || 0} z ${s.aiGames || 0}`],
+      ["Odehráno", fmtTime(s.playSeconds + (s.aiSeconds || 0))],
       ["Zabité jednotky", s.kills], ["Ztracené jednotky", s.unitsLost],
       ["Zničené budovy", s.buildingsDestroyed], ["Ztracené budovy", s.buildingsLost],
       ["Natěženo zlata", s.gold], ["Natěženo dřeva", s.wood],
@@ -383,7 +384,8 @@
 
       const P = data.points;
       fameRules.textContent = `Skóre: výhra proti lidem ${P.pvpWin} b., výhra proti AI nebo v kooperaci ${P.otherWin} b., každý zápas ${P.game} b. ` +
-        `Turnaj: 1. místo ${P.place[0]} b., 2. místo ${P.place[1]} b., 3. místo ${P.place[2]} b., účast ${P.entry} b. Počítají se zápasy na serveru.`;
+        `Turnaj: 1. místo ${P.place[0]} b., 2. místo ${P.place[1]} b., 3. místo ${P.place[2]} b., účast ${P.entry} b. ` +
+        "Počítají se zápasy přihlášených hráčů na serveru i proti AI v prohlížeči; opuštěná hra je prohra.";
 
       fameTours.hidden = !data.tournaments.length;
       fameTours.replaceChildren(el("h3", "", "Poslední turnaje"), ...data.tournaments.map(t => {
