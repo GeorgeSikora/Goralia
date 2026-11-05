@@ -1,5 +1,5 @@
 /*
- * Jazyky hry: čeština (výchozí, zdrojová), angličtina a ponaszymu (těšínské nářečí).
+ * Jazyky hry: čeština (výchozí, zdrojová), angličtina a po našimu (těšínské nářečí).
  *
  * Klíčem překladu je český text, takže kód zůstává čitelný a co nemá překlad, ukáže se česky:
  *   PK.t("Hra proti AI")                       -> "Game vs AI"
@@ -22,7 +22,7 @@
   const LANGS = [
     { id: "cs", name: "Čeština", html: "cs" },
     { id: "en", name: "English", html: "en" },
-    { id: "szl", name: "Po naszymu", html: "szl" }
+    { id: "szl", name: "Po našimu", html: "szl" }
   ];
   const IDS = LANGS.map(l => l.id);
   const dict = { cs: {}, en: {}, szl: {} };
