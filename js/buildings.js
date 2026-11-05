@@ -2026,6 +2026,7 @@
    * vlaštovčí ocas. Znak: zlomený kruh (rudý tým: žhavé oko).
    */
   function bannerFrames(team) {
+    team = PK.skin(team);
     if (bannerCache[team]) return bannerCache[team];
 
     const T = TEAM[team];
@@ -2115,8 +2116,58 @@
    * odvrácené tmavší (celé pruhy, žádná šachovnice). Konec má vlaštovčí ocas, středem vede pruh týmového
    * akcentu. Dole stožár přesahuje do zlaté hlavice střechy.
    */
-  function flagFrames(team) {
-    if (flagCache[team]) return flagCache[team];
+  /*
+   * Vzory vlajek z odměn za výzvy (js/cosmetics.js, design). Vrací, čím je bod látky
+   * (cx = sloupec od stožáru 0..23, ry = řádek 0..hgt-1) přebarvený: "a" akcent týmu,
+   * "w" kost, "k" tuš, "g" zlato, nebo null = barva týmu.
+   */
+  const FLAG_ART = {
+    star: [
+      "...a...",
+      "..aaa..",
+      "aaaaaaa",
+      ".aaaaa.",
+      "..aaa..",
+      ".aa.aa.",
+      ".a...a."
+    ],
+    skull: [
+      ".wwwww.",
+      "wwwwwww",
+      "wkkwkkw",
+      "wkkwkkw",
+      ".wwkww.",
+      "..w.w..",
+      "..www.."
+    ],
+    crown: [
+      "g..g..g",
+      "gg.g.gg",
+      "gagggag",
+      "ggggggg",
+      ".ggggg."
+    ]
+  };
+
+  function flagMark(design, cx, ry, hgt) {
+    const u = cx / 23;
+    const v = (ry + 0.5) / hgt;
+    if (design === "stripes") return Math.abs(v - 0.3) < 0.1 || Math.abs(v - 0.72) < 0.1 ? "a" : null;
+    if (design === "cross") return (cx >= 6 && cx <= 8) || Math.abs(v - 0.5) < 0.14 ? "a" : null;
+    if (design === "chevron") return u < 0.55 - Math.abs(v - 0.5) * 1.1 ? "a" : null;
+    if (design === "checks") return (Math.floor(cx / 4) + Math.floor(ry / 4)) % 2 ? "a" : null;
+    const art = FLAG_ART[design];
+    if (!art) return null;
+    const x = cx - 8;
+    const y = ry - Math.floor((hgt - art.length) / 2);
+    const ch = art[y] && art[y][x];
+    return ch && ch !== "." ? ch : null;
+  }
+
+  function flagFrames(team, design = "") {
+    team = PK.skin(team);
+    const cacheKey = design ? `${team}|${design}` : team;
+    if (flagCache[cacheKey]) return flagCache[cacheKey];
 
     const T = TEAM[team] || TEAM.blue;
     const frames = [];
@@ -2143,9 +2194,13 @@
           let c = T.m;
           if (slope > 0.45) c = T.l;
           else if (slope < -0.45) c = T.s;
-          // pruh akcentu středem látky
+          // pruh akcentu středem látky, nebo vzor vlajky z odměny
           const mid = Math.abs(ry + 0.5 - hgt / 2);
-          if (cx > 2 && mid < 1.1) c = slope < -0.55 ? mix(T.accent, T.s, 0.35) : T.accent;
+          const mark = design ? flagMark(design, cx, ry, hgt) : cx > 2 && mid < 1.1 ? "a" : null;
+          if (mark) {
+            const col = mark === "w" ? C.bone[0] : mark === "k" ? C.ink : mark === "g" ? C.gold[1] : T.accent;
+            c = slope < -0.55 ? mix(col, T.s, 0.35) : design && slope > 0.45 && mark !== "k" ? mix(col, C.white, 0.25) : col;
+          }
           // horní hrana chytá světlo, spodní je ve stínu
           if (ry === 0) c = slope > 0.2 ? T.h : T.l;
           else if (ry === hgt - 1) c = T.d;
@@ -2169,7 +2224,7 @@
       frames.push(PK.fine(P));
     }
 
-    return (flagCache[team] = frames);
+    return (flagCache[cacheKey] = frames);
   }
 
   /* ======================= sutiny ======================= */
@@ -2259,6 +2314,7 @@
   const BUILD = { hall, barracks, tower, citadel, hut, smithy, stable, workshop, necropolis, crypt, slaughterhouse, ziggurat, portal };
 
   function get(type, team = "blue") {
+    team = PK.skin(team); // barva týmu navíc z výzev
     const key = `${type}|${team}`;
     if (!cache[key]) cache[key] = BUILD[type](team);
     return cache[key];

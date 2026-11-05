@@ -1,7 +1,7 @@
 /*
  * Denní a týdenní výzvy s kosmetickými odměnami.
  *
- * Server každý den o půlnoci (Europe/Prague) vylosuje 3 denní výzvy a každé pondělí 2 týdenní
+ * Server každý den o půlnoci (GORALIA_TZ, výchozí Europe/Prague) vylosuje 3 denní výzvy a každé pondělí 2 týdenní
  * ze seznamu šablon. Postup se počítá jen tady, ze statistik zápasu, které zapsal server
  * (stats.record) nebo které ověřilo hlášení hry proti AI v prohlížeči (api.js). Klient postup
  * jen zobrazuje.
@@ -20,7 +20,7 @@ const crypto = require("crypto");
 const R = require("../js/rules.js");
 const COS = require("../js/cosmetics.js");
 
-const TZ = "Europe/Prague";
+const TZ = process.env.GORALIA_TZ || "Europe/Prague"; // stejné pásmo jako statistiky návštěv (traffic.js)
 const PERIODS = { daily: { count: 3, rarity: "common" }, weekly: { count: 2, rarity: "rare" } };
 const MAX_CUSTOM = 100;
 const MAX_GRANTS = 50;
