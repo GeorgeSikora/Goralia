@@ -478,6 +478,18 @@
 
   const casting = p => p.sw === "up" || p.sw === "flare" || p.sw === "fwd";
 
+  // Schopnosti rytíře-hrdiny: štítová zeď (zvednutí štítu a držení krytu) a výpad (rozběh, bodnutí).
+  POSES.guard = [
+    { ...STAND, sw: "guard0", dy: 1, ff: [4, 0], fb: [-5, 0], cape: 1, i: 0 },
+    { ...STAND, sw: "guard", dy: 2, lx: 1, ff: [6, 0], fb: [-6, 0], cape: 0, i: 1 }
+  ];
+  POSES.lunge = [
+    { ...STAND, sw: "thrust0", lx: 2, dy: 1, ff: [8, 0], fb: [-7, 2], cape: 1, i: 0 },
+    { ...STAND, sw: "thrust", lx: 4, dy: 2, ff: [11, 0], fb: [-9, 1], cape: 0, i: 1 },
+    { ...STAND, sw: "thrust", lx: 4, dy: 1, ff: [11, 0], fb: [-9, 0], cape: 1, i: 2 }
+  ];
+  const HERO_ONLY = new Set(["guard", "lunge"]);
+
   /* ---------- náklad dělníka (jemné px, stejné světlo a obrys jako tělo) ---------- */
   const BURLAP = ramp(C.d[4], C.d[3], C.d[2], C.d[1]);
   const RINGS = ramp(C.d[5], C.d[4], C.d[3], C.w[2]);
@@ -898,7 +910,11 @@
     k.meta.head = [hx / HD, hy / HD];
   }
 
-  /* ================= HRDINA ================= */
+  /* ================= HRDINA: PĚŠÍ RYTÍŘ =================
+   * Plátová zbroj, uzavřená přilba se zlatou korunkou a týmovým chocholem,
+   * velký štít s Ringem, dlouhý meč. Vlastní pózy schopností:
+   * cast = bojový pokřik (meč nad hlavu), guard = štítová zeď (štít vpřed, přikrčený),
+   * lunge = výpad (předklon, bodnutí vpřed). */
   function drawHero(k) {
     const { T, pose: p } = k;
     const dy = p.dy;
@@ -906,118 +922,138 @@
     const hipY = -14 + dy;
     const sh = -28 + dy;
     const fl = p.cape;
-    const cast = casting(p);
+    const lean = p.sw === "thrust" || p.sw === "thrust0" ? 2 : 0; // předklon trupu při výpadu
 
-    // plášť v barvě týmu s jantarovým lemem
+    // plášť v barvě týmu se zlatým lemem (při výpadu vlaje víc dozadu)
+    const flow = lean ? 4 : 0;
     const cape = k.mask().poly([
-      [lx - 4, sh - 1], [lx + 1, sh], [lx - 5, -3 + fl], [lx - 13 - fl, -5 + fl * 2], [lx - 9, sh + 6]
+      [lx - 4 + lean, sh - 1], [lx + 1 + lean, sh], [lx - 5, -3 + fl], [lx - 13 - fl - flow, -6 + fl * 2 - flow], [lx - 9 - flow, sh + 6]
     ]);
     k.paint(cape, teamRD(T), { dir: "h", tex: (x, y, t, c) => ((x - y) % 5 === 0 && t === 1 ? T.d : c) });
-    k.L(lx - 13 - fl, -5 + fl * 2, lx - 5, -3 + fl, T.accent);
-    k.L(lx - 12 - fl, -6 + fl * 2, lx - 6, -4 + fl, mix(T.accent, T.m, 0.5));
+    k.L(lx - 13 - fl - flow, -6 + fl * 2 - flow, lx - 5, -3 + fl, C.gold[1]);
+    k.L(lx - 12 - fl - flow, -7 + fl * 2 - flow, lx - 6, -4 + fl, mix(C.gold[1], T.m, 0.5));
 
-    // hůl s lucernou: úchop (x, y od ramene) a úhel násady
-    const ST = {
-      idle: [10, 12, -1.57], up: [10, 10, -1.57], flare: [10, 8, -1.57], fwd: [12, 10, -1.3],
-      back: [6, 8, -2.05], strike: [10, 8, -1.0], low: [10, 11, -0.85]
+    // meč: úchop [x, y] a úhel čepele podle pózy
+    const SW = {
+      idle: [lx + 9, sh + 12, -1.3],
+      back: [lx + 3, sh - 3, -2.05],
+      strike: [lx + 12, sh + 9, -0.05],
+      low: [lx + 11, sh + 13, 0.7],
+      up: [lx + 4, sh - 7, -1.62],
+      flare: [lx + 5, sh - 10, -1.5],
+      fwd: [lx + 13, sh + 1, -0.55],
+      guard0: [lx + 6, sh + 12, -0.95],
+      guard: [lx + 4, sh + 13, -0.6],
+      thrust0: [lx + 10, sh + 8, -0.2],
+      thrust: [lx + 16, sh + 7, -0.02]
     };
-    const st = posed(ST, p);
-    const sgx = lx + st[0];
-    const sgy = sh + st[1];
-    const sdx = Math.cos(st[2]);
-    const sdy = Math.sin(st[2]);
-    const sTop = [sgx + sdx * 19, sgy + sdy * 19];
-    const sBot = [sgx - sdx * 13, Math.min(-1, sgy - sdy * 13)];
-    const free = cast ? posed({ up: [lx + 8, sh - 7], flare: [lx + 6, sh - 11], fwd: [lx + 15, sh + 2] }, p) : null;
+    // štít: střed a o kolik je vysunutý vpřed (guard = zeď)
+    const SH = {
+      idle: [lx - 2, sh + 10], back: [lx - 3, sh + 10], strike: [lx, sh + 10], low: [lx, sh + 11],
+      up: [lx - 3, sh + 11], flare: [lx - 3, sh + 11], fwd: [lx - 2, sh + 10],
+      guard0: [lx + 4, sh + 9], guard: [lx + 7, sh + 9],
+      thrust0: [lx + 1, sh + 9], thrust: [lx + 2, sh + 9]
+    };
 
-    // vzdálená paže (při kouzlu zvednutá s plamenem)
-    if (free) arm(k, lx - 1, sh + 2, free[0], free[1], { ramp: R.tealD, r0: 1.9, r1: 1.6, cuff: R.gold });
-    else arm(k, lx - 1, sh + 2, lx - 3 - (p.swing || 0) * 2, hipY + 1, { ramp: R.tealD, r0: 1.9, r1: 1.6, cuff: R.gold });
+    const [gx, gy0, ga] = posed(SW, p);
+    const gy = gy0 + (p.step >= 0 ? (p.step % 3 === 1 ? 1 : 0) : 0);
+    const [sx0, sy0] = posed(SH, p);
+    const sx = sx0 + (p.swing || 0) * -0.5;
+    const sy = sy0;
+    const wall = p.sw === "guard" || p.sw === "guard0";
 
-    leg(k, lx - 2, hipY, lx + p.fb[0], p.fb[1], { ramp: R.tealD, boot: R.leather, bootH: 6, cuff: C.gold[0], len: 5.9 });
-    leg(k, lx + 2, hipY, lx + p.ff[0], p.ff[1], { ramp: R.teal, boot: R.leather, bootH: 6, cuff: C.gold[1], knee: C.gold[2], len: 5.9 });
+    // vzdálená paže drží štít (kreslí se před nohama, štít až po trupu)
+    leg(k, lx - 2 + lean, hipY, lx + p.fb[0], p.fb[1], { ramp: R.steelD, boot: R.steelD, bootH: 6, cuff: C.gold[0], len: 5.9 });
+    leg(k, lx + 2 + lean, hipY, lx + p.ff[0], p.ff[1], { ramp: R.steel, boot: R.steelD, bootH: 6, knee: S[6], cuff: C.gold[1], len: 5.9 });
 
-    // zbroj
+    const tx = lx + lean;
+    // plátový kyrys
     const torso = k.mask().poly([
-      [lx - 6, sh], [lx + 5, sh], [lx + 7, sh + 5], [lx + 6, hipY + 2], [lx - 6, hipY + 2], [lx - 7, sh + 4]
+      [tx - 6, sh], [tx + 5, sh], [tx + 7, sh + 5], [tx + 6, hipY + 1], [tx - 6, hipY + 1], [tx - 7, sh + 4]
     ]);
-    k.paint(torso, R.teal);
-    k.L(lx - 4, sh + 9, lx + 5, sh + 9, C.t[1]);
-    k.ring(lx + 0.5, sh + 5, 2.8, C.a[3]);
-    k.px(lx, sh + 5, C.a[4]);
-    k.px(lx + 1, sh + 5, C.a[1]);
-    // šupinová sukně
-    const skirt = k.mask().poly([[lx - 6, hipY], [lx + 6, hipY], [lx + 7, hipY + 5], [lx - 7, hipY + 5]]);
-    k.paint(skirt, R.tealD, { dir: "h", tex: (x, y, t, c) => (((x + (y % 2) * 2) % 4 === 0) ? R.tealD[3] : c) });
-    k.R(lx - 6, hipY - 1, 13, 2, C.gold[0]);
-    k.R(lx - 6, hipY - 1, 13, 1, C.gold[1]);
-    k.R(lx, hipY - 1, 2, 2, C.a[3]);
+    k.paint(torso, R.steel, { tex: (x, y, t, c) => ((y - sh) % 4 === 3 && t > 0 ? mix(c, C.shade, 0.25) : c) });
+    // týmový varkoč přes kyrys
+    const tab = k.mask().poly([[tx - 4, sh + 3], [tx + 5, sh + 3], [tx + 6, hipY + 6], [tx - 5, hipY + 6]]);
+    k.paint(tab, teamR(T), { dir: "h", occ: 0.3 });
+    k.L(tx, hipY + 2, tx, hipY + 6, T.d);
+    k.L(tx + 3, hipY + 2, tx + 4, hipY + 6, T.s);
+    k.ring(tx + 0.5, sh + 7, 2.6, C.gold[1]);
+    k.px(tx, sh + 7, C.a[3]);
+    // pás se zlatou přezkou
+    k.R(tx - 6, hipY - 1, 13, 2, C.w[1]);
+    k.R(tx - 6, hipY - 1, 13, 1, C.w[2]);
+    k.R(tx + 1, hipY - 1, 2, 2, C.gold[1]);
+    k.px(tx + 1, hipY - 1, C.gold[2]);
 
-    // hlava: stříbrné vlasy, čelenka, plnovous
-    const hx = lx + 1;
+    // uzavřená přilba (hrnec) s průzorem, zlatá korunka hrdiny, chochol
+    const hx = tx + 1;
     const hy = sh - 6;
-    const hair = k.mask().ell(hx - 1.5, hy - 1, 5.5, 5.5).poly([[hx - 6, hy - 1], [hx - 2, hy + 3], [hx - 4, hy + 8], [hx - 9 - fl, hy + 6 + fl]]);
-    k.paint(hair, R.silver, { occ: 0.3, tex: (x, y, t, c) => ((x * 2 + y) % 5 === 0 && t > 0 ? R.silver[2] : c) });
-    k.paint(k.mask().ell(hx + 1.5, hy + 0.5, 3.8, 4.5), R.skin, { occ: 0.35 });
-    // vous
-    const beard = k.mask().poly([[hx - 1, hy + 2], [hx + 5, hy + 2], [hx + 4, hy + 6], [hx + 1, hy + 8], [hx - 1, hy + 5]]);
-    k.paint(beard, R.silver, { occ: 0.25 });
-    k.px(hx + 3, hy + 3, C.skin[2]);
-    k.px(hx + 4, hy + 3, C.skin[2]);
-    // oko žhne jantarem
-    k.px(hx + 3, hy, C.a[3]);
-    k.px(hx + 3, hy + 1, C.a[1]);
-    k.L(hx + 2, hy - 2, hx + 4, hy - 2, S[4]);
-    k.px(hx + 5, hy + 1, C.skin[1]);
-    // čelenka
-    k.L(hx - 5, hy - 3, hx + 4, hy - 4, C.gold[1]);
-    k.L(hx - 5, hy - 2, hx - 2, hy - 2, C.gold[0]);
-    k.px(hx + 1, hy - 5, C.a[3]);
-    k.px(hx + 1, hy - 4, C.a[4]);
+    const helm = k.mask().poly([[hx - 5, hy - 5], [hx + 4, hy - 5], [hx + 5, hy - 2], [hx + 5, hy + 4], [hx + 2, hy + 5], [hx - 5, hy + 5], [hx - 6, hy]]);
+    k.paint(helm, R.steel, { occ: 0.35 });
+    k.R(hx, hy - 1, 6, 1, C.ink); // průzor
+    k.px(hx + 3, hy - 1, C.a[3]); // žhnoucí oko za hledím
+    k.R(hx, hy, 5, 1, S[2]);
+    k.L(hx + 1, hy + 1, hx + 1, hy + 4, S[2]);
+    for (const [ox, oy] of [[3, 2], [3, 4], [5, 3]]) k.px(hx + ox, hy + oy, S[1]);
+    k.px(hx - 3, hy - 4, S[6]);
+    k.px(hx - 4, hy - 3, C.white);
+    // korunka
+    k.R(hx - 5, hy - 6, 10, 1, C.gold[1]);
+    k.R(hx - 5, hy - 5, 10, 1, C.gold[0]);
+    for (const ox of [-5, -2, 1, 4]) k.px(hx + ox, hy - 7, C.gold[2]);
+    k.px(hx - 1, hy - 6, C.a[4]);
+    // chochol v barvě týmu
+    const pl = fl + (lean ? 2 : 0);
+    const plume = k.mask()
+      .cap(hx - 1, hy - 8, hx + 2, hy - 10, 1.6, 1.4)
+      .cap(hx - 1, hy - 8, hx - 7, hy - 7 + pl, 1.9, 1.3)
+      .cap(hx - 7, hy - 7 + pl, hx - 11, hy - 2 + pl, 1.3, 0.8);
+    k.paint(plume, teamR(T), { occ: 0.3 });
+    k.L(hx + 1, hy - 10, hx - 6, hy - 8 + pl, T.h);
 
-    // nárameníky zlaté
-    const pad = k.mask().ell(lx + 1.5, sh + 1, 4.5, 3, (x, y) => y < sh + 3);
-    k.paint(pad, R.gold, { occ: 0.4 });
-    k.R(lx - 2, sh + 2, 8, 1, C.gold[0]);
-    k.px(lx, sh - 1, C.white);
+    // velký štít (kite) s Ringem; při štítové zdi je vysunutý a kryje celé tělo
+    const sw = wall ? 8.5 : 7.5;
+    const shH = wall ? 11 : 9.5;
+    const shield = k.mask().poly([
+      [sx - sw, sy - shH * 0.75], [sx + sw, sy - shH * 0.75], [sx + sw * 0.9, sy + shH * 0.15], [sx, sy + shH], [sx - sw * 0.9, sy + shH * 0.15]
+    ]);
+    k.paint(shield, teamR(T), {
+      occ: 0.45,
+      tex: (x, y, t, c) => {
+        const ex = Math.abs(x - sx) > sw - 1.5 || y < sy - shH * 0.75 + 1.5;
+        return ex ? ((x - sx) + (y - sy) < 0 ? C.gold[2] : C.gold[0]) : c;
+      }
+    });
+    k.ring(sx, sy - 1, 3.4, C.gold[1]);
+    k.ring(sx + 0.5, sy - 0.5, 3.4, mix(C.gold[1], C.ink, 0.6));
+    k.ring(sx, sy - 1, 3.4, C.gold[2]);
+    k.px(sx, sy - 1, C.a[3]);
+    k.L(sx - sw + 2, sy - shH * 0.75 + 2, sx - sw + 3, sy + 1, T.h);
 
-    // hůl
-    k.L(sBot[0], sBot[1], sTop[0], sTop[1], C.w[3]);
-    k.L(sBot[0] + 1, sBot[1], sTop[0] + 1, sTop[1], C.w[1]);
-    k.px(sBot[0], sBot[1], C.w[0]);
-    // lucerna: mosazná klec kolem teplého jádra
-    const sx = Math.round(sTop[0]);
-    const topY = Math.round(sTop[1]);
-    const lp = [sx - 2, topY - 7];
-    const cage = k.mask().rect(lp[0], lp[1], 6, 7);
-    k.paint(cage, R.gold, { occ: 0.3 });
-    const hot = p.sw === "flare";
-    k.R(lp[0] + 1, lp[1] + 1, 4, 5, hot ? C.a[4] : C.a[3]);
-    k.R(lp[0] + 1, lp[1] + 4, 4, 2, hot ? C.a[3] : C.a[2]);
-    k.px(lp[0] + 2, lp[1] + 2, C.white);
-    k.L(lp[0] + 3, lp[1] + 1, lp[0] + 3, lp[1] + 5, C.gold[0]);
-    k.R(lp[0] + 1, lp[1] - 1, 4, 1, C.gold[1]);
-    k.px(lp[0] + 2, lp[1] - 2, C.gold[0]);
-    k.px(lp[0] + 3, lp[1] - 2, C.gold[0]);
-    k.R(lp[0], lp[1] + 7, 6, 1, C.gold[0]);
-    k.meta.lantern = [(lp[0] + 3) / HD, (lp[1] + 3) / HD];
-
-    // přední paže drží hůl
-    arm(k, lx + 2, sh + 2, sgx, sgy, { ramp: R.teal, r0: 2, r1: 1.7, cuff: R.gold });
-
-    // plamen ve volné ruce
-    if (free && p.sw !== "up") {
-      const fx = free[0] + 1;
-      const fy = free[1] - 3;
-      const big = p.sw === "flare" ? 1 : 0;
-      const fire = k.mask().ell(fx, fy + 1, 2.4 + big, 2.6 + big).poly([[fx - 2, fy], [fx + 2, fy], [fx + 0.5, fy - 5 - big * 2]]);
-      k.paint(fire, ramp(C.a[4], C.a[3], C.a[2], C.r[4]), { occ: 0, dir: "v" });
-      k.px(fx, fy + 1, C.white);
-      k.px(fx + 3 + big, fy - 3, C.a[3]);
-      k.px(fx - 3 - big, fy - 2, C.a[2]);
-    } else if (free) {
-      k.px(free[0] + 1, free[1] - 3, C.a[3]);
+    // meč v přední ruce: dlouhá čepel, zlatá záštita a hlavice
+    blade(k, gx + Math.cos(ga) * 2, gy + Math.sin(ga) * 2, ga, 16, { w: 2, taper: true });
+    const nx = -Math.sin(ga);
+    const ny = Math.cos(ga);
+    k.L(gx + Math.cos(ga) * 2 + nx * 3, gy + Math.sin(ga) * 2 + ny * 3, gx + Math.cos(ga) * 2 - nx * 3, gy + Math.sin(ga) * 2 - ny * 3, C.gold[1]);
+    k.px(gx + Math.cos(ga) * 2 + nx * 3, gy + Math.sin(ga) * 2 + ny * 3, C.gold[2]);
+    k.px(gx - Math.cos(ga) * 2, gy - Math.sin(ga) * 2, C.gold[2]);
+    if (p.sw === "strike") smear(k, tx + 2, gy + 1, 19, -2.0, -0.2, S[6], mix(S[4], T.l, 0.35));
+    if (p.sw === "thrust") {
+      // bodnutí: rovné šmouhy za čepelí
+      for (const oy of [-2, 0, 2]) k.L(gx - 10, gy + oy, gx - 3, gy + oy, oy ? mix(S[4], C.white, 0.3) : S[6]);
     }
+    if (p.sw === "flare") {
+      // čepel nad hlavou se zablýskne
+      const tip = [gx + Math.cos(ga) * 18, gy + Math.sin(ga) * 18];
+      for (const [ox, oy] of [[0, -2], [0, 2], [-2, 0], [2, 0]]) k.px(tip[0] + ox, tip[1] + oy, C.a[4]);
+    }
+
+    // přední nárameník a paže
+    arm(k, tx + 2, sh + 2, gx, gy, { ramp: R.steelD, r0: 2.1, r1: 1.8, hand: R.steelD, cuff: R.gold, len: 6.2 });
+    const pad = k.mask().ell(tx + 2, sh + 1.5, 4.5, 3.2, (x, y) => y < sh + 4);
+    k.paint(pad, R.steel, { occ: 0.4 });
+    k.R(tx - 1, sh + 3, 7, 1, C.gold[0]);
+    k.px(tx + 1, sh - 1, C.white);
 
     k.meta.head = [hx / HD, hy / HD];
   }
@@ -2002,6 +2038,7 @@
 
     for (const [anim, poses] of Object.entries(type === "worker" ? { ...POSES, ...CARRY_POSES } : POSES)) {
       if (anim === "cast" && type !== "hero" && type !== "lich") continue;
+      if (HERO_ONLY.has(anim) && type !== "hero") continue;
 
       const render = pose => {
         const P = new Pix(W, W);
@@ -2062,6 +2099,7 @@
   }
 
   function frame(type, team, anim, i) {
+    team = PK.skin(team); // barva týmu navíc z výzev
     const key = `${type}|${team}`;
     const set = store[key] || (store[key] = build(type, team));
 
@@ -2097,6 +2135,7 @@
 
   /* Padlé tělo pro animaci smrti: otočení o 90 stupňů, cache. */
   function lying(type, team, flip) {
+    team = PK.skin(team); // barva týmu navíc z výzev
     const key = `${type}|${team}|lying|${flip ? 1 : 0}`;
 
     if (!store[key]) {
@@ -2128,6 +2167,7 @@
   const portraitCache = {};
 
   function portrait(type, team, frameIndex = 0) {
+    team = PK.skin(team); // barva týmu navíc z výzev
     const key = `${type}|${team}|${frameIndex}`;
 
     if (!portraitCache[key]) {

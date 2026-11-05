@@ -23,6 +23,14 @@
   const HURT = [0xffffff, 0xffd27a, 0xff8f4a, 0xd65a3c].map(c => css(c));
   const LEAF = [C.g[5], C.g[4], C.g[3]].map(c => css(c));
   const WATER = [C.v[4], C.v[3], C.v[2]].map(c => css(c));
+  // schopnosti hrdinů
+  const ICE = [0xffffff, 0xc6f0ee, 0x79c4cc, 0x3f90a8].map(c => css(c));
+  const CRY = [0xfff6cc, 0xffd27a, 0xff8f4a, 0xd65a3c].map(c => css(c));
+  const SHIELD = [0xe8f4ff, 0xb4e0ff, 0x6fb2f0, 0x3f7fd0].map(c => css(c));
+  const GHOST = [0xcfffe8, 0x5ff0c0, 0x2fa58c, 0x1b3836].map(c => css(c));
+  const BONE = [0xd8cfb8, 0xa59b88, 0x6d6558].map(c => css(c));
+  const SOIL = [0x7b5b45, 0x5a4129, 0x3b2a20].map(c => css(c));
+  const R_FROST = PK.rules ? PK.rules.HERO.abilities.lich[2].radius : 100; // poloměr mrazivé aury (logické jednotky)
 
   const F = 1 / PK.HD; // jeden jemný px v art px
   // poloha na jemnou mřížku (půl art px)
@@ -267,6 +275,118 @@
 
     fireball(x1, y1, x2, y2, radius, onLand) {
       state.fx.push({ kind: "fireball", x1: A(x1), y1: A(y1) - 18, x2: A(x2), y2: A(y2), r: A(radius), life: 0.3, max: 0.3, onLand });
+    },
+
+    /* ---------- schopnosti hrdinů ---------- */
+    // Výpad: prach u nohou a šmouhy rychlosti podél dráhy (letí stejně dlouho jako rytíř).
+    lungeStart(x1, y1, x2, y2) {
+      fx.puff(x1, y1 + 10, 6, DUST, 10);
+      state.fx.push({ kind: "streak", x1: A(x1), y1: A(y1) - 8, x2: A(x2), y2: A(y2) - 8, life: 0.42, max: 0.42 });
+    },
+
+    // Dopad výpadu: ocelový prstenec, záblesk a prach; při zásahu zatřese obrazem.
+    lungeImpact(x, y, radius, hits) {
+      const ax = A(x);
+      const ay = A(y) + 6;
+      state.fx.push({ kind: "ring", x: ax, y: ay, r: A(radius), color: 0xe8f4ff, life: 0.35, max: 0.35, dash: 0, grow: true, squash: 0.5 });
+      state.fx.push({ kind: "burst", x: ax, y: ay - 8, life: 0.25, max: 0.25, big: true, rot: true });
+      fx.puff(x, y + 12, 9, DUST, 22);
+      for (let i = 0; i < 14; i++) {
+        const a = R() * Math.PI * 2;
+        const sp = rnd(40, 90);
+        emit("spark", ax + Math.cos(a) * 3, ay - 6, Math.cos(a) * sp, Math.sin(a) * sp * 0.6 - 20, rnd(0.18, 0.36), { g: 160, c: STEEL, streak: true });
+      }
+      if (hits) state.shake = Math.max(state.shake, 2);
+    },
+
+    // Bojový pokřik: zvukové oblouky od rytíře, rudozlatá vlna po zemi, jiskry na spojencích.
+    warcry(x, y, radius, allies) {
+      const ax = A(x);
+      const ay = A(y);
+      state.fx.push({ kind: "ring", x: ax, y: ay + 6, r: A(radius), color: 0xff8f4a, life: 0.6, max: 0.6, dash: 16, grow: true, spin: true, squash: 0.5 });
+      state.fx.push({ kind: "ring", x: ax, y: ay + 6, r: A(radius) * 0.7, color: 0xffd27a, life: 0.45, max: 0.45, dash: 0, grow: true, squash: 0.5 });
+      state.fx.push({ kind: "shout", x: ax, y: ay - 16, life: 0.7, max: 0.7 });
+      state.fx.push({ kind: "flash", x: ax, y: ay, r: 14, life: 0.3, max: 0.3 });
+      for (const u of allies || []) {
+        for (let i = 0; i < 5; i++) {
+          emit("ember", A(u.x) + rnd(-4, 4), A(u.y) - rnd(2, 12), rnd(-6, 6), rnd(-30, -14), rnd(0.5, 0.8), { c: CRY, additive: true });
+        }
+      }
+    },
+
+    cryMote(x, y) {
+      emit("ember", A(x) + rnd(-4, 4), A(y) - rnd(4, 14), rnd(-4, 4), rnd(-22, -10), rnd(0.4, 0.7), { c: CRY, additive: true });
+    },
+
+    // Štítová zeď: modrý záblesk bariéry kolem rytíře a menší u každého kryté spojence.
+    shieldwall(x, y, radius, allies) {
+      const ax = A(x);
+      const ay = A(y);
+      state.fx.push({ kind: "ring", x: ax, y: ay + 6, r: A(radius), color: 0x6fb2f0, life: 0.5, max: 0.5, dash: 20, grow: true, spin: true, squash: 0.5 });
+      state.fx.push({ kind: "ring", x: ax, y: ay - 6, r: 13, color: 0xe8f4ff, life: 0.35, max: 0.35, dash: 0, grow: false, shrink: true, squash: 1.2 });
+      for (let i = 0; i < 16; i++) {
+        const a = i / 16 * Math.PI * 2;
+        emit("spark", ax + Math.cos(a) * 12, ay - 6 + Math.sin(a) * 15, Math.cos(a) * 10, Math.sin(a) * 10 - 6, rnd(0.3, 0.55), { c: SHIELD, additive: true });
+      }
+      for (const u of allies || []) {
+        state.fx.push({ kind: "ring", x: A(u.x), y: A(u.y) - 4, r: 9, color: 0xb4e0ff, life: 0.35, max: 0.35, dash: 0, grow: false, shrink: true, squash: 1.2 });
+      }
+    },
+
+    // Vyvolání: runový kruh na zemi, odlétá hlína a stoupá zelený dým (big = lich povstal z Nekropole).
+    summon(x, y, big) {
+      const ax = A(x);
+      const ay = A(y) + 6;
+      state.fx.push({ kind: "rune", x: ax, y: ay, r: big ? 18 : 11, life: big ? 1.4 : 1.1, max: big ? 1.4 : 1.1 });
+      for (let i = 0; i < (big ? 18 : 10); i++) {
+        emit("chip", ax + rnd(-5, 5), ay - 1, rnd(-30, 30), rnd(-60, -25), rnd(0.4, 0.7), { c: SOIL, g: 170, size: R() < 0.4 ? 2 : 1 });
+      }
+      for (let i = 0; i < (big ? 16 : 9); i++) {
+        emit("mote", ax + rnd(-8, 8), ay - rnd(0, 4), rnd(-4, 4), rnd(-26, -10), rnd(0.7, 1.3), { c: GHOST, sway: 5 });
+      }
+      if (PK.shaders) PK.shaders.light(ax, ay - 4, 14, 0x5ff0c0, 0.7, 4);
+    },
+
+    // Záře v rukou licha při kouzlu (barva podle schopnosti).
+    castGlow(x, y, color) {
+      const ramp = color === 0x5ff0c0 ? GHOST : ICE;
+      for (let i = 0; i < 10; i++) {
+        emit("mote", A(x) + rnd(-6, 6), A(y) - rnd(14, 24), rnd(-8, 8), rnd(-18, -4), rnd(0.4, 0.8), { c: ramp, sway: 4 });
+      }
+    },
+
+    // Mrazivá aura: ledová vlna z licha, střepy ledu a vločky.
+    frostNova(x, y, radius) {
+      const ax = A(x);
+      const ay = A(y) + 6;
+      state.fx.push({ kind: "ring", x: ax, y: ay, r: A(radius), color: 0xc6f0ee, life: 0.55, max: 0.55, dash: 0, grow: true, squash: 0.6 });
+      state.fx.push({ kind: "ring", x: ax, y: ay, r: A(radius) * 0.75, color: 0xffffff, life: 0.4, max: 0.4, dash: 22, grow: true, spin: true, squash: 0.6 });
+      for (let i = 0; i < 26; i++) {
+        const a = R() * Math.PI * 2;
+        const sp = rnd(30, 80);
+        emit("spark", ax, ay - 4, Math.cos(a) * sp, Math.sin(a) * sp * 0.6 - 14, rnd(0.3, 0.6), { c: ICE, g: 90, streak: true });
+      }
+      fx.castGlow(x, y, 0xc6f0ee);
+    },
+
+    // Vločka v auře (aura = kolem licha) nebo jinovatka u zmrazené jednotky.
+    frostMote(x, y, aura) {
+      const a = R() * Math.PI * 2;
+      const rr = aura ? Math.sqrt(R()) * A(R_FROST) : rnd(1, 5);
+      emit("mote", A(x) + Math.cos(a) * rr, A(y) + 6 + Math.sin(a) * rr * 0.6 - (aura ? rnd(0, 10) : rnd(0, 6)), rnd(-3, 3), aura ? rnd(-6, 4) : rnd(-10, -3), rnd(0.6, 1.1), { c: ICE, sway: 4 });
+    },
+
+    // Vyvolaný kostlivec se rozpadne: kosti padají, zelený dým.
+    crumble(x, y) {
+      const ax = A(x);
+      const ay = A(y);
+      for (let i = 0; i < 12; i++) {
+        emit("chip", ax + rnd(-4, 4), ay - rnd(4, 20), rnd(-25, 25), rnd(-40, -5), rnd(0.4, 0.8), { c: BONE, g: 170, size: R() < 0.5 ? 2 : 1 });
+      }
+      for (let i = 0; i < 6; i++) {
+        emit("smoke", ax + rnd(-4, 4), ay - rnd(2, 14), rnd(-4, 4), rnd(-12, -4), rnd(0.6, 1.0), { c: GHOST.slice(1), size: 2, grow: 3, fade: true });
+      }
+      if (PK.audio) PK.audio.play("crumble", { x });
     },
 
     corpse(info) {
@@ -710,6 +830,12 @@
         drawPillar(g, f, t);
       } else if (f.kind === "collapse") {
         drawCollapse(g, f, t);
+      } else if (f.kind === "streak") {
+        drawStreak(g, f, t);
+      } else if (f.kind === "shout") {
+        drawShout(g, f, t);
+      } else if (f.kind === "rune") {
+        drawRune(g, f, t);
       }
     }
 
@@ -939,6 +1065,78 @@
     }
 
     g.globalCompositeOperation = "source-over";
+    g.globalAlpha = 1;
+  }
+
+  // Šmouhy výpadu: tři rovnoběžné čáry z jemných bodů, čelo letí s rytířem, ohon za ním mizí.
+  function drawStreak(g, f, t) {
+    const dx = f.x2 - f.x1;
+    const dy = f.y2 - f.y1;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len;
+    const ny = dx / len;
+    const head = Math.min(1, t / 0.6);
+    const tail = Math.max(0, (t - 0.25) / 0.75);
+    const n = Math.ceil(len * 2);
+    for (const [off, col, cut] of [[0, "#ffffff", 0], [-4, "#c6c7d3", 0.15], [4, "#c6c7d3", 0.3], [-8, "#9d9fb5", 0.45], [8, "#9d9fb5", 0.5]]) {
+      for (let i = 0; i <= n; i++) {
+        const k = i / n;
+        if (k > head || k < Math.max(tail, cut)) continue;
+        if (off && (i + Math.abs(off)) % 3 === 0) continue;
+        g.globalAlpha = 0.3 + 0.6 * (k - tail) / Math.max(0.01, head - tail);
+        g.fillStyle = col;
+        dot(g, f.x1 + dx * k + nx * off * F, f.y1 + dy * k + ny * off * F);
+      }
+    }
+    g.globalAlpha = 1;
+  }
+
+  // Výkřik: tři zvukové oblouky na obě strany od hlavy, rozpínají se a blednou.
+  function drawShout(g, f, t) {
+    for (let w = 0; w < 3; w++) {
+      const k = t * 1.4 - w * 0.18;
+      if (k <= 0 || k >= 1) continue;
+      const r = 4 + k * 16;
+      g.globalAlpha = 1 - k;
+      g.fillStyle = w === 0 ? "#fff6cc" : w === 1 ? "#ffd27a" : "#ff8f4a";
+      for (const side of [-1, 1]) {
+        for (let i = -6; i <= 6; i++) {
+          const a = i / 6 * 0.7;
+          dot(g, f.x + side * Math.cos(a) * r, f.y + Math.sin(a) * r * 0.9);
+        }
+      }
+    }
+    g.globalAlpha = 1;
+  }
+
+  // Runový kruh vyvolání: dva soustředné kruhy z jemných bodů, mezi nimi otáčející se znaky.
+  function drawRune(g, f, t) {
+    const fade = Math.min(1, t * 5) * Math.min(1, f.life / f.max * 2.5);
+    const r = f.r * (0.6 + 0.4 * Math.min(1, t * 3));
+    const spin = t * 2.2;
+    g.globalAlpha = fade;
+    const ring = (rr, col, gap) => {
+      g.fillStyle = col;
+      const steps = Math.ceil(rr * 14);
+      for (let i = 0; i < steps; i++) {
+        const a = i / steps * Math.PI * 2;
+        if (gap && Math.floor((a + spin) / (Math.PI * 2) * 12) % 4 === 3) continue;
+        dot(g, f.x + Math.cos(a) * rr, f.y + Math.sin(a) * rr * 0.45);
+      }
+    };
+    ring(r, "#5ff0c0", false);
+    ring(r * 0.72, "#2fa58c", true);
+    // znaky: krátké svislé a šikmé čárky mezi kruhy
+    g.fillStyle = "#cfffe8";
+    for (let k = 0; k < 8; k++) {
+      const a = k / 8 * Math.PI * 2 - spin;
+      const cx = f.x + Math.cos(a) * r * 0.86;
+      const cy = f.y + Math.sin(a) * r * 0.86 * 0.45;
+      dot(g, cx, cy - F);
+      dot(g, cx, cy);
+      dot(g, cx + (k & 1 ? F : -F), cy - 2 * F);
+    }
+    PK.world.light(g, f.x, f.y - 2, Math.round(f.r * 1.2), 0x5ff0c0, 0.5 * fade, 2);
     g.globalAlpha = 1;
   }
 

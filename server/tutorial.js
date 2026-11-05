@@ -3,15 +3,16 @@
  * Tutoriál běží v prohlížeči, server dostává jen hlášení (POST /api/tutorial), stejně jako u her proti AI.
  * Hráč = prohlížeč při prvním spuštění (klient posílá first), u přihlášeného účtu se navíc hlídá účet,
  * takže opakované spuštění ani jiný prohlížeč téhož účtu se do "začalo/dokončilo" nezapočte znovu.
- * Za dokončení dostane účet titul Nováček (user.titles, obecné pole titulů pro síň slávy).
+ * Za dokončení dostane účet titul Nováček: odměna title-novacek v user.cosmetics (stejné úložiště jako odměny z výzev),
+ * hned si ho i nasadí, pokud zatím žádný titul nenosí.
  */
 "use strict";
 
 const STEPS = ["select", "wood", "gold", "hut", "barracks", "train", "research", "attack", "victory"];
-const TITLE = "novacek";
+const TITLE = "title-novacek";
 const KEEP_DAYS = 400;
 
-function createTutorial(store, accounts, dayKey) {
+function createTutorial(store, accounts, dayKey, challenges = null) {
   const data = store.data;
   if (!data.tutorial || typeof data.tutorial !== "object") data.tutorial = {};
   const t = data.tutorial;
@@ -33,6 +34,16 @@ function createTutorial(store, accounts, dayKey) {
   }
 
   const progress = user => user && (user.tutorial || (user.tutorial = {}));
+  function reward(user) {
+    if (!user) return;
+    if (!user.tutorial) user.tutorial = {};
+    if (!user.tutorial.done) user.tutorial.done = Date.now();
+    if (challenges && challenges.give(user, TITLE, "Tutoriál")) {
+      const look = user.cosmetics.look;
+      if (!look.title) look.title = TITLE;
+    }
+  }
+
   const stepOf = body => {
     const n = Math.floor(Number(body.step));
     return Number.isFinite(n) && n >= 0 && n < STEPS.length ? n : -1;
@@ -82,15 +93,13 @@ function createTutorial(store, accounts, dayKey) {
           t.finished++;
           day().finished++;
         }
-        if (p && !p.done) p.done = Date.now();
-        if (user) accounts.grantTitle(user, TITLE);
+        reward(user);
         break;
       }
       case "claim": {
         // tutoriál dohraný bez přihlášení: titul se připíše po přihlášení (počty se nemění)
         if (!user) return null;
-        if (!p.done) p.done = Date.now();
-        accounts.grantTitle(user, TITLE);
+        reward(user);
         break;
       }
       default:
@@ -98,7 +107,7 @@ function createTutorial(store, accounts, dayKey) {
     }
 
     store.save();
-    return { ok: true, titles: user ? (user.titles || []) : undefined };
+    return { ok: true, tutorialDone: !!(user && user.tutorial && user.tutorial.done), look: user && challenges ? challenges.lookOf(user) : undefined };
   }
 
   function report(days = 30) {
@@ -118,7 +127,7 @@ function createTutorial(store, accounts, dayKey) {
       accounts: {
         started: users.filter(u => u.tutorial && u.tutorial.started).length,
         finished: users.filter(u => u.tutorial && u.tutorial.done).length,
-        titled: users.filter(u => Array.isArray(u.titles) && u.titles.includes(TITLE)).length
+        titled: users.filter(u => u.cosmetics && u.cosmetics.owned && u.cosmetics.owned[TITLE]).length
       },
       days: out
     };

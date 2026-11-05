@@ -148,6 +148,13 @@
       noise(d, 0.25, { freq: 4000, vol: 0.2, filter: "highpass" });
     },
     heal: d => { [660, 830, 990, 1320].forEach((f, i) => tone(d, f, 0.28, { type: "sine", vol: 0.12, delay: i * 0.07 })); },
+    // schopnosti hrdinů
+    lunge: d => { noise(d, 0.22, { freq: 500, to: 4200, vol: 0.2, filter: "bandpass", q: 1.4 }); tone(d, 140, 0.18, { type: "sawtooth", vol: 0.08, to: 320 }); },
+    warcry: d => { [196, 247, 294].forEach((f, i) => tone(d, f, 0.5, { type: "sawtooth", vol: 0.09, delay: i * 0.03, to: f * 1.06 })); noise(d, 0.3, { freq: 700, vol: 0.08, filter: "bandpass", q: 3 }); },
+    shield: d => { tone(d, 880, 0.35, { type: "triangle", vol: 0.1, to: 660 }); tone(d, 1320, 0.25, { type: "sine", vol: 0.07, delay: 0.05 }); noise(d, 0.08, { freq: 2500, vol: 0.12, filter: "highpass" }); },
+    summon: d => { tone(d, 110, 0.6, { type: "sawtooth", vol: 0.1, to: 55 }); noise(d, 0.45, { freq: 300, to: 900, vol: 0.14, filter: "bandpass", q: 1 }); },
+    frost: d => { [1760, 2093, 2637, 3136].forEach((f, i) => tone(d, f, 0.3, { type: "sine", vol: 0.05, delay: i * 0.05 })); noise(d, 0.5, { freq: 6000, vol: 0.06, filter: "highpass" }); },
+    crumble: d => { noise(d, 0.25, { freq: 1200, to: 300, vol: 0.12 }); tone(d, 220, 0.12, { type: "triangle", vol: 0.06, to: 90 }); },
     levelUp: d => { [523, 659, 784, 1047].forEach((f, i) => tone(d, f, 0.22, { type: "square", vol: 0.1, delay: i * 0.09 })); tone(d, 1047, 0.5, { type: "triangle", vol: 0.12, delay: 0.38 }); },
     horn: d => {
       tone(d, 110, 0.9, { type: "sawtooth", vol: 0.18, attack: 0.12, to: 104 });
@@ -158,7 +165,7 @@
   };
 
   // Echo send level per sound, and sounds that keep an exact pitch.
-  const WET = { spawn: 0.35, heal: 0.5, levelUp: 0.5, fireCast: 0.3, explosion: 0.3, horn: 0.4, win: 0.45, lose: 0.45, collapse: 0.25, coin: 0.15 };
+  const WET = { warcry: 0.35, shield: 0.4, summon: 0.45, frost: 0.5, spawn: 0.35, heal: 0.5, levelUp: 0.5, fireCast: 0.3, explosion: 0.3, horn: 0.4, win: 0.45, lose: 0.45, collapse: 0.25, coin: 0.15 };
   const TUNED = new Set(["click", "select", "coin", "spawn", "heal", "levelUp", "horn", "win", "lose", "error"]);
 
   // Minimum gap between repeats of the same sound (seconds).

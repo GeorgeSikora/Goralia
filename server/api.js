@@ -6,16 +6,17 @@
 
 const { Limiter } = require("./accounts.js");
 const { createOAuth } = require("./oauth.js");
+const { createAiGames } = require("./aigames.js");
 const { cookie, parseCookies, clientIp, sameOrigin, sendJson, readJson } = require("./httputil.js");
+const MAPS = require("../js/maps.js");
 
 const SID = "goralia_sid";
 const PLAYER_LIMIT = 1000;
 
-function createApi({ accounts, stats, hall, events, store, live, traffic, tutorial, adminMaps, isLocalRequest, publicUrl }) {
+function createApi({ accounts, stats, hall, events, challenges, store, live, traffic, tutorial, adminMaps, isLocalRequest, publicUrl }) {
   const passwordFails = new Limiter(10, 10 * 60 * 1000);
   const beaconIp = new Limiter(120, 10 * 60 * 1000);
-  const aiStarts = new Map(); // id hráče -> čas začátku hry proti AI (pro odehraný čas)
-  const AI_MAX = 6 * 3600;
+  const aiGames = createAiGames({ accounts, stats }); // hry proti AI v prohlížeči
 
   const tokenOf = req => parseCookies(req.headers.cookie)[SID];
   const userOf = req => accounts.userFromToken(tokenOf(req));
@@ -38,19 +39,62 @@ function createApi({ accounts, stats, hall, events, store, live, traffic, tutori
   const fail = (ctx, status, error) => sendJson(ctx.res, status, { error });
 
   /* ---------- účet ---------- */
-  // Hra proti AI běží v prohlížeči, takže délku hlásí klient. Připíše se nejvýš skutečně uplynulý
-  // čas od nahlášeného startu; konec bez startu (restart serveru, podvržené hlášení) se nepočítá.
-  function aiTime(user, body) {
+  /*
+   * Výzvy z hry proti AI v prohlížeči. Simulace tu běží u hráče, takže statistiky zápasu posílá
+   * prohlížeč; server je ale sám ověří a vyhodnotí: konec musí navázat na nahlášený start, délka
+   * nesmí přesáhnout skutečně uplynulý čas, výhra se počítá až po minutě hry a čísla musí odpovídat
+   * tomu, co se za tu dobu dá stihnout. Jinak se hlášení do výzev nepočítá.
+   */
+  const aiRuns = new Map(); // id hráče -> { at, map }
+  const AI_MIN = 15;
+  const AI_MIN_WIN = 60;
+  const num = v => (Number.isFinite(Number(v)) ? Math.max(0, Math.floor(Number(v))) : 0);
+  const byType = obj => {
+    const out = {};
+    if (obj && typeof obj === "object") for (const [k, v] of Object.entries(obj)) if (/^[a-z]{1,20}$/.test(k) && num(v)) out[k] = num(v);
+    return out;
+  };
+
+  function aiChallenges(user, body) {
     const now = Date.now();
     if (body.e === "start") {
-      aiStarts.set(user.id, now);
-      if (aiStarts.size > 10000) aiStarts.delete(aiStarts.keys().next().value);
-    } else if (body.e === "end") {
-      const start = aiStarts.get(user.id);
-      aiStarts.delete(user.id);
-      const sec = Number(body.duration);
-      if (start && Number.isFinite(sec) && sec > 0) accounts.addAiTime(user, Math.min(sec, (now - start) / 1000 + 5, AI_MAX));
+      aiRuns.set(user.id, { at: now, map: String(body.map || "") });
+      if (aiRuns.size > 10000) aiRuns.delete(aiRuns.keys().next().value);
+      return null;
     }
+    if (body.e !== "end") return null;
+
+    const run = aiRuns.get(user.id);
+    aiRuns.delete(user.id);
+    if (!run || run.map !== String(body.map || "")) return null;
+
+    const real = (now - run.at) / 1000;
+    const duration = Math.min(num(body.duration), real + 5);
+    if (duration < AI_MIN) return null;
+
+    const map = MAPS.get(run.map);
+    const s = body.stats && typeof body.stats === "object" ? body.stats : {};
+    const min = duration / 60;
+    const p = {
+      userId: user.id, result: ["win", "loss", "draw"].includes(body.result) ? body.result : "loss",
+      kills: num(s.kills), buildingsDestroyed: num(s.buildingsDestroyed), gold: num(s.gold), wood: num(s.wood),
+      trained: num(s.trained), built: num(s.built), heroLevel: num(s.heroLevel),
+      killsBy: byType(s.killsBy), trainedBy: byType(s.trainedBy), builtBy: byType(s.builtBy)
+    };
+    if (p.result === "win" && real < AI_MIN_WIN) p.result = "loss";
+
+    // strop toho, co jde za danou dobu v zápase reálně stihnout (velkoryse)
+    const sum = o => Object.values(o).reduce((n, v) => n + v, 0);
+    const plausible = p.kills <= 40 * min + 30 && sum(p.killsBy) <= p.kills &&
+      p.trained <= 8 * min + 10 && sum(p.trainedBy) <= p.trained &&
+      p.built <= 4 * min + 6 && sum(p.builtBy) <= p.built &&
+      p.buildingsDestroyed <= 6 * min + 6 && p.gold <= 900 * min + 300 && p.wood <= 900 * min + 300 && p.heroLevel <= 30;
+    if (!plausible) {
+      console.warn(`Výzvy: nepravděpodobné hlášení hry proti AI od ${user.name} (#${user.id}), nezapočítáno.`);
+      return null;
+    }
+
+    return challenges.onMatch({ duration, coop: !!(map && map.coop), humans: 1, ais: 1, browser: true, players: [p] }, now);
   }
 
   const handlers = {
@@ -125,7 +169,7 @@ function createApi({ accounts, stats, hall, events, store, live, traffic, tutori
         player: {
           id: user.id, name: user.name, admin: user.role === "admin", created: user.created, lastSeen: user.lastSeen,
           online: live.isOnline(user.id), banned: viewer ? !!user.banned : undefined,
-          stats: user.stats, recent: stats.recentFor(user.id, 15), titles: accounts.titlesOf(user)
+          stats: user.stats, recent: stats.recentFor(user.id, 15), look: challenges.lookOf(user)
         }
       });
     },
@@ -137,13 +181,66 @@ function createApi({ accounts, stats, hall, events, store, live, traffic, tutori
       sendJson(ctx.res, 200, { match: m });
     },
 
-    // Hlášení z prohlížeče o hře proti AI (start/konec), funguje i bez přihlášení.
+    // Hlášení z prohlížeče o hře proti AI (start/konec), funguje i bez přihlášení; přihlášenému se hra započítá.
     beacon(ctx) {
       if (beaconIp.blocked(ctx.ip)) return sendJson(ctx.res, 202, { ok: false });
       beaconIp.add(ctx.ip);
-      if (ctx.user) aiTime(ctx.user, ctx.body);
+      if (ctx.user) aiGames.report(ctx.user, ctx.body);
+      const finished = ctx.user && !ctx.user.banned ? aiChallenges(ctx.user, ctx.body) : null;
       const ok = traffic ? traffic.aiEvent(ctx.body) : false;
-      sendJson(ctx.res, ok ? 200 : 400, { ok });
+      const done = finished && finished.length ? finished[0].done : undefined;
+      sendJson(ctx.res, ok ? 200 : 400, { ok, done });
+    },
+
+    /* ---------- výzvy ---------- */
+    challenges(ctx) {
+      sendJson(ctx.res, 200, challenges.view(ctx.user));
+    },
+
+    setLook(ctx) {
+      const result = challenges.setLook(ctx.user, String(ctx.body.kind || ""), ctx.body.id == null ? null : String(ctx.body.id));
+      if (result.error) return fail(ctx, 400, result.error);
+      sendJson(ctx.res, 200, result);
+    },
+
+    adminChallenges(ctx) {
+      sendJson(ctx.res, 200, challenges.adminView());
+    },
+
+    addChallenge(ctx) {
+      const result = challenges.addTemplate(ctx.user, ctx.body);
+      if (result.error) return fail(ctx, 400, result.error);
+      sendJson(ctx.res, 200, result);
+    },
+
+    setChallenge(ctx) {
+      const result = challenges.setTemplate(ctx.user, ctx.params[0], { enabled: ctx.body.enabled !== false });
+      if (result.error) return fail(ctx, 404, result.error);
+      sendJson(ctx.res, 200, result);
+    },
+
+    deleteChallenge(ctx) {
+      const result = challenges.deleteTemplate(ctx.user, ctx.params[0]);
+      if (result.error) return fail(ctx, 404, result.error);
+      sendJson(ctx.res, 200, result);
+    },
+
+    rerollChallenges(ctx) {
+      const result = challenges.reroll(ctx.user, String(ctx.body.period || ""));
+      if (result.error) return fail(ctx, 400, result.error);
+      sendJson(ctx.res, 200, result);
+    },
+
+    grantReward(ctx) {
+      const result = challenges.grant(ctx.user, ctx.body);
+      if (result.error) return fail(ctx, 400, result.error);
+      sendJson(ctx.res, 200, result);
+    },
+
+    revokeReward(ctx) {
+      const result = challenges.revoke(ctx.user, ctx.body);
+      if (result.error) return fail(ctx, 400, result.error);
+      sendJson(ctx.res, 200, result);
     },
 
     // Hlášení z prohlížeče o tutoriálu (start, kroky, přeskočení, dokončení); přihlášený účet dostane titul.
@@ -359,7 +456,16 @@ function createApi({ accounts, stats, hall, events, store, live, traffic, tutori
     ["GET", /^\/api\/admin\/events$/, "admin", handlers.adminEvents],
     ["POST", /^\/api\/admin\/events$/, "admin", handlers.createEvent],
     ["POST", /^\/api\/admin\/events\/(\d{1,9})$/, "admin", handlers.updateEvent],
-    ["DELETE", /^\/api\/admin\/events\/(\d{1,9})$/, "admin", handlers.cancelEvent]
+    ["DELETE", /^\/api\/admin\/events\/(\d{1,9})$/, "admin", handlers.cancelEvent],
+    ["GET", /^\/api\/challenges$/, "none", handlers.challenges],
+    ["POST", /^\/api\/me\/look$/, "user", handlers.setLook],
+    ["GET", /^\/api\/admin\/challenges$/, "admin", handlers.adminChallenges],
+    ["POST", /^\/api\/admin\/challenges$/, "admin", handlers.addChallenge],
+    ["POST", /^\/api\/admin\/challenges\/reroll$/, "admin", handlers.rerollChallenges],
+    ["POST", /^\/api\/admin\/challenges\/([a-z0-9-]{1,40})$/, "admin", handlers.setChallenge],
+    ["DELETE", /^\/api\/admin\/challenges\/([a-z0-9-]{1,40})$/, "admin", handlers.deleteChallenge],
+    ["POST", /^\/api\/admin\/rewards\/grant$/, "admin", handlers.grantReward],
+    ["POST", /^\/api\/admin\/rewards\/revoke$/, "admin", handlers.revokeReward]
   ];
 
   // Vrací true, pokud požadavek patří API nebo přihlášení přes poskytovatele.

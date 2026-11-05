@@ -14,7 +14,7 @@
   const R = PK.rules;
   const STORE = "pk-tutorial";
   const PLAYED = "pk-played";
-  const TITLE = "novacek";
+  const TITLE = "title-novacek";
 
   // Překlady textů tutoriálu jsou v js/lang/en.js a js/lang/szl.js (klíč = český text).
   const fill = (s, vars) => (vars ? s.replace(/\{(\w+)\}/g, (m, k) => (k in vars ? vars[k] : m)) : s);
@@ -44,7 +44,7 @@
     const st = load();
     if (st.done || st.skipped) return false;
     if (played()) return false;
-    if (user && (user.games > 0 || (user.titles || []).includes(TITLE))) return false;
+    if (user && (user.games > 0 || user.tutorialDone)) return false;
     return true;
   }
 
@@ -66,9 +66,11 @@
 
   // Tutoriál dohraný bez přihlášení: titul se připíše, jakmile se hráč přihlásí.
   function claim(user) {
-    if (!user || !load().done || (user.titles || []).includes(TITLE)) return;
+    if (!user || !load().done || user.tutorialDone) return;
     report("claim").then(res => {
-      if (res && res.titles && user.titles !== res.titles) user.titles = res.titles;
+      if (!res || !res.tutorialDone) return;
+      user.tutorialDone = true;
+      if (PK.challenges) PK.challenges.reload();
     });
   }
 
