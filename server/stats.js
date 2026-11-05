@@ -49,6 +49,7 @@ function createStats(store) {
       entry.heroLevel = int(p.stats && p.stats.heroLevel);
       entry.trainedBy = counts(p.stats && p.stats.trainedBy);
       entry.builtBy = counts(p.stats && p.stats.builtBy);
+      entry.killsBy = counts(p.stats && p.stats.killsBy);
       entry.upgrades = counts(p.upgrades);
       entry.cmds = int(p.cmds);
       if (p.outAt != null) {

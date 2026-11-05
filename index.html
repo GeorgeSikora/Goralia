@@ -39,6 +39,7 @@
 <link rel="stylesheet" href="css/charts.css">
 <link rel="stylesheet" href="css/fame.css">
 <link rel="stylesheet" href="css/events.css">
+<link rel="stylesheet" href="css/challenges.css">
 </head>
 <body>
 <div id="loading" class="loading" role="progressbar" aria-label="Načítání hry" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-busy="true">
@@ -93,6 +94,7 @@
         <button id="m-surrender" class="btn big" type="button" hidden>Vzdát se</button>
         <button id="m-leave" class="btn big" type="button" hidden>Hlavní menu</button>
         <button id="m-players" class="btn big" type="button">Hráči</button>
+        <button id="m-challenges" class="btn big" type="button">Výzvy</button>
         <button id="m-account" class="btn big" type="button">Přihlásit se</button>
         <a id="m-admin" class="btn big" href="/admin" target="_blank" rel="noopener" hidden>Server panel</a>
         <button id="m-settings" class="btn big" type="button">Nastavení</button>
@@ -218,6 +220,32 @@
         <div id="pl-list" class="players" role="list"></div>
         <p id="fame-rules" class="fame-rules small"></p>
         <div id="fame-tours" class="fame-tours" hidden></div>
+        <button class="btn big" type="button" data-back>Zpět</button>
+      </section>
+
+      <section id="panel-challenges" class="page" data-page="challenges" hidden>
+        <div class="fame-head">
+          <h2 class="ch-heading">Výzvy</h2>
+          <p class="status small">Plň výzvy v multiplayeru i ve hře proti AI a sbírej vlajky, barvy, tituly a rámečky. Odměny jsou jen na ozdobu, hru nemění.</p>
+        </div>
+        <div id="ch-login" class="ch-login" hidden>
+          <p class="status small">Postup a odměny se ukládají k účtu.</p>
+          <button id="ch-login-btn" class="btn" type="button">Přihlásit se</button>
+        </div>
+        <p id="ch-status" class="status" aria-live="polite"></p>
+        <div class="ch-cols">
+          <div class="ch-block">
+            <div class="ch-block-head"><h3>Denní výzvy</h3><span id="ch-daily-reset" class="ch-reset"></span></div>
+            <div id="ch-daily" class="ch-list"></div>
+          </div>
+          <div class="ch-block weekly">
+            <div class="ch-block-head"><h3>Týdenní výzvy</h3><span id="ch-weekly-reset" class="ch-reset"></span></div>
+            <div id="ch-weekly" class="ch-list"></div>
+          </div>
+        </div>
+        <div class="ch-block-head"><h3>Sbírka odměn</h3><span id="ch-count" class="ch-reset"></span></div>
+        <div id="ch-preview" class="ch-preview"></div>
+        <div id="ch-collection" class="ch-collection"></div>
         <button class="btn big" type="button" data-back>Zpět</button>
       </section>
 

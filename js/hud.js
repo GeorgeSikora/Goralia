@@ -284,21 +284,24 @@
     });
   }
 
-  const teamCss = team => css(PK.TEAM[team].ui);
+  const teamCss = team => css(PK.TEAM[PK.skin(team)].ui);
 
   // Vpravo nahoře: čas hry a seznam hráčů s barvami týmů.
   function drawPlayers(g, vm) {
     const mins = Math.floor(vm.elapsed / 60);
     const secs = Math.floor(vm.elapsed % 60);
     const rows = [{ label: `${mins}:${String(secs).padStart(2, "0")}`, time: true }, ...vm.players.map(p => ({
-      label: p.name.slice(0, 12), team: p.team, out: p.out, me: p.me
+      label: p.name.slice(0, 12), title: p.title || "", team: p.team, out: p.out, me: p.me
     }))];
 
     let y = 3;
     const compact = rows.length > 9; // velké mapy: úsporný seznam bez rámečků
 
     for (const row of rows) {
-      const w = 6 + (row.time ? 0 : 12) + PK.textWidth(row.label) + 3;
+      // titul z výzev se ukáže za jménem (jen v plném seznamu)
+      const title = !compact && row.title ? PK.t(row.title) : "";
+      const tw = title ? PK.textWidth(title) + 5 : 0;
+      const w = 6 + (row.time ? 0 : 12) + PK.textWidth(row.label) + tw + 3;
       const x = V.w - 3 - V.inset - w;
 
       if (compact && !row.time) {
@@ -322,6 +325,7 @@
         g.fillStyle = row.out ? "#4a4560" : teamCss(row.team);
         g.fillRect(x + 6, y + 5, 6, 5);
         T(g, row.label, x + 17, y + 4, row.out ? MUTED : row.me ? 0xffe08a : TEXT);
+        if (title) T(g, title, x + 17 + PK.textWidth(row.label) + 5, y + 4, row.out ? MUTED : 0xd0b4ff);
 
         if (row.out) {
           g.fillStyle = BAD;

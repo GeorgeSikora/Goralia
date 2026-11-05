@@ -176,11 +176,41 @@
   }
 
   /* ======================= match lifecycle ======================= */
-  const teamCss = team => PK.css(PK.TEAM[team].ui);
+  const teamCss = team => PK.css(PK.TEAM[PK.skin(team)].ui);
+  const COS = PK.cosmetics;
+  let flagDesigns = {}; // tým -> vzor vlajky na věžích (odměna z výzev)
+  let colorNames = {}; // tým -> název barvy týmu navíc
+
+  // Kosmetika hráčů v zápase (js/cosmetics.js): barva týmu navíc, vlajka na věžích a titul.
+  // Online posílá vzhled server v soupisce; ve hře proti AI se vezme vlastní vzhled z účtu.
+  function applyLooks(list = players, offline = mode === "ai") {
+    for (const k of Object.keys(PK.skins)) delete PK.skins[k];
+    flagDesigns = {};
+    colorNames = {};
+    const taken = new Set();
+
+    for (const p of list) {
+      const look = COS.clean(p.look || (p.me && offline && PK.challenges ? PK.challenges.look : null));
+      const color = COS.get(look.color);
+      // stejnou barvu navíc dostane jen první hráč, aby šly týmy rozlišit
+      if (color && !taken.has(color.palette)) {
+        taken.add(color.palette);
+        PK.skins[p.team] = color.palette;
+        colorNames[p.team] = color.name;
+      }
+      const flag = COS.get(look.flag);
+      if (flag) flagDesigns[p.team] = flag.design;
+      const title = COS.get(look.title);
+      p.title = title ? title.name : "";
+    }
+  }
 
   function reset() {
     abandonAi();
     spectator = false;
+    for (const k of Object.keys(PK.skins)) delete PK.skins[k];
+    flagDesigns = {};
+    colorNames = {};
     specEcon = new Map();
     endWinner = -1;
     units = [];
@@ -247,7 +277,10 @@
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ e, map: map ? map.id : "", ...extra })
-      }).catch(() => {});
+      })
+        .then(res => (res.ok ? res.json() : null))
+        .then(data => { if (data && data.done && PK.challenges) PK.challenges.completed(data.done); })
+        .catch(() => {});
     } catch (err) { /* statistiky nejsou důležité */ }
   }
 
@@ -309,8 +342,9 @@
     me = spectator ? null : R.TEAMS[mySlot];
     loadMap(cfg.map, mySlot);
     players = cfg.players.map(p => ({
-      slot: p.slot, name: p.name, team: R.TEAMS[p.slot], ai: !!p.ai, out: false, me: p.slot === mySlot
+      slot: p.slot, name: p.name, team: R.TEAMS[p.slot], ai: !!p.ai, out: false, me: p.slot === mySlot, look: p.look || null
     }));
+    applyLooks();
     matchOver = false;
     matchPhase = "countdown";
     started = true;
@@ -413,7 +447,11 @@
     // zápas změněný příkazem správce se do statistik nepočítá
     if (mode === "ai" && simMatch && !simMatch.cheated && !simMatch.reported) {
       simMatch.reported = true;
-      reportAi("end", { result: state === "win" ? "win" : state === "draw" ? "draw" : "loss", duration: simMatch ? Math.round(simMatch.elapsed) : 0 });
+      // statistiky zápasu ověří a vyhodnotí server (výzvy), viz api.js aiChallenges
+      reportAi("end", {
+        result: state === "win" ? "win" : state === "draw" ? "draw" : "loss", duration: Math.round(simMatch.elapsed),
+        stats: me ? simMatch.stats[me] : null
+      });
     }
 
     syncMenu();
@@ -1611,8 +1649,8 @@
 
   function showPage(name) {
     if (name !== "online" && name !== "lobby") leaveLobby();
-    menuEl.querySelector(".panel").classList.toggle("wide", name === "lobby" || name === "match" || name === "players");
-    menuEl.querySelector(".panel").classList.toggle("solid", name === "match" || name === "players" || name === "event");
+    menuEl.querySelector(".panel").classList.toggle("wide", name === "lobby" || name === "match" || name === "players" || name === "challenges");
+    menuEl.querySelector(".panel").classList.toggle("solid", name === "match" || name === "players" || name === "event" || name === "challenges");
     menuEl.querySelector(".panel").classList.toggle("compact", name === "lobby");
     for (const page of pages) page.hidden = page.dataset.page !== name;
     const first = menuEl.querySelector(`.page[data-page="${name}"] button:not([hidden]):not(:disabled)`);
@@ -2209,6 +2247,8 @@
     if (PK.loader && PK.loader.busy) return;
     lastOffline = { mapId: c.mapId, slots: c.slots.map(s => ({ ...s })) };
     if (PK.winter) PK.winter.set(PK.winter.season()); // hra proti AI: zima podle kalendáře / volby
+    // barvy navíc už pro přípravu spritů (načítací obrazovka), aby se nepekly až ve hře
+    applyLooks(roster.map(p => ({ ...p, team: R.TEAMS[p.slot], me: p.slot === 0 })), true);
     prepareMatch(next, roster.map(p => p.slot), () => beginMatch({ mode: "ai", map: next, slot: 0, players: roster }));
   }
 
@@ -2248,6 +2288,7 @@
 
     // zprávy ze serveru během přípravy počkají a projdou až po startu zápasu
     netHold = netHold || [];
+    applyLooks(m.players.map(p => ({ ...p, team: R.TEAMS[p.slot] })), false);
     prepareMatch(next, m.players.map(p => p.slot), () => {
       online.pendingTrain = 0;
       online.pendingBuild = 0;
@@ -2779,6 +2820,10 @@
         beginOnlineMatch(m);
         break;
 
+      case "challenges":
+        PK.challenges.completed(m.done);
+        break;
+
       case "s":
         applySnapshot(m);
         break;
@@ -3099,6 +3144,7 @@
   account.init({
     show: showPage,
     onChange: user => {
+      if (PK.challenges) PK.challenges.reload();
       if (user) return;
       if (mode === "online" && started) leaveOnline();
       else leaveLobby();
@@ -3107,6 +3153,7 @@
   });
   account.start();
   PK.events.init({ show: showPage });
+  PK.challenges.init({ show: showPage, announce: text => { if (started && !matchOver) announce(text); } });
 
   // Odkaz z editoru (?map=id) otevře výběr hry proti AI s danou vlastní mapou.
   const mapsReady = refreshCustomMaps();
@@ -3693,7 +3740,7 @@
     });
 
     if (spr.flags) {
-      const flag = PK.buildings.flag(b.team);
+      const flag = PK.buildings.flag(b.team, flagDesigns[b.team]);
       spr.flags.forEach(([fxx, fyy], i) => {
         g.drawImage(flag[Math.floor(clock * 9 + i * 3 + b.id * 1.3) % flag.length], x0 + fxx, y0 + fyy);
       });
@@ -4156,7 +4203,7 @@
     for (const u of units) {
       const rx = u.type === "hero" ? 10 : 8;
       g.globalAlpha = u.team === me ? 0.4 : 0.55;
-      g.drawImage(ellipseRing(rx, 3, PK.TEAM[u.team].ui), Math.round(u.x / 2) - rx - 1, Math.round(u.y / 2) + 6 - 4);
+      g.drawImage(ellipseRing(rx, 3, PK.TEAM[PK.skin(u.team)].ui), Math.round(u.x / 2) - rx - 1, Math.round(u.y / 2) + 6 - 4);
     }
 
     g.globalAlpha = 1;
@@ -4514,7 +4561,7 @@
       PK.text(g, "SLEDUJEŠ JAKO DIVÁK", cx, top + 14, 0xc6e8ff, { align: "center" });
     } else {
       PK.text(g, `ZÁPAS PROTI ${foes}`, cx, top, 0xffe08a, { align: "center", scale: 1 });
-      PK.text(g, `HRAJEŠ ZA: ${R.TEAM_NAMES[me].toUpperCase()}`, cx, top + 14, PK.TEAM[me].ui, { align: "center" });
+      PK.text(g, `HRAJEŠ ZA: ${(colorNames[me] || R.TEAM_NAMES[me]).toUpperCase()}`, cx, top + 14, PK.TEAM[PK.skin(me)].ui, { align: "center" });
     }
     PK.text(g, String(Math.max(1, online.count)), cx, top + 38, 0xfff6cc, { align: "center", scale: 5, outline: C.ink, shadow: null });
   }
@@ -4699,6 +4746,7 @@
     get match() { return simMatch; },
     step(seconds) { if (simMatch) for (let t = 0; t < seconds; t += sim.TICK) simMatch.step(sim.TICK); },
     startOffline,
+    command: cmd => sendCmd(cmd), // rozkaz jako z ovládání (testy, náhledy)
     reset
   };
 })();

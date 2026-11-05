@@ -22,6 +22,7 @@ const { createAccounts } = require("./accounts.js");
 const { createStats } = require("./stats.js");
 const { createHallOfFame } = require("./halloffame.js");
 const { createEvents } = require("./events.js");
+const { createChallenges } = require("./challenges.js");
 const { createTraffic } = require("./traffic.js");
 const { createGeo } = require("./geoip.js");
 const { createMapConfig } = require("./mapconfig.js");
@@ -69,7 +70,8 @@ const accounts = createAccounts(store, {
   onCreate: user => { if (user.role !== "admin") traffic.bump("registrations"); }
 });
 const stats = createStats(store);
-const hall = createHallOfFame(store, accounts);
+const challenges = createChallenges(store, accounts);
+const hall = createHallOfFame(store, accounts, challenges);
 const mapConfig = createMapConfig(store, MAPS);
 
 const MIME = {
@@ -203,7 +205,7 @@ const adminMaps = {
 
 const events = createEvents(store, accounts, { mapExists: id => MAPS.list.some(m => m.id === id) });
 
-const api = createApi({ accounts, stats, hall, events, store, live, traffic, adminMaps, isLocalRequest, publicUrl: PUBLIC_URL });
+const api = createApi({ accounts, stats, hall, events, challenges, store, live, traffic, adminMaps, isLocalRequest, publicUrl: PUBLIC_URL });
 // Domény webu hry: odkaz z nich je přechod v rámci webu, ne zdroj návštěvy.
 const ownHosts = req => {
   const hosts = [String(req.headers.host || "")];
@@ -572,7 +574,7 @@ const winterNow = () => (winterForce == null ? R.isWinter() : winterForce);
 
 function startMatch(room) {
   const players = room.slots.map((slot, i) => {
-    if (slot.kind === "human") return { name: slot.client.name };
+    if (slot.kind === "human") return { name: slot.client.name, look: challenges.lookOf(slot.client.user) };
     if (slot.kind === "ai") return { name: room.map.coop && room.map.coop.ai === i ? R.UNDEAD.short : `AI ${R.TEAM_NAMES[R.TEAMS[i]]}`, ai: true };
     return null;
   });
@@ -590,7 +592,8 @@ function startMatch(room) {
     if (p) room.participants.push({ slot: i, name: p.name, ai: !!p.ai, userId: p.ai ? null : room.slots[i].client.user.id });
   });
 
-  const roster = players.map((p, slot) => (p ? { slot, name: p.name, ai: !!p.ai } : null)).filter(Boolean);
+  // look = vybrané kosmetické odměny hráče (vlajka na věžích, barva týmu, titul), viz challenges.js
+  const roster = players.map((p, slot) => (p ? { slot, name: p.name, ai: !!p.ai, look: p.look || {} } : null)).filter(Boolean);
   room.roster = roster;
 
   room.slots.forEach((slot, i) => {
@@ -707,7 +710,14 @@ function recordMatch(room) {
     })
   });
 
-  if (recorded) traffic.match(recorded);
+  if (recorded) {
+    traffic.match(recorded);
+    // výzvy se vyhodnocují tady, ze statistik zápasu na serveru
+    for (const { userId, done } of challenges.onMatch(recorded)) {
+      const client = byUser.get(userId);
+      if (client) send(client, { t: "challenges", done });
+    }
+  }
 }
 
 // Po konci zápasu se hráči vrátí do místnosti.
@@ -1112,6 +1122,9 @@ setInterval(() => {
 setInterval(() => {
   for (const client of clients) creditOnline(client);
 }, 60000).unref();
+
+// O půlnoci (a v pondělí) se vylosují nové výzvy, i když zrovna nikdo nehraje ani se nedívá do menu.
+setInterval(() => challenges.ensure(), 30000).unref();
 
 mapstore.load();
 traffic.startSampling(live.counts);

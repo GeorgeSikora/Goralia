@@ -2099,6 +2099,7 @@
   }
 
   function frame(type, team, anim, i) {
+    team = PK.skin(team); // barva týmu navíc z výzev
     const key = `${type}|${team}`;
     const set = store[key] || (store[key] = build(type, team));
 
@@ -2134,6 +2135,7 @@
 
   /* Padlé tělo pro animaci smrti: otočení o 90 stupňů, cache. */
   function lying(type, team, flip) {
+    team = PK.skin(team); // barva týmu navíc z výzev
     const key = `${type}|${team}|lying|${flip ? 1 : 0}`;
 
     if (!store[key]) {
@@ -2165,6 +2167,7 @@
   const portraitCache = {};
 
   function portrait(type, team, frameIndex = 0) {
+    team = PK.skin(team); // barva týmu navíc z výzev
     const key = `${type}|${team}|${frameIndex}`;
 
     if (!portraitCache[key]) {
