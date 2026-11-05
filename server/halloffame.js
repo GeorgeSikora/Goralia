@@ -18,7 +18,7 @@ const POINTS = {
 const MAX_TOURNAMENTS = 500;
 const MAX_ENTRANTS = 64;
 
-function createHallOfFame(store, accounts) {
+function createHallOfFame(store, accounts, challenges = null) {
   const data = store.data;
   if (!Array.isArray(data.tournaments)) data.tournaments = [];
   if (!data.nextTournamentId) data.nextTournamentId = 1;
@@ -67,7 +67,9 @@ function createHallOfFame(store, accounts) {
       // jen veřejné údaje: síň slávy vidí každý návštěvník hry
       return {
         rank, id: user.id, name: user.name, admin: user.role === "admin",
-        playSeconds: user.stats.playSeconds, aiSeconds: user.stats.aiSeconds, ...rest
+        playSeconds: user.stats.playSeconds, aiSeconds: user.stats.aiSeconds, ...rest,
+        // vybrané odměny z výzev: titul u jména, rámeček a barva portrétu
+        look: challenges ? challenges.lookOf(user) : {}
       };
     });
   }

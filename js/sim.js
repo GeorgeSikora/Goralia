@@ -94,7 +94,7 @@ class Match {
       this.notes[team] = [];
       this.stats[team] = {
         kills: 0, unitsLost: 0, buildingsDestroyed: 0, buildingsLost: 0, gold: 0, wood: 0, trained: 0, built: 0, heroLevel: 0,
-        spentGold: 0, spentWood: 0, trainedBy: {}, builtBy: {}
+        spentGold: 0, spentWood: 0, trainedBy: {}, builtBy: {}, killsBy: {}
       };
       if (undead) this.brains[team] = { horde: true, ...hordeBrain() };
       else if (this.players[i].ai) this.brains[team] = AI.createBrain(team);
@@ -768,6 +768,7 @@ class Match {
       if (mine && theirs) {
         if (target.kind === "unit") {
           mine.kills++;
+          mine.killsBy[target.type] = (mine.killsBy[target.type] || 0) + 1; // výzvy: koho hráč porazil
           theirs.unitsLost++;
         } else {
           mine.buildingsDestroyed++;
