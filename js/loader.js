@@ -28,7 +28,7 @@
     "Buda zvedne limit jednotek o 5.",
     "Ctrl + číslo uloží výběr do skupiny, dvojí stisk čísla na ni skočí kamerou.",
     "Kovárna vylepšuje zbroj a zbraně všech jednotek.",
-    "Hrdina umí ohnivou kouli (A) a léčení (S).",
+    "Vyber hrdinu a sesílej schopnosti klávesami Q, W a E.",
     "Vyhrává poslední, komu zůstane hlavní budova.",
     "Kolečkem myši měníš přiblížení, prostředním tlačítkem posouváš mapu."
   ];

@@ -16,7 +16,7 @@ const DEFAULT_AMOUNT = 10000;
 const MAX_AMOUNT = 1000000;
 const MAX_SPAWN = 50;
 const MAX_SPEED = 10;
-const MAX_HERO_LEVEL = 30;
+const MAX_HERO_LEVEL = R.HERO.maxLevel;
 
 const alive = e => e && e.hp > 0;
 const mine = (match, team, list) => list.filter(e => e.team === team && alive(e));
@@ -70,15 +70,12 @@ function spawn(match, team, type, n) {
 function levelHero(match, hero, levels) {
   let done = 0;
   while (done < levels && hero.level < MAX_HERO_LEVEL) {
-    hero.level++;
-    hero.maxHp += 27;
-    hero.hp = hero.maxHp;
-    hero.damage += 3;
+    match.levelUp(hero);
     done++;
   }
   hero.xp = 0;
-  match.events.push({ e: "lvl", id: hero.id, l: hero.level });
-  match.stats[hero.team].heroLevel = Math.max(match.stats[hero.team].heroLevel, hero.level);
+  hero.hp = hero.maxHp;
+  hero.mana = hero.maxMana;
   return done;
 }
 
@@ -198,7 +195,7 @@ const COMMANDS = [
   },
   {
     name: "level", aliases: ["uroven"], args: "[počet]",
-    desc: `Hrdina získá úrovně (výchozí 5, nejvýš do úrovně ${MAX_HERO_LEVEL}).`,
+    desc: `Hrdina získá úrovně (výchozí 5, nejvýš do úrovně ${MAX_HERO_LEVEL}), zdraví a manu doplní.`,
     run: (m, team, [n]) => {
       const hero = m.heroOf(team);
       if (!hero) return { error: "Nemáš hrdinu. Vytvoř ho třeba příkazem /spawn hero." };

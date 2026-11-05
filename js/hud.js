@@ -39,19 +39,22 @@
     ["tower", "Strážní věž"], ["barracks", "Kasárna"], ["hut", "Buda"], ["smithy", "Kovárna"],
     ["stable", "Stáj"], ["workshop", "Dílna"],
     ["armor", "Zbroj"], ["weapon", "Zbraně"], ["archery", "Střelba"], ["tools", "Nástroje"], ["masonry", "Opevnění"],
-    ["fire", "Ohnivá koule"], ["heal", "Léčení"]
+    // schopnosti hrdinů (pořadí v rules.js HERO.abilities = klávesy Q/W/E)
+    ["lunge", "Výpad"], ["warcry", "Bojový pokřik"], ["shieldwall", "Štítová zeď"],
+    ["fireball", "Ohnivá koule"], ["summon", "Vyvolání kostlivců"], ["frost", "Mrazivá aura"]
   ];
 
   // Tlačítka vpravo dole se mění podle vybrané jednotky nebo budovy; pořadí = pozice na panelu.
   const CARDS = {
     none: [],
-    hq: ["worker", "tools", "masonry"],
-    barracks: ["soldier", "archer", "hero", "monk"],
+    hq: ["worker", "hero", "tools", "masonry"],
+    barracks: ["soldier", "archer", "monk"],
     stable: ["knight"],
     workshop: ["catapult"],
     worker: ["command", "tower", "barracks", "hut", "smithy", "stable", "workshop"],
     smithy: ["armor", "weapon", "archery"],
-    hero: ["command", "fire", "heal"],
+    hero: ["command", "lunge", "warcry", "shieldwall"],
+    lich: ["command", "fireball", "summon", "frost"],
     army: ["command"]
   };
 
@@ -59,9 +62,9 @@
     worker: "Těží zlato a dřevo, staví a opravuje budovy.",
     soldier: "Štít a meč. Pevný v boji zblízka.",
     archer: "Střílí z velké dálky, ale snadno padne.",
-    hero: "Nese lucernu. Ohnivá koule a léčení. Jen jeden.",
+    hero: "Pěší rytíř se štítem. Výpad, bojový pokřik a štítová zeď. Jen jeden, po smrti ho vycvičíš znovu.",
     tower: "Střílí na nepřátele v dosahu. Staví dělník (10 s).",
-    barracks: "Cvičí vojáky, lučištníky a hrdinu. Staví dělník (12 s).",
+    barracks: "Cvičí vojáky, lučištníky a mnichy. Staví dělník (12 s).",
     hut: "Zvýší limit jednotek o 5. Staví dělník (8 s).",
     smithy: "Vyzkoumá zbroj, zbraně a střelbu. Staví dělník (14 s).",
     monk: "Léčí zraněné spojence v okolí. Sám nebojuje.",
@@ -69,8 +72,12 @@
     catapult: "Kámen na velkou dálku, zraní i okolí. Ničí budovy, zblízka nestřílí.",
     stable: "Cvičí rytíře. Potřebuje kasárna. Staví dělník (14 s).",
     workshop: "Staví katapulty. Potřebuje kasárna. Staví dělník (16 s).",
-    fire: "Hrdina vrhne ohnivou kouli na cíl (10 s).",
-    heal: "Hrdina vyléčí spojence v okolí (14 s).",
+    lunge: "Rytíř se vrhne na cíl a zasáhne nepřátele kolem místa dopadu.",
+    warcry: "Spojenci v okolí dávají chvíli víc poškození.",
+    shieldwall: "Rytíř zvedne štít: on i spojenci těsně u něj dostávají méně poškození.",
+    fireball: "Lich vrhne ohnivou kouli, zraní vše v místě dopadu.",
+    summon: "Ze země vylezou dva kostlivci, po čase se rozpadnou.",
+    frost: "Nepřátelé kolem licha chodí a útočí pomaleji.",
     command: "Klepni na cíl: pohyb, útok, těžba, stavba či oprava."
   };
 
@@ -346,7 +353,7 @@
 
     let hint = "";
     if (vm.placement) hint = "UMÍSTI STAVBU · KLIKNI NA MAPU";
-    else if (vm.spellMode) hint = "OHNIVÁ KOULE · KLIKNI NA CÍL";
+    else if (vm.spellMode) hint = `${(vm.spellTitle || "").toUpperCase()} · KLIKNI NA CÍL`;
     else if (vm.commandMode) hint = "ROZKAZ · KLIKNI NA CÍL";
     else if (vm.spectator) hint = vm.specTeam ? `HRÁČ ${vm.specName.toUpperCase()}` : "DIVÁK · SLEDUJEŠ ZÁPAS";
     else if (vm.spectating) hint = "VYPADL JSI · SLEDUJEŠ HRU";
@@ -499,7 +506,7 @@
 
     if (vm.selected.length > 1) {
       T3(g, `x${vm.selected.length}`, wx + 20, L.y + 54, 0xffe08a, { align: "center" });
-    } else if (e.type === "hero") {
+    } else if (e.hero) {
       T3(g, `UR ${e.level}`, wx + 20, L.y + 54, 0xffe08a, { align: "center" });
     }
   }
@@ -563,7 +570,7 @@
     const title = multi ? `${vm.selected.length} JEDNOTEK` : names[e.type];
     T(g, title, x0, L.y + 5, 0xf0d088);
 
-    if (!multi && e.type === "hero") {
+    if (!multi && e.hero) {
       T(g, `ÚROVEŇ ${e.level}`, L.x + L.w - 7, L.y + 5, 0xffe08a, { align: "right" });
     }
 
@@ -619,14 +626,14 @@
       if (e.order && STATUS[e.order.type]) status = STATUS[e.order.type];
       if (e.carry) status = e.carry === "gold" ? "NOSÍ ZLATO" : "NOSÍ DŘEVO";
 
-      if (e.type === "hero") {
-        const need = e.level * 40;
-        bar(g, x0, L.y + 49, iw, 3, e.xp / need, css(0xffbf45), 0);
-        T3(g, `XP ${e.xp}/${need}`, x0 + Math.round(iw / 2), L.y + 55, 0xffe08a, { align: "center", shadow: null });
-        const f = Math.ceil(e.fireCooldown);
-        const h = Math.ceil(e.healCooldown);
-        T3(g, f > 0 ? `OHEN ${f}S` : "OHEN OK", x0, L.y + 55, f > 0 ? MUTED : 0xffa060, { shadow: null });
-        T3(g, h > 0 ? `LECENI ${h}S` : "LECENI OK", x0 + iw, L.y + 55, h > 0 ? MUTED : 0x7fe0b0, { align: "right", shadow: null });
+      if (e.hero) {
+        // mana (modrá) a zkušenosti (jantarová) pod sebou, na 5. úrovni plný pruh
+        const max = PK.rules.HERO.maxLevel;
+        const need = PK.rules.HERO.xpNeeded(e.level);
+        bar(g, x0, L.y + 47, iw, 2, e.maxMana ? e.mana / e.maxMana : 0, css(0x5aa8ff), 0);
+        bar(g, x0, L.y + 51, iw, 1, e.level >= max ? 1 : e.xp / need, css(0xffbf45), 0);
+        T3(g, `MANA ${Math.floor(e.mana)}/${e.maxMana}`, x0, L.y + 55, 0x9cc8ff, { shadow: null });
+        T3(g, e.level >= max ? "MAX" : `XP ${e.xp}/${need}`, x0 + iw, L.y + 55, 0xffe08a, { align: "right", shadow: null });
       } else {
         T(g, status, x0, L.y + 49, status === "ČEKÁ" ? MUTED : 0xf0d088);
       }
@@ -639,8 +646,8 @@
       }
 
       const detail = {
-        hall: "Dělníci, nástroje, opevnění.",
-        barracks: "Výcvik armády a hrdiny.",
+        hall: "Dělníci, hrdina, nástroje, opevnění.",
+        barracks: "Výcvik vojáků, lučištníků a mnichů.",
         tower: "Automatická obrana.",
         hut: "Limit jednotek +5.",
         smithy: "Zbroj, zbraně a střelba.",
@@ -663,6 +670,12 @@
       if (def) {
         stat(PK.icons.small.sword, def.damage, x0);
         stat(PK.icons.small.range, def.range, x0 + 40);
+      }
+
+      if (e.heroT) {
+        T(g, `VÝCVIK HRDINY ${Math.round(e.heroT * 100)} %`, x0, L.y + 38, 0xffe08a);
+        bar(g, x0, L.y + 49, iw, 4, e.heroT, css(0xffbf45), 8);
+        return;
       }
 
       if (e.research) {
@@ -737,7 +750,7 @@
     }
 
     const shift = press ? 1 : hover && !off ? -1 : 0;
-    const icon = off || st.afford === false ? PK.icons.bigOff[b.type] : PK.icons.big[b.type];
+    const icon = off || st.afford === false || st.manaOk === false ? PK.icons.bigOff[b.type] : PK.icons.big[b.type];
     g.drawImage(icon, b.x + 6 + (press ? 1 : 0), b.y + 3 + (press ? 1 : 0) + (hover && !press ? shift : 0));
 
     if (off) dim(g, b.x + 2, b.y + 2, BW - 4, BH - 4);
@@ -778,8 +791,9 @@
       }
 
       T3(g, String(Math.ceil(st.cd)), b.x + 14, b.y + 12, 0xffffff, { align: "center", outline: C.ink });
-    } else if (b.type === "fire" || b.type === "heal") {
-      if (!off) T3(g, "OK", b.x + BW - 3, b.y + 21, 0x9ef0b0, { align: "right", shadow: null });
+    } else if (st.mana != null) {
+      // cena schopnosti v maně; když chybí, číslo zčervená
+      T3(g, String(st.mana), b.x + BW - 3, b.y + 21, st.manaOk === false ? BAD : 0x9cc8ff, { align: "right", shadow: null });
     }
   }
 
@@ -953,6 +967,6 @@
   }
 
   PK.hud = {
-    buttons, types: ALL.map(([type]) => type), hitButton, selectionHit, setCard, cardHas, minimapHit, relayout, draw, drawEnd, drawLogo, layout: LAYOUT
+    buttons, types: ALL.map(([type]) => type), tip: type => TIPS[type] || "", hitButton, selectionHit, setCard, cardHas, minimapHit, relayout, draw, drawEnd, drawLogo, layout: LAYOUT
   };
 })();

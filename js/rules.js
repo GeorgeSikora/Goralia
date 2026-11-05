@@ -26,8 +26,8 @@
     workshop: { gold: 150, wood: 95 }
   };
 
-  // Kde se co cvičí. Dělníka cvičí hlavní budova týmu (R.HQ).
-  const TRAINED_AT = { soldier: "barracks", archer: "barracks", hero: "barracks", monk: "barracks", knight: "stable", catapult: "workshop" };
+  // Kde se co cvičí. Dělníka a hrdinu cvičí hlavní budova týmu (R.HQ, "hall").
+  const TRAINED_AT = { soldier: "barracks", archer: "barracks", hero: "hall", monk: "barracks", knight: "stable", catapult: "workshop" };
   // Stáj a dílna potřebují dostavěná kasárna.
   const REQUIRES = { stable: "barracks", workshop: "barracks" };
 
@@ -62,7 +62,7 @@
     worker:  { hp: 65,  speed: 55, damage: 6,  range: 22,  delay: 0.85 },
     soldier: { hp: 110, speed: 45, damage: 15, range: 25,  delay: 0.72 },
     archer:  { hp: 70,  speed: 49, damage: 11, range: 110, delay: 1.04 },
-    hero:    { hp: 210, speed: 53, damage: 23, range: 34,  delay: 0.68 },
+    hero:    { hp: 240, speed: 52, damage: 21, range: 30,  delay: 0.7 }, // hrdina lidí: pěší rytíř se štítem
     monk:     { hp: 60,  speed: 48, damage: 4,  range: 90,  delay: 1.4 },
     knight:   { hp: 190, speed: 72, damage: 18, range: 27,  delay: 0.85 },
     catapult: { hp: 130, speed: 30, damage: 34, range: 200, delay: 3.6 },
@@ -71,7 +71,44 @@
     skeleton:    { hp: 55,  speed: 47, damage: 10, range: 105, delay: 1.1 },
     abomination: { hp: 300, speed: 37, damage: 24, range: 28,  delay: 1.15 },
     banshee:     { hp: 80,  speed: 54, damage: 15, range: 92,  delay: 1.25 },
-    lich:        { hp: 800, speed: 42, damage: 26, range: 75,  delay: 1.2 }
+    lich:        { hp: 680, speed: 42, damage: 24, range: 75,  delay: 1.2 } // hrdina nemrtvých
+  };
+
+  /*
+   * Hrdinové: každá frakce má jednoho (lidé rytíře, nemrtví licha). Hráč ho dostane na začátku zápasu,
+   * po smrti si ho vycvičí znovu v hlavní budově za cenu (COSTS.hero) a čas (train). Nemrtví nemají
+   * ekonomiku, lich jim povstane sám po UNDEAD.lichRespawn sekundách.
+   * Úrovně 1..maxLevel ze zabitých nepřátel: víc zdraví, útoku, many a kratší přebíjení schopností.
+   * Každý hrdina má 3 schopnosti (klávesy Q/W/E): mana = cena, cd = přebíjení v sekundách,
+   * range = dosah cílené schopnosti (klik na mapu), ostatní se sesílají hned kolem hrdiny.
+   */
+  const HERO = {
+    types: { human: "hero", undead: "lich" },
+    maxLevel: 5,
+    xpKill: 25,
+    xpNeeded: level => level * 40,
+    train: 25, // s výcviku v hlavní budově
+    cdPerLevel: 0.07, // každá úroveň nad první zkrátí přebíjení o 7 %
+    mana: { base: 110, perLevel: 15, regen: 2.2, regenPerLevel: 0.35 },
+    perLevel: { hero: { hp: 30, damage: 3 }, lich: { hp: 60, damage: 3 } },
+    abilities: {
+      hero: [
+        // Výpad: rytíř se vrhne k cíli a zasáhne všechny nepřátele kolem místa dopadu
+        { id: "lunge", name: "Výpad", mana: 30, cd: 9, range: 150, target: true, speed: 460, radius: 34, damage: 34, perLevel: 9 },
+        // Bojový pokřik: spojenci v okolí (i rytíř) dávají po dobu time víc poškození
+        { id: "warcry", name: "Bojový pokřik", mana: 40, cd: 20, radius: 130, time: 8, bonus: 0.3, perLevel: 0.05 },
+        // Štítová zeď: rytíř a spojenci těsně u něj dostávají méně poškození
+        { id: "shieldwall", name: "Štítová zeď", mana: 35, cd: 18, radius: 75, time: 6, self: 0.5, allies: 0.3, perLevel: 0.03 }
+      ],
+      lich: [
+        // Ohnivá koule: poškození až po dopadu (Match.blasts), budovy zasáhne ve větším okruhu
+        { id: "fireball", name: "Ohnivá koule", mana: 35, cd: 8, range: 190, target: true, unitR: 47, buildingR: 70, damage: 46, perLevel: 11 },
+        // Vyvolání: dva kostlivci vylezou ze země vedle licha a po life sekundách se rozpadnou
+        { id: "summon", name: "Vyvolání kostlivců", mana: 50, cd: 22, count: 2, life: 40 },
+        // Mrazivá aura: nepřátelé kolem licha chodí i útočí pomaleji, dokud aura trvá
+        { id: "frost", name: "Mrazivá aura", mana: 40, cd: 18, radius: 100, time: 7, slow: 0.45, attack: 1.35, perLevel: 0.03 }
+      ]
+    }
   };
 
   // Všechny základny mají stejné zdraví, aby byl souboj férový.
@@ -134,9 +171,7 @@
       necropolis: { damage: 28, range: 190, delay: 1.1 },
       ziggurat: { damage: 17, range: 165, delay: 1.0 }
     },
-    lichRespawn: 120,
-    novaEvery: 11,          // pekelný výbuch licha
-    novaRadius: 85,
+    lichRespawn: 120,       // s: lich (hrdina nemrtvých) znovu povstane z Nekropole
     firstWave: 240,         // s: první útok
     waveEvery: 110,         // s: rozestup vln, každou vlnou kratší...
     minWaveEvery: 60,       // ...až na tohle minimum
@@ -182,7 +217,7 @@
   const isWinter = (d = new Date()) => (d.getMonth() === 11) || (d.getMonth() === 0 && d.getDate() <= 6);
 
   return {
-    UNDEAD, COSTS, TRAINED_AT, REQUIRES, UPGRADES, ARMOR_PER_LEVEL, WEAPON_PER_LEVEL, MELEE, ARCHERY, TOOLS_PER_LEVEL, MASONRY,
+    UNDEAD, HERO, COSTS, TRAINED_AT, REQUIRES, UPGRADES, ARMOR_PER_LEVEL, WEAPON_PER_LEVEL, MELEE, ARCHERY, TOOLS_PER_LEVEL, MASONRY,
     TOWER, KNIGHT, CATAPULT, MONK, UNITS, BUILDING_HP, FOOTPRINT, footRect, footFree, BUILD_TIME, REPAIR, TEAMS, HQ, TEAM_NAMES, MAX_PLAYERS, BASE_GOLD, BASE_WOOD, GOLD_AMOUNT,
     SUPPLY_BASE, SUPPLY_PER_HUT, SUPPLY_MAX, supplyCap, MAX_BUILDINGS, COUNTDOWN, WINTER, isWinter
   };
