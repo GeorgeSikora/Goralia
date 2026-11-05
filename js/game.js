@@ -358,8 +358,9 @@
         const p = players.find(q => q.slot === i);
         return p ? { name: p.name, ai: p.ai } : null;
       });
-      simMatch = new sim.Match(map, roster, { countdown: 0, winter: !!(PK.winter && PK.winter.on) });
       tutorial = !!cfg.tutorial && !!PK.tutorial;
+      // tutoriál učí základy: bez hrdinů, ať nový hráč nevybere hrdinu místo dělníka
+      simMatch = new sim.Match(map, roster, { countdown: 0, winter: !!(PK.winter && PK.winter.on), heroes: !tutorial });
       if (tutorial) PK.tutorial.setup(simMatch, me, { touch: usesTouch(), notify: onTutorialReport });
       applySnapshot(simMatch.snapshot(me));
       simMatch.endTick();
