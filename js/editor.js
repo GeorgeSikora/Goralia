@@ -929,7 +929,7 @@
 
   /* ---------- skutečný vzhled ---------- */
   function toggleReal() {
-    if (!view.real && isBig() && !confirm("Skutečný vzhled velké mapy se peče déle (desítky sekund) a potřebuje hodně paměti. Pokračovat?")) return;
+    if (!view.real && isBig() && !confirm(PK.tr("Skutečný vzhled velké mapy se peče déle (desítky sekund) a potřebuje hodně paměti. Pokračovat?"))) return;
     view.real = !view.real;
     if (view.real) bake(); else scheduleDraw();
   }
@@ -1104,7 +1104,7 @@
 
   async function deleteMap(id) {
     if (!canEdit) return say("Mazat mapy smí jen přihlášený administrátor.", "error");
-    if (!id || !confirm(`Opravdu smazat mapu „${id}“ ze serveru?`)) return;
+    if (!id || !confirm(PK.tr(`Opravdu smazat mapu „${id}“ ze serveru?`))) return;
 
     try {
       const res = await fetch(`/api/maps/${encodeURIComponent(id)}`, { method: "DELETE" });
@@ -1112,7 +1112,7 @@
         const data = await res.json().catch(() => ({}));
         const why = (data.errors && data.errors[0]) || `Chyba serveru (${res.status}).`;
         say(res.status === 403 ? "Mazat mapy smí jen přihlášený administrátor." : why, "error");
-        alert(`Mapu se nepodařilo smazat.\n${why}`);
+        alert(`${PK.tr("Mapu se nepodařilo smazat.")}\n${PK.tr(why)}`);
         return;
       }
 
@@ -1121,11 +1121,11 @@
       say(`Smazáno: ${id}.`, "ok");
     } catch (e) {
       say("Server není dostupný.", "error");
-      alert("Server není dostupný.");
+      alert(PK.tr("Server není dostupný."));
     }
   }
 
-  const confirmDiscard = () => !dirty || confirm("Neuložené změny se ztratí. Pokračovat?");
+  const confirmDiscard = () => !dirty || confirm(PK.tr("Neuložené změny se ztratí. Pokračovat?"));
 
   $("e-file").addEventListener("change", ev => {
     const file = ev.target.files[0];
@@ -1257,7 +1257,7 @@
     if (!Number.isFinite(w) || !Number.isFinite(h)) return fail("Zadej rozměry mapy.");
 
     const saving = propsMode === "save" || propsMode === "saveas";
-    if (saving && id !== savedId && serverMaps.some(m => m.id === id) && !confirm(`Mapa „${id}“ už na serveru je. Přepsat?`)) return;
+    if (saving && id !== savedId && serverMaps.some(m => m.id === id) && !confirm(PK.tr(`Mapa „${id}“ už na serveru je. Přepsat?`))) return;
 
     if (propsMode === "new") {
       const next = blank();
