@@ -529,9 +529,9 @@
     const spread = (name, count, r) => {
       for (let i = 0, k = 0; i < count * 40 && k < count; i++) if (put(name, 14 + rnd() * (MW - 28), 30 + rnd() * (MH - 42), r)) k++;
     };
-    spread("snowmanA", n(1), 16);
-    spread("snowmanB", n(1), 16);
-    spread("snowmanC", n(1), 16);
+    spread("snowmanA", n(0.25), 16);
+    spread("snowmanB", n(0.25), 16);
+    spread("snowmanC", n(0.25), 16);
   };
 
   /* ---------- dárky ze simulace (game.js je řadí podle hloubky) ---------- */
