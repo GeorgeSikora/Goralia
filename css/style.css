@@ -1042,5 +1042,5 @@ a.btn { display: block; text-align: center; text-decoration: none; }
 }
 .adminbar-input:focus { outline: 2px solid var(--amber); outline-offset: 2px; }
 
-/* volba jazyka pod tlačítky hlavního menu */
-.lang-pick { display: block; width: auto; margin: 10px auto 0; font-size: 13px; padding: 4px 8px; cursor: pointer; }
+/* volba jazyka pod tlačítky hlavního menu: vlajky se jmény jazyků (css/flags.css) */
+.lang-pick { display: flex; justify-content: center; margin: 14px auto 0; }

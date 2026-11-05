@@ -40,6 +40,7 @@
 <link rel="stylesheet" href="css/fame.css">
 <link rel="stylesheet" href="css/events.css">
 <link rel="stylesheet" href="css/challenges.css">
+<link rel="stylesheet" href="css/flags.css">
 </head>
 <body>
 <div id="loading" class="loading" role="progressbar" aria-label="Načítání hry" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-busy="true">
@@ -99,7 +100,7 @@
         <a id="m-admin" class="btn big" href="/admin" target="_blank" rel="noopener" hidden>Server panel</a>
         <button id="m-settings" class="btn big" type="button">Nastavení</button>
         <button id="m-help" class="btn big" type="button">Ovládání</button>
-        <select id="m-lang" class="field lang-pick" aria-label="Jazyk"></select>
+        <div id="m-lang" class="lang-flags lang-pick" aria-label="Jazyk"></div>
       </section>
 
       <section id="panel-online" class="page" data-page="online" hidden>
@@ -278,10 +279,10 @@
 
       <section id="panel-settings" class="page" data-page="settings" hidden>
         <h2>Nastavení</h2>
-        <label class="row">
+        <div class="row">
           <span>Jazyk</span>
-          <select id="s-lang" class="field" aria-label="Jazyk"></select>
-        </label>
+          <div id="s-lang" class="lang-flags compact" aria-label="Jazyk"></div>
+        </div>
         <label class="row">
           <span>Hlasitost</span>
           <input id="s-volume" type="range" min="0" max="100" step="5">
@@ -399,6 +400,7 @@
 <script src="js/lang/en.js"></script>
 <script src="js/lang/szl.js"></script>
 <script src="js/lang/hrdinove.js"></script>
+<script src="js/flags.js"></script>
 <script src="js/loader.js"></script>
 </body>
 </html>
