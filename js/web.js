@@ -24,7 +24,7 @@
   const LINE = 12; // výška řádku písma "5" v art px (včetně háčků a čárek)
 
   function pixelLines(lines, { color = C.a[3], shadow = C.ink, align = "left" } = {}) {
-    const w = Math.max(...lines.map(l => PK.textWidth(l.toUpperCase(), "5"))) + 3;
+    const w = Math.max(...lines.map(l => PK.textWidth(l, "5"))) + 3;
     const h = lines.length * LINE + 2;
     const { c, g } = PK.makeCanvas(w, h);
     lines.forEach((line, i) => {
@@ -53,7 +53,7 @@
       h.dataset.key = key;
 
       const center = h.classList.contains("center");
-      const c = pixelLines(PK.wrap(h.dataset.text.toUpperCase(), maxW), { align: center ? "center" : "left" });
+      const c = pixelLines(PK.wrap(h.dataset.text, maxW), { align: center ? "center" : "left" });
       c.style.width = `${c.width * zoom}px`;
       c.style.height = `${c.height * zoom}px`;
       const old = h.querySelector("canvas");
@@ -67,6 +67,8 @@
       const c = pixelLines([b.dataset.pix], { color: C.a[4], shadow: C.r[1] });
       c.style.width = `${c.width * zoom}px`;
       c.style.height = `${c.height * zoom}px`;
+      const old = b.querySelector("canvas.pix");
+      if (old) { old.replaceWith(c); continue; }
       b.innerHTML = `<span class="label">${b.textContent}</span>`;
       b.prepend(c);
       b.classList.add("has-pix");
@@ -501,6 +503,12 @@
       safe(roster);
       safe(cast);
     }
+    // jiný jazyk: pixelové nadpisy a tlačítka se překreslí (HTML přeloží js/i18n.js samo)
+    addEventListener("pk-lang", () => {
+      for (const h of document.querySelectorAll("h2.pix-h")) delete h.dataset.key;
+      safe(headings);
+      safe(buttons);
+    });
     let resizeT = 0;
     addEventListener("resize", () => {
       clearTimeout(resizeT);

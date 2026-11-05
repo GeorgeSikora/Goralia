@@ -2108,7 +2108,7 @@
       c.fillStyle = "#9b94b8";
       c.font = "12px monospace";
       c.textAlign = "center";
-      c.fillText("Načítám náhled…", cv.width / 2, cv.height / 2);
+      c.fillText(PK.t("Načítám náhled…"), cv.width / 2, cv.height / 2);
 
       if (!previewBusy.has(map.id)) {
         previewBusy.add(map.id);
@@ -2897,7 +2897,7 @@
   });
   $("m-leave").addEventListener("click", () => (spectator ? leaveSpectate() : leaveOnline()));
   $("m-surrender").addEventListener("click", () => {
-    if (!liveMatch() || state !== "playing" || !window.confirm("Opravdu se chceš vzdát?")) return;
+    if (!liveMatch() || state !== "playing" || !window.confirm(PK.tr("Opravdu se chceš vzdát?"))) return;
     sendCmd({ c: "surrender" });
     closeMenu();
   });
@@ -2950,6 +2950,9 @@
     $("s-shaders").disabled = !shOk;
     $("s-shaders-label").textContent = shOk ? "Světla a stíny (shadery)" : "Světla a stíny (prohlížeč nepodporuje WebGL 2)";
   }
+
+  PK.i18n.bindSelect($("s-lang"));
+  PK.i18n.bindSelect($("m-lang"));
 
   volumeEl.addEventListener("input", () => {
     audio.unlock();
