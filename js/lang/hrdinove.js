@@ -1,8 +1,7 @@
 /*
  * Texty hrdinů (schopnosti, výcvik v gmině, nápovědy) v angličtině a po našimu.
- * Samostatný soubor, aby se nepletl se slovníky js/lang/en.js a szl.js. Klíč = český text z kódu (js/i18n.js).
+ * Načítá se hned po js/lang/en.js a szl.js. Klíč = český text z kódu (js/i18n.js).
  * Po našimu podle /mnt/project-files/i18n/ponaszymu-pravidla.md: český pravopis + ł, ó, dź, žádné dlouhé samohlásky.
- * Bez js/i18n.js (starší stránka) se nic nestane.
  */
 (() => {
   const PK = window.PK;
