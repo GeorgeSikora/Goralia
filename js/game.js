@@ -3169,6 +3169,16 @@
   /* ======================= hit visuals ======================= */
   const RANGED = new Set(["archer", "tower", "skeleton", "banshee", "lich", "ziggurat", "necropolis"]);
   const BOLTS = new Set(["tower", "banshee", "lich", "ziggurat", "necropolis"]);
+  // z čeho je cíl zásahu (fx.hit): krev, jiskry ze zbroje, kosti, ektoplazma, sliz, kámen, dřevo, žhavé střepy
+  const HIT_MAT = { skeleton: "bone", lich: "bone", banshee: "ghost", ghoul: "rot", abomination: "rot", knight: "steel", hero: "steel", soldier: "steel", catapult: "wood" };
+  function hitMaterial(t) {
+    if (t.kind === "building") {
+      const spr = PK.buildings.get(t.type, t.team);
+      return spr.hell ? "ember" : t.type === "stable" || t.type === "workshop" || t.type === "hut" ? "wood" : "stone";
+    }
+    return HIT_MAT[t.type] || "flesh";
+  }
+
   // Čísla zásahů počítá simulace; tady jsou jen efekty a zvuky (volá je událost "hit").
   function hitVisuals(attacker, target, amount, opts, killed) {
     let wait = opts.delay || 0;
@@ -3179,7 +3189,7 @@
     const friendlyFire = target.team === me;
 
     const impact = () => {
-      if (!opts.silent) fx.hit(tx, ty, amount >= 20);
+      if (!opts.silent) fx.hit(tx, ty, amount >= 20, hitMaterial(target), dirTo);
       if (target.kind === "unit" || target.hp > 0) target.flashT = 0.12;
       fx.text(tx, ty - (target.kind === "building" ? 56 : 28), Math.round(amount), friendlyFire ? 0xff8f7a : 0xfff0c4);
       if (!opts.silent) audio.play(target.kind === "building" || attacker.type === "hero" || attacker.type === "abomination" ? "hitHeavy" : "hit", { x: tx });
@@ -3376,6 +3386,7 @@
     }
 
     emitAmbient(dt);
+    if (PK.critters) PK.critters.update(dt, units);
     fx.update(dt);
   }
 
@@ -3401,6 +3412,12 @@
           const [sx, sy] = spr.smoke[Math.floor(Math.random() * spr.smoke.length)];
           fx.smoke(ox + sx, oy + sy, b.type === "citadel" || !!spr.hell);
         }
+      }
+
+      // kovárna: z výhně občas odletí sprška jisker (rána kladivem)
+      if (b.type === "smithy" && spr.glows.length && Math.random() < dt * 0.8 && fx.anvil) {
+        const L = spr.glows[0];
+        fx.anvil(ox + L.x + 3, oy + L.y - 1);
       }
 
       if (spr.flames && spr.flames.length && Math.random() < dt * 9) {
@@ -3681,6 +3698,19 @@
       // blueprint: průhledná modrá předloha celé budovy, hotová část roste od země nahoru
       const top = Math.round(y0 + spr.h * (1 - prog));
 
+      // staveniště: vyměřený základ z kolíků a provázku, vedle hromádka materiálu
+      if (!reflecting && PK.buildings.sitePile) {
+        const fw = spr.w * 0.42;
+        g.fillStyle = spr.hell ? "rgba(255,143,74,0.55)" : "rgba(247,241,223,0.5)";
+        for (let x = -fw; x <= fw; x += 0.5) {
+          if ((Math.round(x * 2) & 3) === 3) continue;
+          g.fillRect(Math.round((footX + x) * 2) / 2, footY - 1, 0.5, 0.5);
+          g.fillRect(Math.round((footX + x * 0.9) * 2) / 2, footY - 7, 0.5, 0.5);
+        }
+        g.fillStyle = spr.hell ? "#a8323a" : "#946b45";
+        for (const [px, py] of [[-fw, -1], [fw, -1], [-fw * 0.9, -7], [fw * 0.9, -7]]) g.fillRect(Math.round((footX + px) * 2) / 2, footY + py - 1, 0.5, 1.5);
+      }
+
       g.globalAlpha = 0.5;
       g.drawImage(blueprint(spr), x0, y0);
       g.globalAlpha = 1;
@@ -3719,10 +3749,19 @@
         }
       }
 
+      // hromádka materiálu u pravého rohu před stavbou, ubývá, jak stavba roste
+      if (!reflecting && PK.buildings.sitePile && prog < 0.85) {
+        const pile = PK.buildings.sitePile(!!spr.hell);
+        g.drawImage(pile.c, x0 + spr.w - 8, footY - pile.h + 3);
+      }
+
       return;
     }
 
     g.drawImage(spr.c, x0, y0);
+    // poškození: praskliny a saze pod 2/3 zdraví, díry a ohořelé trhliny pod 1/3
+    const hpFrac = b.hp / b.maxHp;
+    if (hpFrac < 0.66 && PK.buildings.damage) g.drawImage(PK.buildings.damage(spr, hpFrac < 0.33 ? 2 : 1), x0, y0);
     if (shading) PK.shaders.sheen(x0, y0, x0 + spr.w, y0 + spr.h, 1);
 
     if (b.flashT > 0) {
@@ -3765,11 +3804,17 @@
     const s = d.spr;
     const sh = world.shadow("ellipse", Math.max(8, s.w - 4), 4);
 
-    if (!reflecting) {
+    // ploché kulisy (květy, lekníny, kosti) stín nevrhají
+    if (!reflecting && !s.flat) {
       g.drawImage(sh, d.x - (sh.width >> 1) + 2, d.y - (sh.height >> 1));
     }
 
     g.drawImage(s.c, d.x - s.ax, d.y - s.ay);
+    // větrný mlýn (decor.js): lopatky se pomalu točí, každý mlýn jinou rychlostí
+    if (s.blades) {
+      const f = Math.floor(clock * (3 + d.ph * 0.3) + d.ph * 4) % s.blades.length;
+      g.drawImage(s.blades[f], d.x - s.ax + s.mill[0] - s.bladeR, d.y - s.ay + s.mill[1] - s.bladeR);
+    }
     if (shading && d.name.startsWith("crystal")) PK.shaders.sheen(d.x - s.ax, d.y - s.ay, d.x - s.ax + s.w, d.y - s.ay + s.h, 0);
 
     if (s.flame) flameAt(d.x - s.ax + s.flame.x, d.y - s.ay + s.flame.y + 1, d.x, 1);
@@ -3801,6 +3846,8 @@
       S.occluder(o.x / 2, o.y / 2 + 9, 11, 16);
     } else if (it.k === 5) {
       S.occluder(o.x / 2, o.y / 2 + 2, 3, 5);
+    } else if (it.k === 6) {
+      return; // zvířátka stín světel nevrhají
     } else {
       const s = o.spr;
       if (!s.glow && s.h > 8) S.occluder(o.x, o.y - 1, Math.max(2, s.w * 0.3), s.h * 0.8);
@@ -4276,6 +4323,7 @@
     if (it.k === 0) return [Math.round(o.x / 2), Math.round(o.y / 2) + 15, 10];
     if (it.k === 1) return [Math.round(o.x / 2), Math.round(o.y / 2) + 13, 14];
     if (it.k === 5) return [Math.round(o.x / 2), Math.round(o.y / 2) + 3, 5];
+    if (it.k === 6) return [o.x, o.y, 4];
     return [o.x, o.y, o.spr.w / 2];
   }
 
@@ -4316,6 +4364,7 @@
       else if (it.k === 2) drawDoodad(it.o);
       else if (it.k === 3) drawBuilding(it.o);
       else if (it.k === 5) { if (PK.winter) PK.winter.drawGift(g, it.o, clock, reflecting); }
+      else if (it.k === 6) PK.critters.draw(g, it.o, clock, reflecting);
       else drawUnit(it.o);
       rg.restore();
     }
@@ -4382,6 +4431,7 @@
     for (const gf of gifts) if (visible(gf.x / 2, gf.y / 2)) list.push({ y: gf.y / 2 + 3, k: 5, o: gf });
     for (const b of buildings) if (visible(b.x / 2, b.y / 2)) list.push({ y: b.y / 2 + 19.5, k: 3, o: b });
     for (const u of units) if (visible(u.x / 2, u.y / 2)) list.push({ y: u.y / 2 + 6, k: 4, o: u });
+    if (PK.critters) PK.critters.collect(list, visible); // zvířátka (critters.js), k = 6
     list.sort((a, b) => a.y - b.y);
     if (shading) for (const it of list) addOccluder(it);
     if (shading) drawReflections();
@@ -4392,10 +4442,12 @@
       else if (it.k === 2) drawDoodad(it.o);
       else if (it.k === 3) drawBuilding(it.o);
       else if (it.k === 5) { if (PK.winter) PK.winter.drawGift(g, it.o, clock, reflecting); }
+      else if (it.k === 6) PK.critters.draw(g, it.o, clock, reflecting);
       else drawUnit(it.o);
     }
 
     fx.drawAir(g, T);
+    if (PK.critters) PK.critters.drawAir(g, T, visible);
     drawLights(false);
     g.restore();
 
@@ -4413,6 +4465,7 @@
     g.translate(-cam.x, -cam.y);
 
     fx.drawAmbient(g, T);
+    if (PK.buildings.drawNight) PK.buildings.drawNight(g, T, buildings, visible); // okna v noci
     if (PK.halloween && PK.halloween.draw) PK.halloween.draw(g, T, world, visible);
     if (PK.winter && PK.winter.on) PK.winter.draw(g, T, world, visible, { units, buildings, gifts, cam, zoom, vw, vh });
     if (shading) PK.shaders.end();

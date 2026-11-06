@@ -30,6 +30,11 @@
   const GHOST = [0xcfffe8, 0x5ff0c0, 0x2fa58c, 0x1b3836].map(c => css(c));
   const BONE = [0xd8cfb8, 0xa59b88, 0x6d6558].map(c => css(c));
   const SOIL = [0x7b5b45, 0x5a4129, 0x3b2a20].map(c => css(c));
+  const BLOOD = [0xd65a3c, 0xa8323a, 0x6e1f2c, 0x3b1220].map(c => css(c));
+  const ICHOR = [0x7a9a4a, 0x4f6e38, 0x2f4a2a, 0x1b2e20].map(c => css(c));
+  const BONE_DUST = [0xd8cfb8, 0xb8ae98, 0x8a8070].map(c => css(c));
+  const STONE_CHIP = [0xc6c7d3, 0x9d9fb5, 0x767892, 0x555672].map(c => css(c));
+  const EMBER_CHIP = [0xffd27a, 0xff8f4a, 0xd65a3c, 0x6e1f2c].map(c => css(c));
   const R_FROST = PK.rules ? PK.rules.HERO.abilities.lich[2].radius : 100; // poloměr mrazivé aury (logické jednotky)
 
   const F = 1 / PK.HD; // jeden jemný px v art px
@@ -55,7 +60,7 @@
     state.parts.push({
       kind, x, y, vx, vy, life, max: life,
       g: o.g || 0, size: o.size || 1, grow: o.grow || 0, drag: o.drag || 0,
-      c: o.c || FIRE, hi: o.hi || null, streak: !!o.streak, fade: !!o.fade, sway: o.sway || 0, ph: R() * 6.28, additive: !!o.additive
+      c: o.c || FIRE, hi: o.hi || null, ground: o.ground ?? null, streak: !!o.streak, fade: !!o.fade, sway: o.sway || 0, ph: R() * 6.28, additive: !!o.additive
     });
   }
 
@@ -125,17 +130,57 @@
       else state.timers.push({ t: sec, fn });
     },
 
-    hit(x, y, strong) {
+    /*
+     * Zásah. mat = z čeho je cíl: flesh (krev), steel (zbroj: jiskry), bone (kostlivci: úlomky
+     * a kostní prach), ghost (přízraky: ektoplazma), rot (ghúlové: tmavý sliz), stone / wood
+     * (budovy: úlomky a prach), ember (pekelné budovy: žhavé střepy). dir = odkud přišla rána.
+     */
+    hit(x, y, strong, mat, dir = 0) {
       const ax = A(x);
       const ay = A(y);
-      state.fx.push({ kind: "burst", x: ax, y: ay, life: 0.22, max: 0.22, big: !!strong, rot: R() < 0.5 });
+      state.fx.push({ kind: "burst", x: ax, y: ay, life: 0.22, max: 0.22, big: !!strong, rot: R() < 0.5, mat });
       const n = strong ? 12 : 6;
+      const spark = mat !== "ghost" && mat !== "rot";
 
-      for (let i = 0; i < n; i++) {
-        const a = R() * Math.PI * 2;
-        const s = rnd(25, 75);
-        emit("spark", ax, ay, Math.cos(a) * s, Math.sin(a) * s - 18, rnd(0.16, 0.38), { g: 160, c: HURT, streak: true });
+      if (spark) {
+        for (let i = 0; i < (mat === "steel" ? n + 4 : n); i++) {
+          const a = R() * Math.PI * 2;
+          const s = rnd(25, 75);
+          emit("spark", ax, ay, Math.cos(a) * s + dir * 20, Math.sin(a) * s - 18, rnd(0.16, 0.38), { g: 160, c: mat === "steel" ? STEEL : HURT, streak: true });
+        }
       }
+
+      const k = strong ? 2 : 1;
+      if (mat === "flesh" || mat === "steel") {
+        // kapky krve odlétnou po směru rány a dopadnou na zem
+        for (let i = 0; i < 4 * k + (mat === "flesh" ? 2 : 0); i++) {
+          emit("blood", ax + rnd(-1, 1), ay + rnd(-1, 1), dir * rnd(12, 40) + rnd(-10, 10), rnd(-40, -10), rnd(0.3, 0.5), { c: BLOOD, g: 220, ground: ay + 6 + rnd(0, 3) });
+        }
+      } else if (mat === "bone") {
+        for (let i = 0; i < 4 * k; i++) emit("chip", ax, ay, dir * rnd(10, 40) + rnd(-20, 20), rnd(-50, -15), rnd(0.35, 0.6), { c: BONE, g: 200, size: R() < 0.3 ? 2 : 1 });
+        for (let i = 0; i < 3 * k; i++) emit("dust", ax + rnd(-2, 2), ay + rnd(-2, 2), rnd(-8, 8), rnd(-10, -2), rnd(0.4, 0.7), { c: BONE_DUST, size: 2, grow: 2, fade: true, drag: 2 });
+      } else if (mat === "ghost") {
+        for (let i = 0; i < 6 * k; i++) {
+          const a = R() * Math.PI * 2;
+          emit("mote", ax + Math.cos(a) * 2, ay + Math.sin(a) * 2, Math.cos(a) * rnd(8, 22), Math.sin(a) * rnd(6, 16) - 10, rnd(0.4, 0.8), { c: GHOST, sway: 5, additive: true });
+        }
+      } else if (mat === "rot") {
+        for (let i = 0; i < 5 * k; i++) emit("blood", ax, ay, dir * rnd(10, 35) + rnd(-12, 12), rnd(-35, -8), rnd(0.3, 0.5), { c: ICHOR, g: 220, ground: ay + 6 + rnd(0, 3) });
+      } else if (mat === "stone" || mat === "wood" || mat === "ember") {
+        const c = mat === "stone" ? STONE_CHIP : mat === "wood" ? CHIP : EMBER_CHIP;
+        for (let i = 0; i < 4 * k; i++) emit("chip", ax + rnd(-3, 3), ay, dir * rnd(10, 35) + rnd(-25, 25), rnd(-55, -20), rnd(0.4, 0.7), { c, g: 190, size: R() < 0.4 ? 2 : 1, additive: mat === "ember" });
+        for (let i = 0; i < 2 * k; i++) emit("dust", ax + rnd(-4, 4), ay + rnd(0, 4), rnd(-8, 8), rnd(-12, -3), rnd(0.5, 0.9), { c: mat === "ember" ? SMOKE.slice(1) : DUST, hi: mat === "ember" ? null : DUST_HI, size: 3, grow: 3, fade: true, drag: 1.5 });
+      }
+    },
+
+    // sprška jisker od kovadliny (art px)
+    anvil(x, y) {
+      for (let i = 0; i < 7; i++) {
+        const a = -Math.PI / 2 + rnd(-1.2, 1.2);
+        const s = rnd(20, 55);
+        emit("spark", x, y, Math.cos(a) * s, Math.sin(a) * s, rnd(0.25, 0.5), { g: 170, c: FIRE.slice(0, 4), streak: true, additive: true });
+      }
+      PK.world && PK.world.light && state.fx.push({ kind: "flash", x, y: y + 4, r: 5, life: 0.15, max: 0.15 });
     },
 
     slash(x, y, dir, color = STEEL) {
@@ -468,10 +513,15 @@
     add("firefly", Math.round(18 * area), false, 0.2, 0.6);
     add("ash", Math.round(22 * area), true, 5, 12);
     add("leaf", Math.round(7 * area), false, 5, 10);
+    add("seed", Math.round(9 * area), false, 3, 7); // chmýří pampelišek a pyl ve větru
   }
 
   function drawAmbient(g, T) {
+    // chmýří se kreslí až po shaderech: v noci by svítilo, tak se schová
+    const amb = PK.shaders && PK.shaders.active && PK.shaders.amb;
+    const night = amb ? (amb[0] + amb[1] + amb[2]) / 3 < 0.5 : false;
     for (const a of state.ambient) {
+      if (night && a.kind === "seed") continue;
       if (a.kind === "firefly") {
         const x = a.x + Math.sin(T * a.sp + a.ph) * 9 + Math.sin(T * a.sp * 2.3) * 3;
         const y = a.y + Math.cos(T * a.sp * 0.8 + a.ph) * 6;
@@ -499,6 +549,21 @@
           g.fillStyle = "#665f68";
           dot(g, x + F, y);
         }
+      } else if (a.kind === "seed") {
+        // chmýří pluje po větru (zleva doprava), pomalu klesá a znovu stoupá; drobný paprsek nad tečkou
+        const span = 160;
+        const x = a.x + ((T * a.sp * 2 + a.ph * 40) % span) - span / 2;
+        const y = a.y + Math.sin(T * 0.9 + a.ph) * 5 + Math.sin(T * 2.3 + a.ph * 2) * 1.5;
+        const edge = Math.min(1, Math.min((x - a.x + span / 2), (a.x + span / 2 - x)) / 20);
+        if (edge <= 0) continue;
+        g.globalAlpha = 0.85 * edge;
+        g.fillStyle = "#f7f1df";
+        dot(g, x, y);
+        g.globalAlpha = 0.45 * edge;
+        dot(g, x - F, y - F);
+        dot(g, x + F, y - F);
+        dot(g, x, y - F);
+        g.globalAlpha = 1;
       } else {
         // list: tři jemné body, natočení se mění, jak se snáší
         const x = a.x + Math.sin(T * 0.7 + a.ph) * 12 + ((T * 3 * (a.sp / 8) + a.ph * 20) % 40) - 20;
@@ -539,6 +604,11 @@
       p.x += (p.vx + Math.sin(p.ph + p.life * 4) * p.sway) * dt;
       p.y += p.vy * dt;
       p.vy += p.g * dt;
+      // kapka dopadla: zůstane skvrnka na zemi, za chvíli se vsákne
+      if (p.ground != null && p.vy > 0 && p.y >= p.ground) {
+        if (state.decals.length < 160) state.decals.push({ kind: "splat", x: q(p.x), y: q(p.ground), c: p.c[1], c2: p.c[2], big: R() < 0.35, life: 9, max: 9 });
+        continue;
+      }
       if (p.drag) {
         const k = Math.max(0, 1 - p.drag * dt);
         p.vx *= k;
@@ -620,7 +690,7 @@
     let d = 0;
 
     for (let i = 0; i < dec.length; i++) {
-      if (dec[i].kind === "scorch") {
+      if (dec[i].kind === "scorch" || dec[i].kind === "splat") {
         dec[i].life -= dt;
         if (dec[i].life <= 0) continue;
       }
@@ -695,6 +765,16 @@
       if (d.kind === "rubble") {
         const spr = PK.buildings.rubble(d.type, d.team);
         g.drawImage(spr.c, Math.round(d.x - spr.w / 2), Math.round(d.y - spr.h + 3));
+      } else if (d.kind === "splat") {
+        g.globalAlpha = Math.min(1, d.life / 3) * 0.85;
+        g.fillStyle = d.c;
+        g.fillRect(d.x, d.y, F, F);
+        if (d.big) {
+          g.fillRect(d.x + F, d.y, F, F);
+          g.fillStyle = d.c2;
+          g.fillRect(d.x, d.y + F, F, F);
+        }
+        g.globalAlpha = 1;
       } else if (d.kind === "scorch") {
         const spr = scorchSprite(d.r);
         g.globalAlpha = Math.min(1, d.life / 4) * 0.85;
@@ -888,6 +968,10 @@
         g.fillRect(px, py, flat ? F : 2 * F, 2 * F);
         g.fillStyle = GOLD[0];
         g.fillRect(px, py, F, F);
+      } else if (p.kind === "blood") {
+        g.fillRect(px, py, F, F);
+        g.fillStyle = p.c[Math.min(p.c.length - 1, ci + 1)];
+        g.fillRect(q(p.x - p.vx * 0.012), q(p.y - p.vy * 0.012), F, F);
       } else if (p.kind === "leaf") {
         const turn = Math.sin(p.life * 9 + p.ph) > 0;
         g.fillRect(px, py, 2 * F, F);
@@ -951,6 +1035,16 @@
     const len = Math.hypot(ux, uy) || 1;
     ux /= len;
     uy /= len;
+
+    // stopa ve vzduchu: řídké světlé body po oblouku za letkou, slábnou
+    g.fillStyle = "#f7f1df";
+    for (let i = 1; i <= 4; i++) {
+      const kb = t - i * 0.05;
+      if (kb <= 0) break;
+      g.globalAlpha = 0.34 - i * 0.07;
+      dot(g, f.x1 + (f.x2 - f.x1) * kb - ux * 4.5, arc(kb) - uy * 4.5);
+    }
+    g.globalAlpha = 1;
 
     // dřík 4.5 art px (9 jemných), hrot 2 px, letka 2x2 px po stranách konce
     g.fillStyle = "#946b45";

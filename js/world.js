@@ -1607,6 +1607,8 @@
 
     }
     for (const entry of rec.doodads.scatter) scatter(...entry);
+    // keře, květy, rákosí, zříceniny, statky... (decor.js), před sezónní výzdobou, ať se rozmístění nemění podle kalendáře
+    if (PK.decor && PK.decor.doodads) PK.decor.doodads({ add, list, layout, W, H, zone, Z: { GRASS: Z_GRASS, PATH: Z_PATH, WATER: Z_WATER, BANK: Z_BANK }, ashMap: world.ashMap, mirror: rec.mirror });
     // sezónní výzdoba (halloween.js) až nakonec, ať nemění rozmístění ostatních kulis
     if (PK.halloween && PK.halloween.doodads) PK.halloween.doodads({ add, layout, W, H });
     if (PK.winter && PK.winter.doodads) PK.winter.doodads({ add, layout, W, H });
