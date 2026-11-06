@@ -18,7 +18,9 @@
   };
   const UNITS = {
     worker: "dělníci", soldier: "vojáci", archer: "lučištníci", hero: "hrdina", monk: "mniši", knight: "rytíři", catapult: "katapulty",
-    ghoul: "ghúlové", skeleton: "kostlivci", abomination: "zrůdy", banshee: "přízraky", lich: "lich"
+    spearman: "kopiníci", crossbow: "kušiníci", scout: "zvědové",
+    ghoul: "ghúlové", skeleton: "kostlivci", abomination: "zrůdy", banshee: "přízraky", lich: "lich",
+    hound: "pekelní psi", necromancer: "nekromanti", plague: "morováci"
   };
   const BUILDINGS = {
     barracks: "kasárna", tower: "věže", hut: "budy", smithy: "kovárny", stable: "stáje", workshop: "dílny",

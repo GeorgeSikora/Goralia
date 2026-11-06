@@ -261,6 +261,13 @@
       }
     },
 
+    // Zásah s bonusem (kopiník proti jezdci, zvěd v týlu): krátký zlatý vějíř jisker, bez nápisu.
+    bonus(x, y, dir) {
+      for (let i = 0; i < 6; i++) {
+        emit("spark", A(x) + rnd(-2, 2), A(y) - 12 + rnd(-3, 3), dir * rnd(20, 70), rnd(-55, -10), rnd(0.18, 0.32), { c: GOLD, g: 160, streak: true });
+      }
+    },
+
     // Oprava budovy: třísky od kladiva, jiskra z hřebíku a občas zelený křížek zdraví.
     repair(x, y) {
       for (let i = 0; i < 3; i++) {
@@ -414,6 +421,22 @@
       fx.castGlow(x, y, 0xc6f0ee);
     },
 
+    // Morovák praskl: zelená vlna a oblak moru, který se pomalu rozplyne.
+    plague(x, y, radius) {
+      const ax = A(x);
+      const ay = A(y) + 6;
+      state.fx.push({ kind: "ring", x: ax, y: ay, r: A(radius), color: 0x5ff0c0, life: 0.5, max: 0.5, dash: 0, grow: true, squash: 0.6 });
+      for (let i = 0; i < 22; i++) {
+        const a = R() * Math.PI * 2;
+        const rr = Math.sqrt(R()) * A(radius) * 0.8;
+        emit("smoke", ax + Math.cos(a) * rr, ay - 4 + Math.sin(a) * rr * 0.6, rnd(-6, 6), rnd(-10, -2), rnd(0.8, 1.4), { c: GHOST.slice(0, 3), size: 2, grow: 3, fade: true });
+      }
+      for (let i = 0; i < 14; i++) {
+        emit("mote", ax + rnd(-10, 10), ay - rnd(0, 8), rnd(-6, 6), rnd(-24, -8), rnd(0.6, 1.2), { c: GHOST, sway: 5 });
+      }
+      if (PK.shaders) PK.shaders.light(ax, ay - 4, 18, 0x5ff0c0, 0.8, 4);
+    },
+
     // Vločka v auře (aura = kolem licha) nebo jinovatka u zmrazené jednotky.
     frostMote(x, y, aura) {
       const a = R() * Math.PI * 2;
@@ -436,7 +459,7 @@
 
     corpse(info) {
       state.fx.push({
-        kind: "corpse", type: info.type, team: info.team, flip: info.flip, x: A(info.x), y: A(info.y) + 6,
+        kind: "corpse", type: info.type, team: info.team, flip: info.flip, v: info.v || 0, x: A(info.x), y: A(info.y) + 6,
         dir: info.dir, wait: info.wait || 0, life: 1.9 + (info.wait || 0), max: 1.9 + (info.wait || 0), hero: info.type === "hero"
       });
     },
@@ -851,41 +874,42 @@
     g.globalAlpha = 1;
   }
 
+  /* Padlá jednotka: chvíli stojí (než dolétne rána), bílý záblesk, pak animace smrti z units.js
+   * (podlomení, pád, ležící tělo; jezdci a stroje se sesunou), nakonec se rozpadne po jemných bodech. */
   function drawCorpse(g, f) {
     const age = f.max - f.life;
     const U = PK.units;
 
     if (age < f.wait) {
-      const rec = U.frame(f.type, f.team, "idle", 0);
+      const rec = U.frame(f.type, f.team, "idle", 0, f.v);
       g.drawImage(f.flip ? rec.cf : rec.c, Math.round(f.x) - (f.flip ? U.CELL - U.AX - 1 : U.AX), Math.round(f.y) - U.AY);
       return;
     }
 
     const a = age - f.wait;
+    // tělo padá od útočníka (dir > 0: útočník vlevo, padá doprava = zrcadlený snímek)
+    const flip = f.dir > 0;
+    const d = U.death(f.type, f.team, f.v);
+    const ox = flip ? d.w - 1 - d.ax : d.ax;
+    const x = Math.round(f.x) - ox;
+    const y = Math.round(f.y) - d.ay;
 
-    if (a < 0.14) {
-      const rec = U.frame(f.type, f.team, "idle", 0);
-      g.drawImage(U.flash(rec, f.flip), Math.round(f.x) - (f.flip ? U.CELL - U.AX - 1 : U.AX) - f.dir, Math.round(f.y) - U.AY);
+    if (a < 0.1) {
+      const rec = U.frame(f.type, f.team, "hit", 0, f.v);
+      g.drawImage(U.flash(rec, flip), Math.round(f.x) - (flip ? U.CELL - U.AX - 1 : U.AX), Math.round(f.y) - U.AY);
       return;
     }
 
-    const lie = U.lying(f.type, f.team, f.dir < 0);
-    const fade = Math.max(0, (a - 0.8) / 1.0);
-    let img = lie.c;
+    const n = d.frames.length;
+    const i = Math.min(n - 1, Math.floor((a - 0.1) / 0.075));
+    const fade = Math.max(0, (a - 0.85) / 0.95);
+    let img;
 
-    if (fade > 0) {
-      // rozpad po jemných bodech (8 kroků)
-      const k = Math.round((1 - fade) * 8);
-      lie.dis = lie.dis || {};
-      if (!lie.dis[k]) lie.dis[k] = PK.fine(lie.pix.dissolve(k / 8));
-      img = lie.dis[k];
-    }
+    if (fade > 0 && !d.fade) img = U.deathDissolve(f.type, f.team, f.v, Math.round((1 - fade) * 8), flip);
+    else if (d.fade && i >= n - 1) return;
+    else img = U.deathFrame(f.type, f.team, f.v, i, flip);
 
-    // slide 2px while falling
-    const slide = Math.min(1, (a - 0.14) / 0.12);
-    const dx = f.dir > 0 ? -2 - 1 : 2 - 30;
-
-    g.drawImage(img, q(f.x + f.dir * 2 * slide) + dx, Math.round(f.y) - 3 - 16);
+    g.drawImage(img, x, y);
   }
 
   function drawAir(g, T) {

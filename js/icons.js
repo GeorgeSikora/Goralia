@@ -1120,6 +1120,28 @@
     return PK.fine(P);
   })();
 
+  /* Nové jednotky (kopiník, kušiník, zvěd): ikona je výřez hlavy a hrudi přímo ze spritu jednotky
+   * (stejná jemná mřížka 1:1, nic se nezvětšuje). ox, oy = posun výřezu od hlavy v jemných px.
+   * Obrys už sprite má, druhý obrys z build smyčky ho jen zesílí na okraji ikony. */
+  const fromUnit = (type, ox, oy, anim = "idle", frame = 0) => P => {
+    const U = PK.units;
+    if (!U || !U.frame) return;
+    const rec = U.frame(type, "blue", anim, frame, 0);
+    const head = rec.meta.head || [0, -12];
+    const cx = Math.round(U.AX * HD + head[0] * HD) + ox;
+    const cy = Math.round(U.AY * HD + head[1] * HD) + oy;
+    const src = rec.pix;
+    for (let y = 0; y < 32; y++) {
+      for (let x = 0; x < 32; x++) {
+        const c = src.get(cx - 16 + x, cy - 12 + y);
+        if (c >= 0) P.set(x, y, c);
+      }
+    }
+  };
+  make.spearman = fromUnit("spearman", 1, 1);
+  make.crossbow = fromUnit("crossbow", 2, 3);
+  make.scout = fromUnit("scout", 6, 4);
+
   /* ---------- velké ikony -> plátna (normální / zašedlé) ---------- */
   const big = {};
   const bigOff = {};

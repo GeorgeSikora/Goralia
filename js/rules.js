@@ -23,11 +23,19 @@
     knight:   { gold: 135, wood: 45 },
     catapult: { gold: 150, wood: 110 },
     stable:   { gold: 140, wood: 90 },
-    workshop: { gold: 150, wood: 95 }
+    workshop: { gold: 150, wood: 95 },
+    spearman: { gold: 55,  wood: 30 },
+    crossbow: { gold: 90,  wood: 45 },
+    scout:    { gold: 70,  wood: 25 }
   };
 
   // Kde se co cvičí. Dělníka a hrdinu cvičí hlavní budova týmu (R.HQ, "hall").
-  const TRAINED_AT = { soldier: "barracks", archer: "barracks", hero: "hall", monk: "barracks", knight: "stable", catapult: "workshop" };
+  const TRAINED_AT = {
+    soldier: "barracks", archer: "barracks", hero: "hall", monk: "barracks", knight: "stable", catapult: "workshop",
+    spearman: "barracks", crossbow: "barracks", scout: "stable"
+  };
+  // Jednotky, které kromě budovy výcviku potřebují ještě jinou dostavěnou budovu (kušiník = kovárna).
+  const UNIT_NEEDS = { crossbow: "smithy" };
   // Stáj a dílna potřebují dostavěná kasárna.
   const REQUIRES = { stable: "barracks", workshop: "barracks" };
 
@@ -42,8 +50,8 @@
   };
   const ARMOR_PER_LEVEL = 0.12; // část poškození, kterou voják nebo rytíř za stupeň zbroje neutrpí
   const WEAPON_PER_LEVEL = 3;   // bonus k poškození vojáka a rytíře za stupeň zbraní
-  const MELEE = ["soldier", "knight"]; // na koho platí zbroj a zbraně z kovárny
-  const ARCHERY = { damage: 2, range: 10 }; // lučištník za stupeň střelby
+  const MELEE = ["soldier", "knight", "spearman", "scout"]; // na koho platí zbroj a zbraně z kovárny
+  const ARCHERY = { damage: 2, range: 10, units: ["archer", "crossbow"] }; // lučištník a kušiník za stupeň střelby
   const TOOLS_PER_LEVEL = 0.18;  // o kolik rychleji dělník natěží náklad za stupeň nástrojů
   const MASONRY = { hp: 0.15, tower: 4 }; // budovy +15 % zdraví, věže +4 poškození za stupeň opevnění
 
@@ -56,6 +64,19 @@
   const CATAPULT = { min: 70, radius: 30, splash: 0.5, building: 2.5, flight: 0.8 };
   // Mnich: léčí zraněné spojence v dosahu (range jednotky), hp za jedno požehnání.
   const MONK = { heal: 12 };
+  // Kopiník: proti jezdcům a velkým zrůdám udeří násobkem (dlouhé kopí je zastaví).
+  const SPEAR = { bonus: 1.9, vs: ["knight", "scout", "hero", "abomination", "hound", "lich", "plague"] };
+  // Kušiník: šipka prorazí zbroj (výzkum zbroje cíle neplatí), budovám ubere víc.
+  const CROSSBOW = { building: 1.3 };
+  // Zvěd: rychlý lehký jezdec, který loví slabé jednotky v týlu (dělníky, střelce, mnichy, stroje).
+  const SCOUT = { bonus: 1.7, vs: ["worker", "archer", "crossbow", "monk", "catapult", "skeleton", "necromancer", "banshee"] };
+  // Nekromant: jednou za every s vyvolá kostlivce (žije life s), když jsou nepřátelé blíž než radius; nejvýš max najednou.
+  const NECRO = { every: 14, life: 32, max: 2, radius: 230 };
+  // Morovák: když padne, praskne a za delay s zasáhne nepřátele v okruhu radius.
+  const PLAGUE = { damage: 34, radius: 52, delay: 0.35, building: 0.5 };
+  // Veteráni: hodnost za zabité nepřátele (kills = práh pro 1., 2. a 3. hodnost), každá hodnost přidá
+  // část poškození a zdraví. Hrdinové mají vlastní úrovně, veteránem se nestávají.
+  const VETERAN = { kills: [3, 7, 12], damage: 0.08, hp: 0.08 };
 
   // [hp, rychlost, poškození, dosah, prodleva mezi útoky]
   const UNITS = {
@@ -66,12 +87,18 @@
     monk:     { hp: 60,  speed: 48, damage: 4,  range: 90,  delay: 1.4 },
     knight:   { hp: 190, speed: 72, damage: 18, range: 27,  delay: 0.85 },
     catapult: { hp: 130, speed: 30, damage: 34, range: 200, delay: 3.6 },
+    spearman: { hp: 95,  speed: 46, damage: 11, range: 34,  delay: 0.8 },
+    crossbow: { hp: 80,  speed: 43, damage: 25, range: 125, delay: 2.1 },
+    scout:    { hp: 90,  speed: 90, damage: 9,  range: 24,  delay: 0.6 },
     // nemrtví z pekla (jen AI na kooperativních mapách)
     ghoul:       { hp: 90,  speed: 60, damage: 11, range: 24,  delay: 0.62 },
     skeleton:    { hp: 55,  speed: 47, damage: 10, range: 105, delay: 1.1 },
     abomination: { hp: 300, speed: 37, damage: 24, range: 28,  delay: 1.15 },
     banshee:     { hp: 80,  speed: 54, damage: 15, range: 92,  delay: 1.25 },
-    lich:        { hp: 680, speed: 42, damage: 24, range: 75,  delay: 1.2 } // hrdina nemrtvých
+    lich:        { hp: 680, speed: 42, damage: 24, range: 75,  delay: 1.2 }, // hrdina nemrtvých
+    hound:       { hp: 70,  speed: 84, damage: 9,  range: 22,  delay: 0.55 },
+    necromancer: { hp: 110, speed: 42, damage: 9,  range: 100, delay: 1.4 },
+    plague:      { hp: 140, speed: 40, damage: 10, range: 24,  delay: 1.0 }
   };
 
   /*
@@ -159,13 +186,13 @@
     name: "Nemrtví z pekla",
     short: "Nemrtví", // jméno v seznamu hráčů ve hře
     hq: "necropolis",
-    units: ["ghoul", "skeleton", "abomination", "banshee", "lich"],
+    units: ["ghoul", "skeleton", "abomination", "banshee", "lich", "hound", "necromancer", "plague"],
     buildings: ["necropolis", "crypt", "slaughterhouse", "ziggurat", "portal"],
     // budova -> [typ jednotky, základní interval v sekundách], střídá se dokola
     produce: {
-      crypt: [["ghoul", 12], ["skeleton", 15]],
-      slaughterhouse: [["abomination", 36]],
-      portal: [["banshee", 20], ["ghoul", 15]]
+      crypt: [["ghoul", 12], ["skeleton", 15], ["hound", 11]],
+      slaughterhouse: [["abomination", 36], ["plague", 24]],
+      portal: [["banshee", 20], ["ghoul", 15], ["necromancer", 28]]
     },
     defense: {
       necropolis: { damage: 28, range: 190, delay: 1.1 },
@@ -217,7 +244,7 @@
   const isWinter = (d = new Date()) => (d.getMonth() === 11) || (d.getMonth() === 0 && d.getDate() <= 6);
 
   return {
-    UNDEAD, HERO, COSTS, TRAINED_AT, REQUIRES, UPGRADES, ARMOR_PER_LEVEL, WEAPON_PER_LEVEL, MELEE, ARCHERY, TOOLS_PER_LEVEL, MASONRY,
+    UNDEAD, HERO, COSTS, TRAINED_AT, UNIT_NEEDS, SPEAR, CROSSBOW, SCOUT, NECRO, PLAGUE, VETERAN, REQUIRES, UPGRADES, ARMOR_PER_LEVEL, WEAPON_PER_LEVEL, MELEE, ARCHERY, TOOLS_PER_LEVEL, MASONRY,
     TOWER, KNIGHT, CATAPULT, MONK, UNITS, BUILDING_HP, FOOTPRINT, footRect, footFree, BUILD_TIME, REPAIR, TEAMS, HQ, TEAM_NAMES, MAX_PLAYERS, BASE_GOLD, BASE_WOOD, GOLD_AMOUNT,
     SUPPLY_BASE, SUPPLY_PER_HUT, SUPPLY_MAX, supplyCap, MAX_BUILDINGS, COUNTDOWN, WINTER, isWinter
   };
