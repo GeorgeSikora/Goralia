@@ -1,0 +1,22 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>decor debug</title>
+<style>body{margin:0;background:#4a8548}canvas{image-rendering:pixelated;display:block}</style></head>
+<body><canvas id="c"></canvas>
+<script src="js/pixel.js"></script><script src="js/font.js"></script><script src="js/props.js"></script><script src="js/decor.js"></script><script src="js/critters.js"></script>
+<script>
+const S = 4, c = document.getElementById("c");
+c.width = 1800; c.height = 1100;
+const g = c.getContext("2d"); g.imageSmoothingEnabled = false;
+g.fillStyle = "#4a8548"; g.fillRect(0,0,c.width,c.height);
+let x = 6, y = 6, rowH = 0;
+function put(cv, name, extra) {
+  const f = PK.hdOf(cv) || cv; const w = cv.width * S, h = cv.height * S;
+  if (x + w > c.width) { x = 6; y += rowH + 20; rowH = 0; }
+  g.drawImage(f, x, y, w, h); if (extra) extra(x, y);
+  g.fillStyle = "#fff"; g.font = "11px monospace"; g.fillText(name || "", x, y + h + 12);
+  x += w + 10; rowH = Math.max(rowH, h);
+}
+const only = new URLSearchParams(location.search).get("t");
+if (only) { for (const k of [6,7]) { const t = PK.props.trees[k]; put(t.trunk, "tree"+k, (xx,yy)=>g.drawImage(PK.hdOf(t.crown[0]), xx, yy, t.w*S, t.h*S)); } }
+for (const [n, d] of Object.entries(PK.props.doodads)) if (d.deco) put(d.c, n, d.blades ? (xx, yy) => { const b = d.blades[1]; g.drawImage(PK.hdOf(b), xx + (d.mill[0]-d.bladeR)*S, yy + (d.mill[1]-d.bladeR)*S, b.width*S, b.height*S); } : null);
+</script></body></html>

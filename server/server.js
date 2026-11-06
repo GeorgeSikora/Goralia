@@ -581,7 +581,8 @@ function startMatch(room) {
     return null;
   });
 
-  room.match = new Match(room.map, players, { winter: winterNow() });
+  // zimní mapa (krajina "winter") má sníh a dárky vždy, jinak rozhoduje kalendář nebo /zima
+  room.match = new Match(room.map, players, { winter: winterNow() || MAPS.isWinterMap(room.map) });
   room.started = Date.now();
   room.cmds = {};
   room.out = {};
@@ -617,7 +618,7 @@ function closeRoom(room) {
 /* ---------- průběh zápasu pro statistiky ---------- */
 const TIMELINE_STEP = 10; // s herního času mezi vzorky
 const TIMELINE_MAX = 180; // víc vzorků se prořeďuje (každý druhý pryč, krok ×2)
-const ARMY = new Set(["soldier", "archer", "hero", "monk", "knight", "catapult"]);
+const ARMY = new Set(["soldier", "archer", "hero", "monk", "knight", "catapult", "spearman", "crossbow", "scout"]);
 
 // Jeden vzorek: pro každý tým armáda, dělníci, budovy, natěžené suroviny, zásoba a zabití.
 function sampleTimeline(room) {

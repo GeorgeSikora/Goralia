@@ -1,0 +1,46 @@
+/* Přepínač jazyka: řada vlajek (js/flags.js), aktivní jazyk má jantarový rámeček. */
+.lang-flags {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+}
+.lang-flags .flag {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 4px 4px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--muted, #9b94b8);
+  font: 600 11px/1 ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.62;
+  cursor: pointer;
+  transition: opacity 0.12s, transform 0.08s;
+}
+.lang-flags .flag img {
+  display: block;
+  width: 36px;
+  height: 24px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  box-shadow: 0 0 0 2px var(--ink, #15121f), 0 0 0 3px var(--brass-d, #8a6a3c);
+}
+.lang-flags .flag:hover { opacity: 1; }
+.lang-flags .flag:active { transform: translateY(1px); }
+.lang-flags .flag.on { opacity: 1; color: var(--amber, #ffbf45); }
+.lang-flags .flag.on img {
+  box-shadow: 0 0 0 2px var(--ink, #15121f), 0 0 0 4px var(--amber, #ffbf45), 0 0 12px rgba(255, 191, 69, 0.45);
+}
+.lang-flags .flag:focus-visible { outline: 2px solid var(--amber, #ffbf45); outline-offset: 3px; }
+/* jen vlajky, bez jmen jazyků (nastavení, hlavička úvodu, lišta editoru) */
+.lang-flags.compact { gap: 8px; }
+.lang-flags.compact .flag { padding: 3px; gap: 0; }
+.lang-flags.compact .flag span { display: none; }

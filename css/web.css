@@ -151,14 +151,7 @@ a:hover { color: var(--amber-l); }
   opacity: 0.85;
 }
 .nav a:hover, .nav a.on { color: var(--amber); opacity: 1; }
-.top .lang {
-  font: 600 12px var(--mono);
-  color: var(--text);
-  background: rgba(21, 18, 31, 0.7);
-  border: 2px solid var(--brass-d);
-  padding: 4px 6px;
-  cursor: pointer;
-}
+.top .lang { display: flex; }
 
 /* ---------- hero ---------- */
 .hero {
@@ -171,6 +164,18 @@ a:hover { color: var(--amber-l); }
   isolation: isolate;
   background: #0b0914 url("/assets/web/hero.jpg") center / cover no-repeat;
 }
+/* s JS se obrázek pozadí prolne, až je stažený (třída hero-bg z uvod.html), místo naskočení */
+.js .hero { background: #0b0914; }
+.js .hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -4;
+  background: url("/assets/web/hero.jpg") center / cover no-repeat;
+  opacity: 0;
+  transition: opacity 0.9s ease-out;
+}
+.js.hero-bg .hero::before { opacity: 1; }
 .hero-video {
   position: absolute;
   inset: 0;
@@ -207,7 +212,8 @@ a:hover { color: var(--amber-l); }
   max-width: 900px;
 }
 .hero-logo { margin: 0 auto 14px; }
-.hero-logo canvas {
+.hero-logo .pix {
+  display: block;
   margin: 0 auto;
   image-rendering: pixelated;
   filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.7));
@@ -231,6 +237,15 @@ a:hover { color: var(--amber-l); }
   animation: rise 1.2s 0.3s cubic-bezier(.2, .8, .2, 1) both;
 }
 .hero .btn-play { animation: rise 1.2s 0.45s cubic-bezier(.2, .8, .2, 1) both, beckon 2.4s 1.6s ease-in-out infinite; }
+
+/* než web.js dokreslí pixelové písmo a přeloží texty, je z úvodu vidět jen logo;
+ * zbytek čeká skrytý a jeho animace stojí, ať se po odkrytí rozběhnou od začátku */
+.pk-wait .hero-in > :not(.hero-logo),
+.pk-wait .top > * { visibility: hidden; animation-play-state: paused; }
+/* místo pro tlačítko s pixelovým písmem (5x řádek 14 px + odsazení), ať logo po odkrytí neposkočí */
+.pk-wait .hero .btn-play.big { min-height: 114px; }
+.js .top > * { animation: fade-in 0.6s 0.2s ease-out both; }
+@keyframes fade-in { from { opacity: 0; } }
 @keyframes rise { from { opacity: 0; transform: translateY(24px); } }
 
 
@@ -598,6 +613,7 @@ p { margin: 0 0 16px; }
   .sec { padding: 72px 0; }
   .perks, .chapters { grid-template-columns: 1fr; }
   .btn-play.big { padding: 18px 44px; }
+  .pk-wait .hero .btn-play.big { min-height: 106px; }
   .btn-play.big canvas { height: 28px; }
   .loop li:not(:last-child)::after { display: none; }
   .loop li { flex-basis: 40%; }

@@ -2,46 +2,59 @@
 <html lang="cs">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Goralia · Editor map</title>
   <link rel="stylesheet" href="css/editor.css">
+  <link rel="stylesheet" href="css/flags.css">
 </head>
 <body>
   <header class="bar">
+    <button type="button" id="e-left-toggle" class="drawer-btn" title="Paleta" aria-controls="e-left">☰</button>
     <h1>Editor map</h1>
     <nav class="menus" id="e-menus">
       <button type="button" data-menu="file">Soubor</button>
       <button type="button" data-menu="edit">Úpravy</button>
+      <button type="button" data-menu="map">Mapa</button>
       <button type="button" data-menu="view">Zobrazení</button>
     </nav>
     <button id="e-title" type="button" class="title" title="Vlastnosti mapy"></button>
     <span class="grow"></span>
+    <span class="history">
+      <button id="e-undo" type="button" class="icon-btn" title="Zpět (Ctrl+Z)">↶</button>
+      <button id="e-redo" type="button" class="icon-btn" title="Znovu (Ctrl+Shift+Z)">↷</button>
+    </span>
     <span id="e-perm" class="perm" hidden></span>
-    <select id="e-lang" class="lang" aria-label="Jazyk"></select>
+    <div id="e-lang" class="lang lang-flags compact" aria-label="Jazyk"></div>
+    <button id="e-test" type="button" class="test" title="Vyzkoušet mapu proti AI bez uložení (F5)">▶ Vyzkoušet</button>
     <button id="e-save" type="button" class="primary" title="Ctrl+S">Uložit</button>
     <a id="e-play" class="button" href="#" target="_blank" rel="noopener" hidden>Hrát</a>
+    <button type="button" id="e-right-toggle" class="drawer-btn" title="Kontrola a vrstvy" aria-controls="e-right">◧</button>
   </header>
 
   <main class="layout">
-    <aside class="tools">
-      <div class="palette" id="e-tools">
-        <button type="button" data-tool="move" title="Přesun objektů a posun mapy (V)"><b>V</b> Přesun</button>
-        <button type="button" data-tool="water" title="Voda (W)"><b>W</b> Voda</button>
-        <button type="button" data-tool="mountain" title="Hory (M)"><b>M</b> Hory</button>
-        <button type="button" data-tool="wall" title="Hradby (H)"><b>H</b> Hradby</button>
-        <button type="button" data-tool="road" title="Cesta (R)"><b>R</b> Cesta</button>
-        <button type="button" data-tool="tree" title="Stromy (T)"><b>T</b> Stromy</button>
-        <button type="button" data-tool="gold" title="Zlatý důl (G)"><b>G</b> Důl</button>
-        <button type="button" data-tool="base" title="Základna (B)"><b>B</b> Základna</button>
-        <button type="button" data-tool="erase" title="Guma (E)"><b>E</b> Guma</button>
-      </div>
+    <aside class="tools" id="e-left">
+      <div class="search"><input id="e-search" type="search" placeholder="Hledat v paletě…" autocomplete="off" spellcheck="false"></div>
+      <div class="cats" id="e-cats" role="tablist"></div>
+      <div class="items" id="e-items"></div>
 
       <div class="options" id="e-options">
+        <div class="opt-head"><span id="o-item-name"></span><small id="o-item-sub" class="muted"></small></div>
+        <div class="modes" id="o-modes"></div>
         <label id="o-size-row">
-          <span><span id="o-size-label">Štětec</span> <output id="o-size-val"></output></span>
+          <span><span id="o-size-label">Velikost</span> <output id="o-size-val"></output></span>
           <input id="o-size" type="range">
         </label>
-        <label class="check" id="o-main-row"><input id="o-main" type="checkbox"> Hlavní cesta</label>
+        <label id="o-density-row">
+          <span><span>Hustota</span> <output id="o-density-val"></output></span>
+          <input id="o-density" type="range" min="1" max="10" value="5">
+        </label>
+        <div class="row-chips" id="o-shape-row">
+          <span class="muted">Tvar</span>
+          <label class="chip"><input type="radio" name="o-shape" value="circle" checked><span>●</span></label>
+          <label class="chip"><input type="radio" name="o-shape" value="square"><span>■</span></label>
+        </div>
+        <label class="check" id="o-mix-row"><input id="o-mix" type="checkbox"> Náhodně míchat podobné</label>
+        <label class="check" id="o-main-row"><input id="o-main" type="checkbox"> Hlavní cesta (most přes řeku)</label>
         <label id="o-amount-row">Zásoba dolu
           <select id="o-amount">
             <option value="1000">1 000</option>
@@ -49,43 +62,90 @@
             <option value="4000">4 000</option>
             <option value="8000">8 000</option>
           </select></label>
+        <div id="o-team-row" class="team-row">
+          <span class="muted">Patří základně</span>
+          <div id="o-teams" class="teams"></div>
+        </div>
         <label id="o-erase-row">Guma maže
           <select id="o-erase">
-            <option value="all">vše</option>
-            <option value="tree">stromy</option>
-            <option value="water">vodu</option>
-            <option value="road">cesty</option>
-            <option value="mountain">hory</option>
-            <option value="wall">hradby</option>
-            <option value="gold">doly</option>
-            <option value="base">základny</option>
+            <option value="all">vše viditelné</option>
+            <option value="terrain">vodu, hory, hradby a cesty</option>
+            <option value="regions">půdu a krajiny</option>
+            <option value="trees">stromy</option>
+            <option value="props">kulisy</option>
+            <option value="critters">zvířata</option>
+            <option value="game">jednotky, budovy, doly a základny</option>
           </select></label>
         <p id="o-hint" class="muted"></p>
       </div>
-
-      <div class="symmetry">
-        <span class="muted">Symetrie</span>
-        <label class="chip" title="Zrcadlit vodorovně"><input id="e-mx" type="checkbox"><span>↔</span></label>
-        <label class="chip" title="Zrcadlit svisle"><input id="e-my" type="checkbox"><span>↕</span></label>
-      </div>
     </aside>
 
-    <section class="stage" id="e-stage"><canvas id="e-canvas"></canvas></section>
+    <section class="stage" id="e-stage">
+      <canvas id="e-canvas"></canvas>
+      <div class="toolbar" id="e-toolbar">
+        <div class="group" id="e-toolset">
+          <button type="button" data-tool="select" title="Výběr: obdélník, posun, kopírování (V)">⬚</button>
+          <button type="button" data-tool="draw" title="Kreslit vybranou položkou palety (B)">✎</button>
+          <button type="button" data-tool="erase" title="Guma (E)">⌫</button>
+          <button type="button" data-tool="pick" title="Kapátko: vezme položku z mapy (I)">⊙</button>
+          <button type="button" data-tool="hand" title="Posun pohledu (H, mezerník)">✋</button>
+        </div>
+        <div class="group" title="Symetrie: co nakreslíš, objeví se i zrcadlově">
+          <label class="chip" title="Zrcadlit vodorovně (osa svisle)"><input id="e-mx" type="checkbox"><span>↔</span></label>
+          <label class="chip" title="Zrcadlit svisle (osa vodorovně)"><input id="e-my" type="checkbox"><span>↕</span></label>
+          <label class="chip" title="Otočit o 180° kolem středu"><input id="e-mr" type="checkbox"><span>⟲</span></label>
+          <label class="chip" title="Čtyřnásobná otočná symetrie (jen čtvercové mapy)"><input id="e-m4" type="checkbox"><span>✣</span></label>
+        </div>
+        <div class="group">
+          <label class="chip" title="Mřížka (G)"><input id="e-grid" type="checkbox" checked><span>#</span></label>
+          <label class="chip" title="Přichytit k mřížce"><input id="e-snap" type="checkbox"><span>⌗</span></label>
+          <label class="chip" title="Skutečný vzhled (pečený terén)"><input id="e-real" type="checkbox"><span>☀</span></label>
+        </div>
+        <div class="group zoom">
+          <button type="button" id="e-zout" title="Oddálit (−)">−</button>
+          <button type="button" id="e-zfit" title="Celá mapa (0)">⤢</button>
+          <button type="button" id="e-zin" title="Přiblížit (+)">+</button>
+        </div>
+      </div>
+      <div class="selbar" id="e-selbar" hidden>
+        <span id="e-selcount"></span>
+        <button type="button" data-sel="copy" title="Ctrl+C">Kopírovat</button>
+        <button type="button" data-sel="dup" title="Ctrl+D">Duplikovat</button>
+        <button type="button" data-sel="flipx">Převrátit ↔</button>
+        <button type="button" data-sel="flipy">Převrátit ↕</button>
+        <button type="button" data-sel="delete" title="Delete">Smazat</button>
+      </div>
+      <div class="pastebar" id="e-pastebar" hidden>Klikni pro vložení · Esc zruší</div>
+    </section>
 
-    <aside class="info">
-      <h2>Kontrola mapy</h2>
-      <p id="e-summary" class="muted"></p>
-      <ul id="e-problems"></ul>
-      <details>
-        <summary>Nápověda</summary>
+    <aside class="info" id="e-right">
+      <canvas id="e-mini" class="mini" title="Minimapa: klikni nebo táhni pro posun pohledu"></canvas>
+      <div class="tabs" role="tablist">
+        <button type="button" data-tab="check" class="active">Kontrola</button>
+        <button type="button" data-tab="layers">Vrstvy</button>
+        <button type="button" data-tab="help">Nápověda</button>
+      </div>
+      <section data-pane="check">
+        <p id="e-summary" class="muted"></p>
+        <ul id="e-problems"></ul>
+      </section>
+      <section data-pane="layers" hidden>
+        <ul class="layers" id="e-layers"></ul>
+        <p class="muted">Skrytá vrstva se nekreslí a guma, výběr ani kapátko na ni nesahají.</p>
+      </section>
+      <section data-pane="help" hidden>
         <ul class="help">
-          <li>Levé tlačítko kreslí. Pravé otevře nabídku (smazat, zásoba dolu…).</li>
-          <li>Mapu posouvej prostředním tlačítkem, mezerníkem nebo šipkami, kolečko přibližuje.</li>
-          <li>Základny se číslují podle pořadí. Čárkovaně je území, kde hráč smí stavět.</li>
-          <li>Přes vodu se chodí jen po cestách. Hory jsou neprůchodné, hradbami vede průchod jen tam, kde je cesta (brána).</li>
-          <li>Každá základna potřebuje aspoň dva doly poblíž.</li>
+          <li>Vyber položku v paletě vlevo a kresli levým tlačítkem. Režim (bod, štětec, čára, obdélník, výplň) je pod paletou.</li>
+          <li>Pravé tlačítko (na dotyku dlouhý stisk) otevře nabídku k objektu pod kurzorem.</li>
+          <li>Pohled posouvej prostředním tlačítkem, mezerníkem, šipkami nebo dvěma prsty; kolečko nebo sevření prstů přibližuje.</li>
+          <li>Výběr (V): táhni obdélník, pak objekty posuň, zkopíruj (Ctrl+C, Ctrl+V), duplikuj (Ctrl+D) nebo smaž.</li>
+          <li>Symetrie ↔ ↕ ⟲ ✣ kreslí vyvážené mapy: každý tah a objekt dostane zrcadlová dvojčata.</li>
+          <li>Jezero (L) se kreslí tažením oválu. Řeka, která končí u jezera, se do něj sama napojí.</li>
+          <li>Jednotky a budovy patří základně vybrané v možnostech. Hrdina se přidá sám, pokud ho tam nedáš.</li>
+          <li>Kontrola mapy hlídá vodu pod stromy a kulisami, propojení základen a doly. Klik na problém ukáže místo.</li>
+          <li>▶ Vyzkoušet spustí mapu proti AI hned, bez ukládání.</li>
         </ul>
-      </details>
+      </section>
     </aside>
   </main>
 
@@ -97,9 +157,15 @@
   <dialog id="d-props">
     <form method="dialog" id="f-props">
       <h2 id="p-title">Vlastnosti mapy</h2>
+      <div class="langtabs" id="p-langs">
+        <button type="button" data-lang="cs" class="active">Čeština</button>
+        <button type="button" data-lang="en">English</button>
+        <button type="button" data-lang="szl">Po našimu</button>
+      </div>
       <label>Název <input id="p-name" maxlength="32" autocomplete="off"></label>
-      <label>Identifikátor (název souboru) <input id="p-id" maxlength="31" autocomplete="off" spellcheck="false"></label>
       <label>Popis (zobrazí se v lobby) <textarea id="p-desc" rows="3" maxlength="400"></textarea></label>
+      <p class="muted" id="p-lang-note">Překlad je nepovinný. Prázdné pole ukáže český text.</p>
+      <label>Identifikátor (název souboru) <input id="p-id" maxlength="31" autocomplete="off" spellcheck="false"></label>
       <div class="two">
         <label>Šířka <input id="p-w" type="number" min="640" max="10000" step="40"></label>
         <label>Výška <input id="p-h" type="number" min="400" max="10000" step="40"></label>
@@ -108,7 +174,27 @@
       <div class="two">
         <label>Zrno terénu
           <span class="row"><input id="p-seed" type="number" min="0" max="999999"><button id="p-dice" type="button">Náhodné</button></span></label>
-        <label class="check"><input id="p-auto" type="checkbox"> Cesty ze základen do středu</label>
+        <label>Krajina
+          <select id="p-theme">
+            <option value="meadow">Louka</option>
+            <option value="autumn">Podzim</option>
+            <option value="winter">Zima</option>
+            <option value="swamp">Bažina</option>
+            <option value="highland">Vysočina</option>
+            <option value="wastes">Pustina</option>
+          </select></label>
+      </div>
+      <div class="two">
+        <label>Kooperace
+          <select id="p-coop"><option value="-1">ne, každý za sebe</option></select></label>
+        <div class="checks">
+          <label class="check"><input id="p-auto" type="checkbox"> Cesty ze základen do středu</label>
+          <label class="check"><input id="p-wild" type="checkbox"> Náhodná zvířata navíc</label>
+        </div>
+      </div>
+      <div class="thumbrow">
+        <canvas id="p-thumb" class="thumb" title="Náhled v seznamu map v lobby"></canvas>
+        <small class="muted">Náhled v lobby</small>
       </div>
       <p id="p-error" class="error"></p>
       <menu>
@@ -128,19 +214,54 @@
     </menu>
   </dialog>
 
+  <dialog id="d-players">
+    <form method="dialog" id="f-players">
+      <h2>Rozmístit základny</h2>
+      <p class="muted">Smaže současné základny a rozmístí nové souměrně. Jednotky a budovy zůstanou u nejbližší nové základny.</p>
+      <div class="two">
+        <label>Počet hráčů <input id="pl-n" type="number" min="2" max="16" value="2"></label>
+        <label>Rozmístění
+          <select id="pl-layout">
+            <option value="auto">podle počtu</option>
+            <option value="sides">proti sobě (zleva doprava)</option>
+            <option value="corners">rohy</option>
+            <option value="ring">kruh</option>
+            <option value="grid">mřížka</option>
+          </select></label>
+      </div>
+      <label>Odstup od okraje <input id="pl-margin" type="range" min="8" max="30" value="16"></label>
+      <label class="check"><input id="pl-mines" type="checkbox" checked> Každé základně dva doly</label>
+      <label class="check"><input id="pl-sym" type="checkbox" checked> Zapnout odpovídající symetrii</label>
+      <menu>
+        <button type="button" id="pl-cancel">Zrušit</button>
+        <button type="submit" class="primary">Rozmístit</button>
+      </menu>
+    </form>
+  </dialog>
+
   <script src="js/i18n.js"></script>
   <script src="js/lang/en.js"></script>
   <script src="js/lang/szl.js"></script>
-  <script>PK.i18n.bindSelect(document.getElementById("e-lang"));</script>
+  <script src="js/lang/mapy.js"></script>
+  <script src="js/lang/jednotky.js"></script>
+  <script src="js/lang/editor.js"></script>
+  <script src="js/flags.js"></script>
+  <script>PK.i18n.bindPicker(document.getElementById("e-lang"));</script>
   <script src="js/pixel.js"></script>
   <script src="js/font.js"></script>
+  <script src="js/units.js"></script>
   <script src="js/props.js"></script>
   <script src="js/buildings.js"></script>
+  <script src="js/decor.js"></script>
   <script src="js/rules.js"></script>
   <script src="js/maps.js"></script>
   <script src="js/nav.js"></script>
   <script src="js/mapcheck.js"></script>
+  <script src="js/biomes.js"></script>
+  <script src="js/krajiny.js"></script>
   <script src="js/world.js"></script>
+  <script src="js/critters.js"></script>
+  <script src="js/editor-palette.js"></script>
   <script src="js/editor.js"></script>
 </body>
 </html>

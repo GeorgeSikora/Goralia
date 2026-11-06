@@ -36,6 +36,7 @@
   const ALL = [
     ["worker", "Dělník"], ["soldier", "Voják"], ["archer", "Lučištník"],
     ["hero", "Hrdina"], ["monk", "Mnich"], ["knight", "Rytíř"], ["catapult", "Katapult"], ["command", "Rozkaz"],
+    ["spearman", "Kopiník"], ["crossbow", "Kušiník"], ["scout", "Zvěd"],
     ["tower", "Strážní věž"], ["barracks", "Kasárna"], ["hut", "Buda"], ["smithy", "Kovárna"],
     ["stable", "Stáj"], ["workshop", "Dílna"],
     ["armor", "Zbroj"], ["weapon", "Zbraně"], ["archery", "Střelba"], ["tools", "Nástroje"], ["masonry", "Opevnění"],
@@ -48,8 +49,8 @@
   const CARDS = {
     none: [],
     hq: ["worker", "hero", "tools", "masonry"],
-    barracks: ["soldier", "archer", "monk"],
-    stable: ["knight"],
+    barracks: ["soldier", "archer", "monk", "spearman", "crossbow"],
+    stable: ["knight", "scout"],
     workshop: ["catapult"],
     worker: ["command", "tower", "barracks", "hut", "smithy", "stable", "workshop"],
     smithy: ["armor", "weapon", "archery"],
@@ -64,13 +65,16 @@
     archer: "Střílí z velké dálky, ale snadno padne.",
     hero: "Pěší rytíř se štítem. Výpad, bojový pokřik a štítová zeď. Jen jeden, po smrti ho vycvičíš znovu.",
     tower: "Střílí na nepřátele v dosahu. Staví dělník (10 s).",
-    barracks: "Cvičí vojáky, lučištníky a mnichy. Staví dělník (12 s).",
+    barracks: "Cvičí vojáky, lučištníky, mnichy, kopiníky a kušiníky. Staví dělník (12 s).",
     hut: "Zvýší limit jednotek o 5. Staví dělník (8 s).",
     smithy: "Vyzkoumá zbroj, zbraně a střelbu. Staví dělník (14 s).",
     monk: "Léčí zraněné spojence v okolí. Sám nebojuje.",
     knight: "Rychlý jezdec s kopím. Po rozjezdu udeří náporem.",
     catapult: "Kámen na velkou dálku, zraní i okolí. Ničí budovy, zblízka nestřílí.",
-    stable: "Cvičí rytíře. Potřebuje kasárna. Staví dělník (14 s).",
+    spearman: "Dlouhé kopí. Proti jezdcům, hrdinům a velkým zrůdám udeří skoro dvojnásob.",
+    crossbow: "Pomalu nabíjí, ale šipka prorazí zbroj a bolí. Potřebuje kovárnu.",
+    scout: "Nejrychlejší jezdec. Loví dělníky, střelce, mnichy a stroje v týlu.",
+    stable: "Cvičí rytíře a zvědy. Potřebuje kasárna. Staví dělník (14 s).",
     workshop: "Staví katapulty. Potřebuje kasárna. Staví dělník (16 s).",
     lunge: "Rytíř se vrhne na cíl a zasáhne nepřátele kolem místa dopadu.",
     warcry: "Spojenci v okolí dávají chvíli víc poškození.",
@@ -651,18 +655,18 @@
 
       const detail = {
         hall: "Dělníci, hrdina, nástroje, opevnění.",
-        barracks: "Výcvik vojáků, lučištníků a mnichů.",
+        barracks: "Vojáci, lučištníci, mniši, kopiníci, kušiníci.",
         tower: "Automatická obrana.",
         hut: "Limit jednotek +5.",
         smithy: "Zbroj, zbraně a střelba.",
-        stable: "Výcvik rytířů.",
+        stable: "Výcvik rytířů a zvědů.",
         workshop: "Stavba katapultů.",
         citadel: own ? "Výcvik dělníků." : "Cíl tvého útoku.",
         necropolis: "Srdce pekla. Znič ji a vyhraješ.",
-        crypt: "Chrlí ghúly a kostlivce.",
-        slaughterhouse: "Sešívá zrůdy.",
+        crypt: "Chrlí ghúly, kostlivce a pekelné psy.",
+        slaughterhouse: "Sešívá zrůdy a morováky.",
         ziggurat: "Pekelná střílna.",
-        portal: "Z pekla jí lezou přízraky."
+        portal: "Z pekla jí lezou přízraky a nekromanti."
       }[e.type];
 
       if (e.type === "tower") {

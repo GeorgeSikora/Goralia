@@ -319,8 +319,12 @@
    * Okno s jantarovým světlem: rám, příčle 1 px (svislá i vodorovná) přes
    * celou výšku/šířku skla, světlý roh tabulky, parapet a nadpraží.
    */
+  // okna právě kreslené budovy (jemné px): v noci se rozsvěcí a zhasínají (drawNight)
+  let wins = null;
+
   function windowLit(P, x, y, w, h, o = {}) {
     const arch = o.arch ? Math.floor(w / 2) : 0;
+    if (wins) wins.push({ x, y, w, h, arch, vb: o.vbar != null ? o.vbar : (w >= 7 ? Math.floor(w / 2) : -1), hb: o.hbar != null ? o.hbar : (h >= 8 ? Math.floor(h / 2) + (arch ? 1 : 0) : -1) });
     const inside = (xx, yy) => {
       if (xx < 0 || yy < 0 || xx >= w || yy >= h) return false;
       if (arch && yy < arch) {
@@ -2315,6 +2319,229 @@
     return (rubbleCache[key] = { c: PK.fine(P), w, h });
   }
 
+
+  /* ======================= noc: okna se rozsvěcují ======================= */
+  /*
+   * Záře skla jednoho okna: sklo v teplém jasu (nahoře bílé, dole jantar)
+   * a kolem rámu jemná průsvitná aura po jemných px. Kreslí se PO shaderech,
+   * takže v hluboké noci okna opravdu svítí; ve dne je alfa nulová.
+   */
+  const winGlow = new Map();
+
+  function glowOf(wn) {
+    const key = `${wn.w}|${wn.h}|${wn.arch}|${wn.vb}|${wn.hb}`;
+    let c = winGlow.get(key);
+    if (c) return c;
+    const pad = 2;
+    const P = new Pix(wn.w + pad * 2, wn.h + pad * 2);
+    const inside = (xx, yy) => {
+      if (xx < 0 || yy < 0 || xx >= wn.w || yy >= wn.h) return false;
+      if (wn.arch && yy < wn.arch) return Math.hypot(xx + 0.5 - wn.w / 2, yy + 0.5 - wn.arch) <= wn.arch;
+      return true;
+    };
+    for (let yy = -pad; yy < wn.h + pad; yy++) {
+      for (let xx = -pad; xx < wn.w + pad; xx++) {
+        if (inside(xx, yy)) {
+          const edge = !inside(xx - 1, yy) || !inside(xx + 1, yy) || !inside(xx, yy - 1) || !inside(xx, yy + 1);
+          if (edge || xx === wn.vb || yy === wn.hb) continue; // rám a příčle zůstanou tmavé
+          const t = (yy - 1) / Math.max(1, wn.h - 3);
+          P.set(xx + pad, yy + pad, t < 0.3 ? C.a[4] : t < 0.7 ? C.a[3] : C.a[2]);
+        } else {
+          // aura: blíž k oknu hustší (bayer)
+          let d = 9;
+          for (let k = 1; k <= pad; k++) if (inside(xx - k, yy) || inside(xx + k, yy) || inside(xx, yy - k) || inside(xx, yy + k)) { d = k; break; }
+          if (d <= pad && bayer(xx, yy) < (d === 1 ? 0.5 : 0.22)) P.setA(xx + pad, yy + pad, C.a[2], d === 1 ? 150 : 90);
+        }
+      }
+    }
+    c = { c: PK.fine(P), pad: pad / HD };
+    winGlow.set(key, c);
+    return c;
+  }
+
+  // jak tmavá je scéna 0..1 (podle šera ze shaderů; bez shaderů podle denní doby, jen jemně)
+  function darkness() {
+    const amb = PK.shaders && PK.shaders.active && PK.shaders.amb;
+    if (!amb) return 0;
+    return clamp((0.8 - (amb[0] + amb[1] + amb[2]) / 3) / 0.5, 0, 1);
+  }
+
+  /* Volá game.js po shaderech. Každé okno má vlastní rytmus: lidé chodí spát, svíčky se rozsvěcují. */
+  function drawNight(g, T, list, visible) {
+    const dark = darkness();
+    if (dark <= 0.02) return;
+    for (const b of list) {
+      if (b.progress < 1 || !visible(b.x / 2, b.y / 2)) continue;
+      const spr = get(b.type, b.team);
+      if (!spr.wins || !spr.wins.length) continue;
+      const x0 = Math.round(b.x / 2) - spr.ax;
+      const y0 = Math.round(b.y / 2) + 19 - spr.ay;
+      const frac = b.hp / b.maxHp;
+      spr.wins.forEach((wn, i) => {
+        // každé okno se po 25-60 s přepne, asi pětina je zhasnutá; poškozená budova bliká víc
+        const per = 25 + hash(b.id, i, 3) * 35;
+        const slot = Math.floor((T + hash(b.id, i, 4) * per) / per);
+        if (hash(slot, i, b.id + 7) < (frac < 0.5 ? 0.4 : 0.2)) return;
+        const gl = glowOf(wn);
+        const flick = 0.9 + 0.1 * Math.sin(T * 3.1 + i * 1.7 + b.id) * Math.sin(T * 1.3 + i);
+        g.globalAlpha = dark * flick;
+        g.drawImage(gl.c, x0 + wn.x / HD - gl.pad, y0 + wn.y / HD - gl.pad);
+      });
+    }
+    g.globalAlpha = 1;
+  }
+
+  /* ======================= poškození ======================= */
+  /*
+   * Překryv přes hotovou budovu podle zdraví: 1 = praskliny a saze,
+   * 2 = hluboké trhliny, vylomené díry s ohořelým okrajem, saze od ohně.
+   * Počítá se z jemných px spritu, takže praskliny vedou jen po zdivu.
+   */
+  const dmgCache = new Map();
+
+  function damage(spr, level) {
+    const key = spr;
+    let pair = dmgCache.get(key);
+    if (!pair) { pair = {}; dmgCache.set(key, pair); }
+    if (pair[level]) return pair[level];
+
+    const src = PK.hdOf(spr.c) || spr.c;
+    const FW = src.width;
+    const FH = src.height;
+    const t = PK.makeCanvas(FW, FH);
+    t.g.drawImage(src, 0, 0);
+    const data = new Uint32Array(t.g.getImageData(0, 0, FW, FH).data.buffer);
+    const solid = (x, y) => x >= 0 && y >= 0 && x < FW && y < FH && (data[y * FW + x] >>> 24) > 200;
+    const lum = (x, y) => { const v = data[y * FW + x]; return ((v & 255) + ((v >> 8) & 255) + ((v >> 16) & 255)) / 3; };
+    const O = new Pix(FW, FH);
+    const R = PK.rng((spr.w * 31 + spr.h) * 7 + level);
+    const hell = !!spr.hell;
+    const crackC = hell ? C.r[3] : mix(C.ink, C.shade, 0.3);
+    const crackL = hell ? C.r[5] : null;
+
+    // praskliny: náhodná chůze dolů a do stran, s rozvětvením
+    const crack = (x, y, len) => {
+      for (let i = 0; i < len; i++) {
+        if (!solid(x, y) || !solid(x + 1, y) || !solid(x - 1, y)) break;
+        O.set(x, y, crackC);
+        if (crackL) { if (R() < 0.5) O.set(x, y, crackL); }
+        else if (solid(x + 1, y) && O.get(x + 1, y) < 0 && lum(x + 1, y) > 60) O.setA(x + 1, y, C.white, 70); // světlý lom vedle trhliny
+        x += R() < 0.4 ? (R() < 0.5 ? -1 : 1) : 0;
+        y += R() < 0.75 ? 1 : 0;
+        if (len > 6 && R() < 0.06) crack(x, y, Math.floor(len * 0.4));
+      }
+    };
+    const pickSolid = (ymin, ymax) => {
+      for (let k = 0; k < 200; k++) {
+        const x = 4 + Math.floor(R() * (FW - 8));
+        const y = Math.floor(FH * ymin + R() * FH * (ymax - ymin));
+        if (solid(x, y) && solid(x, y - 2) && solid(x, y + 3)) return [x, y];
+      }
+      return null;
+    };
+
+    const n = Math.round(FW / (level === 1 ? 26 : 13));
+    for (let i = 0; i < n; i++) {
+      const p = pickSolid(0.25, 0.8);
+      if (p) crack(p[0], p[1], 6 + Math.floor(R() * (level === 1 ? 10 : 18)));
+    }
+
+    // saze: tmavé skvrny ditherem, nahoře u střechy a nad okny
+    const sootN = level === 1 ? 3 : 6;
+    for (let i = 0; i < sootN; i++) {
+      const p = pickSolid(0.1, 0.7);
+      if (!p) continue;
+      const rx = 5 + R() * (level === 1 ? 6 : 10);
+      const ry = rx * 1.3;
+      for (let y = Math.floor(p[1] - ry); y < p[1] + ry; y++) {
+        for (let x = Math.floor(p[0] - rx); x < p[0] + rx; x++) {
+          if (!solid(x, y)) continue;
+          const d = Math.hypot((x - p[0]) / rx, (y - p[1]) / ry);
+          if (d > 1) continue;
+          const dens = (1 - d) * 0.9 + (y < p[1] ? 0.15 : 0);
+          if (bayer(x, y) < dens * 0.9 && O.get(x, y) < 0) O.setA(x, y, mix(C.ink, C.w[0], 0.2), 150 + Math.round((1 - d) * 95));
+        }
+      }
+    }
+
+    // vylomené díry (jen silně poškozená budova): tmavý vnitřek, ohořelý rozeklaný okraj, kvádr pod tím
+    if (level === 2) {
+      const holes = Math.max(2, Math.round(FW / 40));
+      for (let i = 0; i < holes; i++) {
+        const p = pickSolid(0.3, 0.7);
+        if (!p) continue;
+        const rx = 4.5 + R() * 3.5;
+        const ry = 4 + R() * 3;
+        for (let y = Math.floor(p[1] - ry - 2); y < p[1] + ry + 2; y++) {
+          for (let x = Math.floor(p[0] - rx - 2); x < p[0] + rx + 2; x++) {
+            if (!solid(x, y)) continue;
+            const a = Math.atan2(y - p[1], x - p[0]);
+            const jag = 1 + 0.28 * Math.sin(a * 5 + i) + (hash(x, y, i) - 0.5) * 0.3;
+            const d = Math.hypot((x - p[0]) / rx, (y - p[1]) / ry) / jag;
+            if (d < 0.75) O.set(x, y, y < p[1] - ry * 0.3 ? C.ink : hell ? C.r[1] : C.shade);
+            else if (d < 1) O.set(x, y, hell ? C.r[3] : mix(C.w[0], C.ink, 0.3));
+            else if (d < 1.25 && hash(x, y, 3) > 0.4) O.setA(x, y, C.ink, 110);
+          }
+        }
+        // žhavé uhlíky na dně díry
+        O.set(Math.round(p[0]), Math.round(p[1] + ry * 0.4), C.r[4]);
+        O.set(Math.round(p[0]) + 1, Math.round(p[1] + ry * 0.4), C.r[3]);
+      }
+    }
+
+    pair[level] = PK.fine(O);
+    return pair[level];
+  }
+
+  /* ======================= staveniště ======================= */
+  /* Hromádka materiálu u rozestavěné budovy: kvádry a fošny (pekelné: čedičové kameny a lebky). */
+  const pileCache = {};
+
+  function sitePile(hell) {
+    const k = hell ? 1 : 0;
+    if (pileCache[k]) return pileCache[k];
+    const W = 20;
+    const H = 10;
+    const P = new Pix(W * HD, H * HD);
+    const ramp = hell ? BAS : STONE;
+    // fošny na sobě
+    if (!hell) {
+      for (let r = 0; r < 3; r++) {
+        for (let x = 3 + r * 2; x < 30 - r; x++) {
+          const y = 15 - r * 3;
+          P.set(x, y, WOOD[4]);
+          P.set(x, y + 1, WOOD[3]);
+          P.set(x, y + 2, WOOD[1]);
+        }
+        P.set(3 + r * 2, 15 - r * 3 + 1, C.d[4]);
+      }
+    }
+    // kvádry
+    const stones = hell ? [[6, 14, 8, 5], [14, 15, 7, 4], [10, 10, 7, 5], [22, 15, 8, 4]] : [[24, 14, 9, 5], [30, 15, 7, 4], [27, 9, 7, 5]];
+    for (const [x, y, w, h] of stones) {
+      for (let yy = 0; yy < h; yy++) {
+        for (let xx = 0; xx < w; xx++) {
+          if ((xx === 0 || xx === w - 1) && (yy === 0 || yy === h - 1)) continue;
+          const v = yy === 0 ? 5 : yy === h - 1 || xx === w - 1 ? 2 : xx === 0 ? 4 : 3;
+          P.set(x + xx, y + yy, ramp[v]);
+        }
+      }
+    }
+    if (hell) {
+      skull(P, 24, 9, true);
+      cracks(P, 4, 9, 34, 19, 3, 5, 4);
+    } else {
+      // vědro s maltou a lopata
+      P.rect(6, 12, 5, 5, IRON[2]);
+      P.rect(6, 12, 5, 1, IRON[4]);
+      P.rect(7, 12, 3, 1, C.d[5]);
+      P.line(12, 18, 17, 6, WOOD[3]);
+      P.rect(16, 4, 3, 3, IRON[4]);
+    }
+    P.outline(C.ink, 0.7);
+    return (pileCache[k] = { c: PK.fine(P), w: W, h: H });
+  }
+
   /* ======================= registr ======================= */
   const cache = {};
   const BUILD = { hall, barracks, tower, citadel, hut, smithy, stable, workshop, necropolis, crypt, slaughterhouse, ziggurat, portal };
@@ -2323,7 +2550,10 @@
     team = PK.skin(team); // barva týmu navíc z výzev
     const key = `${type}|${team}`;
     if (!cache[key]) {
+      wins = [];
       cache[key] = BUILD[type](team);
+      cache[key].wins = wins;
+      wins = null;
       // zima (winter.js): sníh na hranách, světýlka na hlavní budově
       if (PK.winter && PK.winter.on) PK.winter.building(type, cache[key]);
     }
@@ -2334,6 +2564,7 @@
   function reset() {
     for (const k of Object.keys(cache)) delete cache[k];
     blueprints.clear();
+    dmgCache.clear();
   }
 
   /*
@@ -2369,6 +2600,9 @@
     rubble,
     blueprint,
     reset,
+    damage,
+    drawNight,
+    sitePile,
     teamOf: type => (type === "citadel" ? "red" : "blue")
   };
 })();

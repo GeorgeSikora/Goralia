@@ -948,6 +948,7 @@
   /* ---------- výzvy a odměny ---------- */
   const UNIT_NAMES = {
     worker: "dělník", soldier: "voják", archer: "lučištník", hero: "hrdina", monk: "mnich", knight: "rytíř", catapult: "katapult",
+    spearman: "kopiník", crossbow: "kušiník", scout: "zvěd",
     hall: "gmina", barracks: "kasárna", tower: "strážní věž", hut: "buda", smithy: "kovárna", stable: "stáj", workshop: "dílna"
   };
   const RARITY = { common: "běžná (denní)", rare: "vzácná (týdenní)", tutorial: "za tutoriál" };

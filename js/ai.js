@@ -178,17 +178,25 @@
 
 
     const count = type => army.filter(u => u.type === type).length;
+    // co staví nepřítel: proti jezdcům a zrůdám kopiníci
+    const foesBig = match.units.filter(u => alive(u) && !match.friendly(u.team, team) && R.SPEAR.vs.includes(u.type)).length;
+    const stable = own("stable").some(b => b.progress >= 1);
     const can = {
-      knight: own("stable").some(b => b.progress >= 1),
+      knight: stable,
+      scout: stable && count("scout") < 3,
       catapult: own("workshop").some(b => b.progress >= 1) && count("catapult") < 3,
-      monk: count("monk") < Math.min(3, Math.floor(army.length / 6))
+      monk: count("monk") < Math.min(3, Math.floor(army.length / 6)),
+      crossbow: own("smithy").some(b => b.progress >= 1),
+      spearman: foesBig >= 2 && count("spearman") < Math.max(2, foesBig)
     };
 
     for (let i = 0; i < 2; i++) {
       const n = brain.flip++;
-      let type = n % 3 === 2 ? "archer" : "soldier";
-      if (can.monk && n % 5 === 4) type = "monk";
+      let type = n % 3 === 2 ? (can.crossbow && n % 2 === 0 ? "crossbow" : "archer") : "soldier";
+      if (can.spearman && n % 3 === 1) type = "spearman";
+      else if (can.monk && n % 5 === 4) type = "monk";
       else if (can.catapult && n % 7 === 3) type = "catapult";
+      else if (can.scout && n % 11 === 5) type = "scout";
       else if (can.knight && n % 2 === 1) type = "knight";
       // na dražší jednotku se počká, jinak by ji levní vojáci vždycky předběhli
       if (!canPay(eco, type)) {
@@ -277,7 +285,7 @@
    * pokřik, když bojuje s dost spojenci, štítová zeď při přesile nebo nízkém zdraví.
    * Těžce raněný hrdina mimo útok ustoupí ke gmině (mniši ho tam vyléčí).
    */
-  const VALUE = { archer: 3, monk: 3, catapult: 4, hero: 2.5, lich: 2.5, skeleton: 2, banshee: 2 };
+  const VALUE = { archer: 3, crossbow: 3, monk: 3, catapult: 4, hero: 2.5, lich: 2.5, skeleton: 2, banshee: 2, necromancer: 3.5 };
 
   function heroThink(match, brain, hq, army) {
     const team = brain.team;
