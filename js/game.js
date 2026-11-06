@@ -43,6 +43,9 @@
     monk: "Mnich",
     knight: "Rytíř",
     catapult: "Katapult",
+    spearman: "Kopiník",
+    crossbow: "Kušiník",
+    scout: "Zvěd",
     stable: "Stáj",
     workshop: "Dílna",
     citadel: "Rudá pevnost",
@@ -52,6 +55,9 @@
     abomination: "Zrůda",
     banshee: "Přízrak",
     lich: "Pekelný lich",
+    hound: "Pekelný pes",
+    necromancer: "Nekromant",
+    plague: "Morovák",
     necropolis: "Nekropole",
     crypt: "Krypta",
     slaughterhouse: "Jatka",
@@ -492,7 +498,7 @@
   const ABILITIES = new Set(Object.values(R.HERO.abilities).flat().map(a => a.id));
 
   // Typ, který se právě ovládá (nabídka tlačítek); Tab přepíná mezi typy ve výběru.
-  const FOCUS_ORDER = ["hero", "lich", "worker", "knight", "soldier", "archer", "monk", "catapult", "hall", "citadel", "barracks", "stable", "workshop", "tower", "hut", "smithy"];
+  const FOCUS_ORDER = ["hero", "lich", "worker", "knight", "scout", "soldier", "spearman", "archer", "crossbow", "monk", "catapult", "hall", "citadel", "barracks", "stable", "workshop", "tower", "hut", "smithy"];
 
   function selectionTypes() {
     const present = new Set(selected.map(e => e.type));
@@ -2338,7 +2344,8 @@
         }
 
         hitVisuals(attacker, target, e.n, { silent: !!e.s, delay: e.d || 0 }, !!e.k);
-        if (e.c) fx.text(attacker.x, attacker.y - 50, "NÁPOR!", 0xffd27a);
+        if (e.c && attacker.type === "knight") fx.text(attacker.x, attacker.y - 50, "NÁPOR!", 0xffd27a);
+        else if (e.c) fx.later(e.d || 0, () => fx.bonus(target.x, target.y, target.x < attacker.x ? -1 : 1));
         break;
       }
 
@@ -2460,6 +2467,45 @@
         const mine = e.t === mySlot;
         announce(mine ? `Nemrtví táhnou na tvou základnu! (vlna ${e.n})` : `Nemrtví táhnou na ${target ? target.name : "spojence"} (vlna ${e.n}).`);
         audio.play("horn");
+        break;
+      }
+
+      // jednotka povýšila na veterána
+      case "vet": {
+        const u = unitMap.get(e.id);
+        if (!u) return;
+        u.vetT = 1.2;
+        fx.levelUp(u.x, u.y + 8);
+        fx.text(u.x, u.y - 48, e.n >= 3 ? "ELITA!" : "VETERÁN!", 0xffe08a);
+        if (u.team === me) audio.play("levelUp", { x: u.x, vol: 0.5 });
+        break;
+      }
+
+      // nekromant vyvolal kostlivce
+      case "raise": {
+        const nec = unitMap.get(e.a);
+        if (nec) {
+          nec.castT = 0.5;
+          fx.castGlow(nec.x, nec.y, 0x5ff0c0);
+        }
+        for (const id of e.ids || []) {
+          const s = unitMap.get(id);
+          if (!s) continue;
+          s.riseT = 0.9;
+          fx.summon(s.x, s.y);
+        }
+        if (nec) audio.play("summon", { x: nec.x, vol: 0.6 });
+        break;
+      }
+
+      // morovák praskl: zelený oblak moru
+      case "plague": {
+        fx.summon(e.x, e.y);
+        fx.castGlow(e.x, e.y, 0x5ff0c0);
+        fx.later(R.PLAGUE.delay, () => {
+          fx.plague(e.x, e.y, R.PLAGUE.radius);
+          audio.play("explosion", { x: e.x, vol: 0.6 });
+        });
         break;
       }
 
@@ -2680,6 +2726,7 @@
 
       if (u.building) {
         u.workT = 0.2;
+        u.workKind = "build";
         u.fxT -= dt;
 
         if (u.fxT <= 0) {
@@ -2705,6 +2752,7 @@
           const resource = nearestResource(u);
 
           if (resource) {
+            u.workKind = resource.type;
             resource.shake = 0.22;
             if (resource.type === "wood") fx.chop(resource.x, resource.y + 14);
             else fx.mine(resource.x, resource.y + 12);
@@ -3167,8 +3215,8 @@
   });
 
   /* ======================= hit visuals ======================= */
-  const RANGED = new Set(["archer", "tower", "skeleton", "banshee", "lich", "ziggurat", "necropolis"]);
-  const BOLTS = new Set(["tower", "banshee", "lich", "ziggurat", "necropolis"]);
+  const RANGED = new Set(["archer", "crossbow", "tower", "skeleton", "banshee", "lich", "necromancer", "ziggurat", "necropolis"]);
+  const BOLTS = new Set(["tower", "banshee", "lich", "necromancer", "ziggurat", "necropolis"]);
   // Čísla zásahů počítá simulace; tady jsou jen efekty a zvuky (volá je událost "hit").
   function hitVisuals(attacker, target, amount, opts, killed) {
     let wait = opts.delay || 0;
@@ -3181,6 +3229,7 @@
     const impact = () => {
       if (!opts.silent) fx.hit(tx, ty, amount >= 20);
       if (target.kind === "unit" || target.hp > 0) target.flashT = 0.12;
+      if (target.kind === "unit") target.hurtT = 0.24;
       fx.text(tx, ty - (target.kind === "building" ? 56 : 28), Math.round(amount), friendlyFire ? 0xff8f7a : 0xfff0c4);
       if (!opts.silent) audio.play(target.kind === "building" || attacker.type === "hero" || attacker.type === "abomination" ? "hitHeavy" : "hit", { x: tx });
     };
@@ -3206,7 +3255,7 @@
       if (target.kind === "unit") {
         fx.later(wait, () => audio.play("death", { x: tx }));
         fx.corpse({
-          type: target.type, team: target.team, flip: target.facing < 0,
+          type: target.type, team: target.team, flip: target.facing < 0, v: variantOf(target),
           x: target.x, y: target.y, dir: dirTo, wait
         });
       } else {
@@ -3339,6 +3388,8 @@
       heroVisuals(u, dt);
       u.flashT = Math.max(0, u.flashT - dt);
       u.workT = Math.max(0, u.workT - dt);
+      if (u.hurtT > 0) u.hurtT = Math.max(0, u.hurtT - dt);
+      if (u.vetT > 0) u.vetT = Math.max(0, u.vetT - dt);
 
       const moved = Math.hypot(u.x - u.lx, u.y - u.ly);
 
@@ -3440,29 +3491,77 @@
     return c;
   }
 
-  const HB_TOP = { worker: 25, soldier: 28, archer: 29, hero: 33, raider: 29, ghoul: 24, skeleton: 27, abomination: 30, banshee: 30, lich: 31, monk: 28, knight: 32, catapult: 24 };
-  const BIG = { hero: 16, abomination: 19, lich: 17, knight: 24, catapult: 26 };
+  const HB_TOP = {
+    worker: 25, soldier: 28, archer: 29, hero: 33, raider: 29, ghoul: 24, skeleton: 27, abomination: 30, banshee: 30, lich: 31, monk: 28, knight: 32, catapult: 24,
+    spearman: 31, crossbow: 29, scout: 31, hound: 19, necromancer: 30, plague: 26
+  };
+  const BIG = { hero: 16, abomination: 19, lich: 17, knight: 24, catapult: 26, scout: 24, hound: 20, plague: 17 };
+
+  // Varianta vzhledu jednotky (pleť, vlasy, helma, znak...) podle id: stejná u všech hráčů, sousedi se liší.
+  const variantOf = u => (Math.imul(u.id, 2654435761) >>> 16) % U.variants(u.type);
+  // Posun fáze chůze a přešlapování podle id, aby skupina nešla krok za krokem jako jeden.
+  const phaseOf = u => ((Math.imul(u.id, 40503) >>> 8) & 1023) / 1024;
+  const slotOfTeam = team => R.TEAMS.indexOf(team);
 
   function unitAnim(u) {
     // snímky rovnoměrně přes průběh akce (animace mají mezisnímky, viz units.js)
     const at = (anim, p) => [anim, Math.min(U.frameCount(anim) - 1, Math.floor(clamp(p, 0, 0.999) * U.frameCount(anim)))];
+    const ph = phaseOf(u);
+
+    // vítězové po konci zápasu slaví: výskok se zbraní nad hlavou, mezi skoky chvíli stojí
+    if (matchOver && endWinners && endWinners.includes(slotOfTeam(u.team)) && u.type !== "catapult") {
+      const t = (clock * 0.9 + ph * 3) % 2;
+      if (t < 1) return u.type === "worker" && u.carry ? ["idle_" + u.carry, 0] : at("cheer", t);
+    }
 
     // rytíř: výpad (rozběh a bodnutí), štítová zeď (štít vpřed), pokřik (meč nad hlavou = cast)
     if (u.type === "hero") {
       if (u.st & ST.dash) return at("lunge", Math.min(0.999, (u.dashT || 0) / 0.3));
       if (u.castT > 0) return at(u.castKind === "shieldwall" ? "guard" : "cast", 1 - u.castT / 0.5);
     }
-    if (u.castT > 0 && (u.type === "hero" || u.type === "lich")) return at("cast", 1 - u.castT / 0.5);
+    if (u.castT > 0 && (u.type === "hero" || u.type === "lich" || u.type === "necromancer")) return at("cast", 1 - u.castT / 0.5);
     if (u.atk > 0) return ["attack", U.attackFrame(1 - u.atk / 0.3)];
 
-    if (u.workT > 0) return ["attack", Math.floor(clock * 13 + u.id) % U.frameCount("attack")];
+    if (u.workT > 0) {
+      // dělník: krumpáč v dole, sekera u stromu, kladivo na stavbě a při opravě
+      const kind = u.workKind === "wood" ? "chop" : u.workKind === "build" ? "build" : "attack";
+      return [kind, Math.floor(clock * (kind === "build" ? 9 : 13) + u.id) % U.frameCount(kind)];
+    }
+    // zásah: krátké cuknutí (bílý záblesk kreslí drawUnit)
+    if (u.hurtT > 0 && !(u.st & ST.guard)) return at("hit", 1 - u.hurtT / 0.24);
     // dělník s nákladem má vlastní chůzi a postoj (pytel přes rameno, otep na rameni)
     const load = u.type === "worker" && u.carry ? "_" + u.carry : "";
-    // jeden cyklus chůze (dva kroky) na 22 logických jednotek dráhy = délka kroku spritu
-    if (u.moveT > 0) return ["walk" + load, Math.floor(u.wd / 22 * U.frameCount("walk")) % U.frameCount("walk")];
+    // jeden cyklus chůze (dva kroky) na 22 logických jednotek dráhy = délka kroku spritu; každá jednotka začíná jinde
+    if (u.moveT > 0) return ["walk" + load, Math.floor((u.wd / 22 + ph) * U.frameCount("walk")) % U.frameCount("walk")];
     // rytíř se zvednutým štítem drží kryt, dokud štítová zeď trvá
     if (u.type === "hero" && u.st & ST.guard) return ["guard", U.frameCount("guard") - 1];
+    // občas přešlápne a pohne zbraní (každá jednotka jindy, zhruba jednou za 7-11 s)
+    if (!load) {
+      const period = 7 + ph * 4;
+      const t = (clock + ph * 13) % period;
+      if (t < 1.1) return at("fidget", t / 1.1);
+    }
     return ["idle" + load, Math.floor(clock * 1.4 + u.id * 0.37) & 1];
+  }
+
+  /* Odznak veterána nad hlavou: 1 až 3 zlaté krokve v jemné mřížce (1 jemný bod = 0,5 art px),
+   * tmavý obrys, při povýšení krátce zablikají. */
+  function drawChevrons(x, y, rank, u) {
+    const f = 0.5;
+    const blink = u.vetT > 0 && Math.floor(clock * 12) & 1;
+    for (let r = 0; r < rank; r++) {
+      const cy = y - r * 1.5;
+      for (let i = -3; i <= 3; i++) {
+        const py = cy - (3 - Math.abs(i)) * f;
+        g.fillStyle = "#15121f";
+        g.fillRect(x + i * f - f, py - f, 3 * f, 3 * f);
+      }
+      for (let i = -3; i <= 3; i++) {
+        const py = cy - (3 - Math.abs(i)) * f;
+        g.fillStyle = blink ? "#fff6cc" : i < 0 ? "#ffe08a" : "#e0902a";
+        g.fillRect(x + i * f, py, f, f);
+      }
+    }
   }
 
   function drawUnit(u) {
@@ -3475,7 +3574,7 @@
     if (!reflecting && !(u.riseT > 0.3)) g.drawImage(sh, footX - (sh.width >> 1), footY - (sh.height >> 1));
 
     const [anim, idx] = unitAnim(u);
-    const rec = U.frame(u.type, u.team, anim, idx);
+    const rec = U.frame(u.type, u.team, anim, idx, variantOf(u));
     const img = u.flashT > 0 ? U.flash(rec, flip) : flip ? rec.cf : rec.c;
     const ox = flip ? U.CELL - 1 - U.AX : U.AX;
 
@@ -3554,12 +3653,23 @@
       world.light(g, lx, ly, cast ? 24 : 15, 0xffbf45, cast ? 0.8 : flick, footY - ly);
     }
 
+    if (meta.glow) {
+      // nekromantova hůl: nazelenalý plamen duší
+      const gx = cellX(meta.glow[0]);
+      const gy = footY + meta.glow[1];
+      const flick = 0.45 + Math.sin(clock * (shading ? 2.5 : 8) + u.id) * (shading ? 0.03 : 0.08);
+      world.light(g, gx, gy, meta.glow[2] ? 20 : 11, 0x5ff0c0, meta.glow[2] ? 0.75 : flick, footY - gy);
+    }
+
     if (meta.halo) {
       // prsten na mnišské holi: jemná záře, při požehnání jasnější
       const hx = cellX(meta.halo[0]);
       const hy = footY + meta.halo[1];
       world.light(g, hx, hy, meta.halo[2] ? 16 : 8, 0xffe9a0, meta.halo[2] ? 0.7 : 0.3, footY - hy, false, 0.45);
     }
+
+    const rank = (u.st >> 6) & 3;
+    if (rank && !u.hero && !reflecting) drawChevrons(footX, footY - (HB_TOP[u.type] || 28) + 7, rank, u);
 
     if (u.hero && !reflecting) {
       const top = u.type === "lich" ? 44 : 41;
@@ -4496,6 +4606,9 @@
       workshop: { afford: afford("workshop"), enabled: hasWorker && ready("barracks"), active: placement === "workshop" },
       monk: { afford: afford("monk"), enabled: barracks },
       knight: { afford: afford("knight"), enabled: ready("stable") },
+      scout: { afford: afford("scout"), enabled: ready("stable") },
+      spearman: { afford: afford("spearman"), enabled: barracks },
+      crossbow: { afford: afford("crossbow"), enabled: barracks && ready("smithy") },
       catapult: { afford: afford("catapult"), enabled: ready("workshop") },
       ...research,
       ...abilityButtons(hero),
