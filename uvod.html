@@ -32,6 +32,18 @@
 {"@context":"https://schema.org","@type":"VideoGame","name":"Goralia","url":"https://goralia.cz/","inLanguage":"cs","description":"Česká pixelová real-time strategie zdarma v prohlížeči s multiplayerem pro až 16 hráčů a kooperativním bojem proti nemrtvým.","image":"https://goralia.cz/assets/og-image.png","author":{"@type":"Person","name":"Jiří Sikora"},"genre":["Real-time strategy"],"gamePlatform":"Web browser","playMode":["SinglePlayer","MultiPlayer","CoOp"],"applicationCategory":"Game","operatingSystem":"Any","offers":{"@type":"Offer","price":"0","priceCurrency":"CZK"},"potentialAction":{"@type":"PlayAction","target":"https://goralia.cz/play"}}
 </script>
 <link rel="preload" as="image" href="/assets/web/hero.jpg">
+<script>
+  // Úvod čeká na js/web.js (pixelové písmo, překlad), ať nenaskočí nejdřív obyčejný text a pak jiný.
+  // Logo je vidět hned; pozadí se prolne, až se obrázek stáhne. Pojistka: za 4 s se ukáže vše.
+  (function () {
+    var root = document.documentElement;
+    root.classList.add("js", "pk-wait");
+    setTimeout(function () { root.classList.remove("pk-wait"); }, 4000);
+    var bg = new Image();
+    bg.onload = bg.onerror = function () { root.classList.add("hero-bg"); };
+    bg.src = "/assets/web/hero.jpg";
+  })();
+</script>
 <link rel="stylesheet" href="/css/web.css">
 <link rel="stylesheet" href="/css/flags.css">
 </head>
@@ -64,7 +76,28 @@
     <canvas class="embers" aria-hidden="true"></canvas>
 
     <div class="hero-in">
-      <h1 id="hero-title" class="hero-logo"><span class="label">Goralia</span></h1>
+      <h1 id="hero-title" class="hero-logo has-pix"><span class="label">Goralia</span><img class="pix" id="hero-wordmark" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADUAAAANCAYAAAAJzyawAAACa0lEQVR4AdyUv0pcURDGZ02TIlXqvENIkycIW6UMuFXKBEIeIEVIZeETLCRl/sC1swgE8ofgVmIjIthZqQiC26igoOj5jXfOnTt77l1slf08c77vm7kz95zdBbmHfzNDLb58cR3h5/ZaF28er1tsGqtxrOwBcQQ88Dx7g+eJW0NhqsavJQIeM6vX2Jd485iOB7A3jZV95I2DB+zxAuLIeR4N5KFIwDBZ/SHDV8syevc1Y+Xn30HU8eGHl6tzkZN9xejtF81v6elJ+PDDU5+VPbzP1zj588fVRsNPHvkzdeokHcqMNDb+dSZ/NnYGDGIo6ePVPZHdb1J9elKXahbyvX7X/KZSiB481Fvk+2w9Z/jsmgwdijeAEcKwmAyGkm4+OTvIoQXkVcvPZbK9IMP3GxLz0c1bys9aDOzUan6mzuWFKrdDadj8w1wtPRVDo8yPqs9vNI9meYucms8ynaE9Pzc++t+y9NUpDrXye3Mw+pDeMKcAWuX6N3rP1w87TXznRh+3ROt3upxwMRUJA6H21dGhpsdTmfxbu02mCFkOfTpXLFvTwx8/Eln6vqdXj9Pg1L0uqT4vLXM+SPnonirGta+rjg7FFelqxJqOOg2jwWsjPKjugHpjfkjSKXOFo17bmiUN6k+DF2FoTCkKvsQUPzoUCo3Q4CRdHRrxTaMBr+NjDz89FT0ZhiSmHit7fDlOPxzELb3m1JtinqvPr7/T+E2LcakOXB6KDQ3SqN75dO+J4dAAMRw6K3vP93FooCsHDVDbAz88iHHXs1tDmYm7CigC5wFX0uBB9BrHCubp1PbATx6IMXuABojBDQAAAP//Tv0AaAAAAAZJREFUAwA4m6A5g7nY0AAAAABJRU5ErkJggg==" width="53" height="13" alt="" aria-hidden="true"></h1>
+      <script>
+        // nápis loga vložený ve stránce (tools/logo-nacitani.js): celočíselné zvětšení, v zimě s čepičkou sněhu
+        (function () {
+          var WINTER_LOGO = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADUAAAANCAYAAAAJzyawAAAC80lEQVR4AYyUv2tUQRDH56KSFFYBy8M/QWysYiexERURc2ARYqHgjzKQwjJFWkUCsRKjcCmEFIJEI5IrRA4kiBhEECOnHEY8EY3EQs/9jDfr7PJecsd9b2e+35nZmbd7b0Cyz77h/d0cPsRrZbzFeN1s01iNY8UH2DnggefxDZ7HToYiqPVpXXLAE8zqNfwi3mJMJwbgm/b89ZrgG48PjIMH+PAAO+c8jwbiUCSw4cbXnzLYno/Ahy/SPU8OsawA23Q2snw08L79TawhVvzq1j3liDfkGnXgiAXk4cNbjg4FQQM08q5+SkZPz0jt4m3F5LkTMrSnUsn1xuJdIR5+/Phhke8fpPr5mtQu3NR86tA8utXHJ4/6f1YmhKZoiMZGdt/SGtaYX02bHD+qQ5NXVId9yNOh2JgNaWr2waY8aq5VFu4vR4wdO9JlAK/PLrak+uqkDK5OUCcB+ejydl51q8/gVt90BroxdSbmLz99E22MxN81JMQX1amuX9KBydGhaJhACMPY6MGuQX5v6SmYlqybHxMXh7z6zCFpvByQ0ctNPVFfH504MNIZZ4lYmrsSbYzED33oqSEE+Dri+tChkqfRC65PHxBDoPr+1ufOax6bcBqcGtfGCpjO0Mb1tW48ScKK6tgcOlTyNELqwsPVSm2qKTSmCFy/X/4vjWft0nD+c7WrL0Trl0Y54VdHJBsItajO0vWzSKJDdb50pPF45V8yRVT6/7OdzhWLkWHz4b0i03daevU4jeSKBF1CfR5azPFGT+cPb/BytHtxZXV0KK5IWSPWdK7TMBo8jfqnSb3Z8CLhlLnCuR6bMyMM6vN5IxosRNcsTrmCHx0KnkZokKtDI75pNOB14vDhOz9ET4YhsanHik9ctMOLAzvRe5zGBpt9eZMZiDctt4vqwMWhcGiQRvXOh3uPDYcGsOHQWfE9vx2HBspy0AC1PYiHB7ldtncylAVxVwFF4DzgijR4kMcaxwp20qntQTx5ILfxARrABn8BAAD//2Ky0T4AAAAGSURBVAMArRUdSJTlbpMAAAAASUVORK5CYII=";
+          var img = document.getElementById("hero-wordmark");
+          var d = new Date(), f = null;
+          try {
+            var q = new URLSearchParams(location.search).get("zima");
+            f = q === "1" || q === "0" ? q : localStorage.getItem("pk-winter");
+          } catch (e) { /* bez localStorage platí kalendář */ }
+          if (f === "1" || f === "0" ? f === "1" : d.getMonth() === 11 || (d.getMonth() === 0 && d.getDate() <= 6)) img.src = WINTER_LOGO;
+          var w = img.width, h = img.height;
+          function fit() {
+            var z = Math.max(1, Math.floor(Math.min(640, innerWidth * 0.86) / w));
+            img.style.width = w * z + "px";
+            img.style.height = h * z + "px";
+          }
+          fit();
+          addEventListener("resize", fit);
+        })();
+      </script>
       <p class="hero-tag">Postav hrad, shromáždi armádu, dobyj království.</p>
 
       <a class="btn btn-play big" href="/play" data-pix="Hrát">Hrát</a>

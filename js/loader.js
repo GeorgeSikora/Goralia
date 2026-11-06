@@ -76,13 +76,19 @@
     }
   }
 
-  function drawLogo() {
-    if (logo.dataset.done || !PK.hud || !PK.hud.drawLogo) return;
+  // Logo je obrázek vložený v index.html (vidět hned, bez čekání na skripty). Na localhostu
+  // ověříme, že pořád sedí s kreslením v menu, jinak by se při přechodu do menu změnilo.
+  function checkLogo() {
+    if (!/^(localhost|127\.0\.0\.1)$/.test(location.hostname) || !PK.hud || !logo.complete) return;
     try {
-      PK.hud.drawLogo(logo);
-      logo.dataset.done = "1";
-      logo.classList.add("ready");
-    } catch (e) { /* logo počká na další skript */ }
+      const want = document.createElement("canvas");
+      PK.hud.drawLogo(want);
+      const have = document.createElement("canvas");
+      have.width = logo.naturalWidth;
+      have.height = logo.naturalHeight;
+      have.getContext("2d").drawImage(logo, 0, 0);
+      if (have.toDataURL() !== want.toDataURL()) console.warn("Logo načítací obrazovky nesedí s menu: spusť node tools/logo-nacitani.js");
+    } catch (e) { /* jen kontrola pro vývoj */ }
   }
 
   function drawWalker(moving) {
@@ -130,12 +136,12 @@
     target = 0;
     shown = 0;
     root.hidden = false;
-    root.classList.remove("done");
+    root.classList.remove("done", "leaving");
+    logo.style.transform = "";
     root.setAttribute("aria-busy", "true");
     open = true;
     setText(text);
     tip.textContent = note || "";
-    drawLogo();
     setProgress(0);
   }
 
@@ -150,6 +156,66 @@
         open = false;
       }, 320);
     }, 180);
+  }
+
+  /* První odchod do menu: pruh a texty zmizí, pozadí se rozplyne do scény menu a logo
+   * plynule dojede přesně na místo loga v menu (stejné pixely), kde ho vystřídá. Pak
+   * shora dolů najede obsah menu. Když menu není vidět, obyčejně se rozplyne. */
+  function revealMenu() {
+    const body = document.body;
+    const menu = document.querySelector("#menu");
+    const target = document.querySelector("#logo");
+    const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    const unlock = () => {
+      if (!body.classList.contains("booting")) return;
+      body.classList.remove("booting");
+      if (!menu || calm) return;
+      // obsah aktuální stránky menu postupně shora dolů
+      const items = [menu.querySelector(".tagline"), ...menu.querySelectorAll(".page:not([hidden]) > *"), menu.querySelector(".footer")]
+        .filter(el => el && !el.hidden && el.offsetParent !== null);
+      items.forEach((el, i) => el.style.setProperty("--d", `${Math.min(i, 10) * 0.05}s`));
+      menu.classList.add("intro");
+      setTimeout(() => {
+        menu.classList.remove("intro");
+        items.forEach(el => el.style.removeProperty("--d"));
+      }, 1200);
+    };
+
+    setProgress(1);
+    root.setAttribute("aria-busy", "false");
+
+    hideTimer = setTimeout(() => {
+      const a = logo.getBoundingClientRect();
+      const b = target && menu && !menu.hidden ? target.getBoundingClientRect() : null;
+      const fits = b && b.width > 1 && a.height > 0 && b.top >= 0 && b.bottom <= innerHeight;
+      if (!fits || calm) {
+        unlock();
+        hide();
+        return;
+      }
+
+      const k = b.height / a.height;
+      target.style.visibility = "hidden"; // logo v menu se ukáže, až to z načítání doletí
+      root.classList.add("leaving");
+      logo.style.transform = `translate(${b.left - a.left}px, ${b.top - a.top}px) scale(${k})`;
+
+      const land = () => {
+        logo.removeEventListener("transitionend", land);
+        if (root.hidden) return;
+        clearTimeout(hideTimer);
+        clearTimeout(early);
+        unlock();
+        target.style.visibility = ""; // stejné pixely na stejném místě: výměna není vidět
+        root.hidden = true;
+        open = false;
+        root.classList.remove("leaving");
+        logo.style.transform = "";
+      };
+      logo.addEventListener("transitionend", land);
+      const early = setTimeout(unlock, 380); // obsah menu začne najíždět už během doletu loga
+      hideTimer = setTimeout(land, 750); // pojistka, kdyby transitionend nepřišel
+    }, 260);
   }
 
   /* ---------- běh práce po kouscích ---------- */
@@ -206,8 +272,10 @@
       s.async = false; // spustí se ve správném pořadí
       s.onload = () => {
         setProgress(SHARE.scripts * ++done / SCRIPTS.length);
-        if (name === "hud") drawLogo();
-        if (done === SCRIPTS.length && !bootCalled) hide(); // hra se nepřihlásila, nic nedržet
+        if (done === SCRIPTS.length && !bootCalled) { // hra se nepřihlásila, nic nedržet
+          document.body.classList.remove("booting");
+          hide();
+        }
       };
       s.onerror = () => {
         setText("Hru se nepodařilo načíst. Zkus obnovit stránku.");
@@ -220,7 +288,7 @@
   /* Zavolá game.js na konci: steps = pečení podkladů, ready = start smyčky hry. */
   function boot(steps, ready) {
     bootCalled = true;
-    drawLogo();
+    checkLogo();
 
     let bake = 0;
     let voices = PK.voice && PK.voice.enabled ? 0 : 1;
@@ -232,7 +300,7 @@
     }).catch(() => {});
 
     const finish = () => {
-      try { ready(); } finally { hide(); }
+      try { ready(); } finally { revealMenu(); }
     };
 
     drive(steps, p => { bake = p; sum(); })
@@ -279,7 +347,7 @@
     boot, prepare, span,
     get busy() { return !!busy; },
     // obrazovka zakrývá vše: animace pod ní (pozadí menu) nemusí kreslit
-    get covering() { return !root.hidden && !root.classList.contains("done"); }
+    get covering() { return !root.hidden && !root.classList.contains("done") && !root.classList.contains("leaving"); }
   };
   loadScripts();
 })();

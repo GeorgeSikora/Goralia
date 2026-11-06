@@ -270,6 +270,8 @@
   /* ---------- logo v úvodu: stejný nápis jako v menu hry (PK.icons.wordmark) ---------- */
   function heroLogo() {
     const h = document.querySelector(".hero-logo");
+    // nápis je vložený přímo v uvod.html (vidět hned, velikost řeší skript vedle něj)
+    if (h.querySelector("#hero-wordmark")) return;
     const c = snowy(PK.icons.wordmark());
     const w = c.width;
     const hh = c.height;
@@ -517,4 +519,9 @@
   }
   for (const c of document.querySelectorAll("canvas.embers")) safe(() => embers(c));
   requestAnimationFrame(frame);
+
+  // Hotovo: úvod (podnadpis, tlačítko, lišta) postupně najede. Až po překladu (i18n.js běží na DOMContentLoaded dřív).
+  const ready = () => requestAnimationFrame(() => root.classList.remove("pk-wait"));
+  if (document.readyState === "loading") addEventListener("DOMContentLoaded", ready);
+  else ready();
 })();
