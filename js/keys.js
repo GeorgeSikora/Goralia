@@ -11,33 +11,45 @@
   const STORE = "pk-keys";
 
   // group: nadpis skupiny v nastavení; any: smí to být i Shift/Ctrl/Alt/mezerník (jen push-to-talk)
+  // card: tlačítko je jen v nabídce budovy nebo dělníka, nikdy u vybraného hrdiny, takže jeho klávesu
+  // smí sdílet schopnost hrdiny (scope "hero"). Q/W/E proto cvičí v gmině a kasárnách a u hrdiny sesílají.
   const ACTIONS = [
-    { id: "worker", def: "q", label: "Dělník", group: "Jednotky" },
-    { id: "soldier", def: "w", label: "Voják", group: "Jednotky" },
-    { id: "archer", def: "e", label: "Lučištník", group: "Jednotky" },
-    { id: "hero", def: "h", label: "Hrdina", group: "Jednotky" },
-    { id: "monk", def: "n", label: "Mnich", group: "Jednotky" },
-    { id: "knight", def: "j", label: "Rytíř (ve stáji)", group: "Jednotky" },
-    { id: "catapult", def: "c", label: "Katapult (v dílně)", group: "Jednotky" },
+    { id: "worker", def: "q", label: "Dělník", group: "Jednotky", card: true },
+    { id: "soldier", def: "w", label: "Voják", group: "Jednotky", card: true },
+    { id: "archer", def: "e", label: "Lučištník", group: "Jednotky", card: true },
+    { id: "hero", def: "h", label: "Hrdina (v gmině)", group: "Jednotky", card: true },
+    { id: "monk", def: "n", label: "Mnich", group: "Jednotky", card: true },
+    { id: "knight", def: "j", label: "Rytíř (ve stáji)", group: "Jednotky", card: true },
+    { id: "catapult", def: "c", label: "Katapult (v dílně)", group: "Jednotky", card: true },
+    { id: "spearman", def: "a", label: "Kopiník", group: "Jednotky", card: true },
+    { id: "crossbow", def: "s", label: "Kušiník (s kovárnou)", group: "Jednotky", card: true },
+    { id: "scout", def: "y", label: "Zvěd (ve stáji)", group: "Jednotky", card: true },
     { id: "command", def: "m", label: "Rozkaz", group: "Jednotky" },
-    { id: "tower", def: "t", label: "Strážní věž", group: "Stavby" },
-    { id: "barracks", def: "f", label: "Kasárna", group: "Stavby" },
-    { id: "hut", def: "g", label: "Buda (+5 limit)", group: "Stavby" },
-    { id: "smithy", def: "k", label: "Kovárna", group: "Stavby" },
-    { id: "stable", def: "l", label: "Stáj", group: "Stavby" },
-    { id: "workshop", def: "d", label: "Dílna", group: "Stavby" },
-    { id: "armor", def: "z", label: "Zbroj (v kovárně)", group: "Vylepšení a kouzla" },
-    { id: "weapon", def: "x", label: "Zbraně (v kovárně)", group: "Vylepšení a kouzla" },
-    { id: "archery", def: "b", label: "Střelba (v kovárně)", group: "Vylepšení a kouzla" },
-    { id: "tools", def: "u", label: "Nástroje (v gmině)", group: "Vylepšení a kouzla" },
-    { id: "masonry", def: "o", label: "Opevnění (v gmině)", group: "Vylepšení a kouzla" },
-    { id: "fire", def: "a", label: "Ohnivá koule", group: "Vylepšení a kouzla" },
-    { id: "heal", def: "s", label: "Léčení", group: "Vylepšení a kouzla" },
+    { id: "tower", def: "t", label: "Strážní věž", group: "Stavby", card: true },
+    { id: "barracks", def: "f", label: "Kasárna", group: "Stavby", card: true },
+    { id: "hut", def: "g", label: "Buda (+5 limit)", group: "Stavby", card: true },
+    { id: "smithy", def: "k", label: "Kovárna", group: "Stavby", card: true },
+    { id: "stable", def: "l", label: "Stáj", group: "Stavby", card: true },
+    { id: "workshop", def: "d", label: "Dílna", group: "Stavby", card: true },
+    { id: "armor", def: "z", label: "Zbroj (v kovárně)", group: "Vylepšení", card: true },
+    { id: "weapon", def: "x", label: "Zbraně (v kovárně)", group: "Vylepšení", card: true },
+    { id: "archery", def: "b", label: "Střelba (v kovárně)", group: "Vylepšení", card: true },
+    { id: "tools", def: "u", label: "Nástroje (v gmině)", group: "Vylepšení", card: true },
+    { id: "masonry", def: "o", label: "Opevnění (v gmině)", group: "Vylepšení", card: true },
+    { id: "ab1", def: "q", label: "1. schopnost (Výpad, Ohnivá koule)", group: "Schopnosti hrdiny", scope: "hero" },
+    { id: "ab2", def: "w", label: "2. schopnost (Bojový pokřik, Vyvolání)", group: "Schopnosti hrdiny", scope: "hero" },
+    { id: "ab3", def: "e", label: "3. schopnost (Štítová zeď, Mrazivá aura)", group: "Schopnosti hrdiny", scope: "hero" },
     { id: "pause", def: "p", label: "Menu / pauza", group: "Ostatní" },
     { id: "leave", def: "r", label: "Hlavní menu po konci hry", group: "Ostatní" },
     { id: "ptt", def: "v", label: "Držet = mluvit (hlasový chat)", group: "Ostatní", any: true }
   ];
   const byId = new Map(ACTIONS.map(a => [a.id, a]));
+  // tlačítka schopností v HUD čtou klávesu svého pořadí (rytíř i lich mají Q/W/E)
+  const ALIAS = { lunge: "ab1", warcry: "ab2", shieldwall: "ab3", fireball: "ab1", summon: "ab2", frost: "ab3" };
+  const real = id => ALIAS[id] || id;
+  // Smí mít dvě akce stejnou klávesu? Jen schopnost hrdiny a tlačítko, které u hrdiny nikdy není.
+  const shareable = (a, b) => !!(a.scope !== b.scope && (a.scope ? b.card : a.card));
+  const clash = (a, b) => a !== b && !shareable(a, b);
 
   // Klávesy s pevným významem: Esc, Enter (chat), Tab, šipky (kamera), číslice (skupiny).
   const FIXED = {
@@ -82,16 +94,17 @@
       } catch (e) { /* ignore */ }
     }
 
-    const used = new Set();
+    const done = [];
+    const taken = (a, key) => done.some(b => clash(a, b) && binds[b.id] === key);
     for (const a of ACTIONS) {
       const want = typeof saved[a.id] === "string" ? norm(saved[a.id]) : a.def;
-      if (!problem(a, want) && !used.has(want)) binds[a.id] = want;
-      else binds[a.id] = !used.has(a.def) ? a.def : "";
-      if (binds[a.id]) used.add(binds[a.id]);
+      if (!problem(a, want) && !taken(a, want)) binds[a.id] = want;
+      else binds[a.id] = !taken(a, a.def) ? a.def : "";
+      done.push(a);
     }
     // výchozí hodnota mohla kolidovat s uloženou zkratkou jiné akce, která ještě nebyla zpracovaná
     for (const a of ACTIONS) {
-      if (binds[a.id] && ACTIONS.some(b => b !== a && binds[b.id] === binds[a.id])) binds[a.id] = "";
+      if (binds[a.id] && ACTIONS.some(b => clash(a, b) && binds[b.id] === binds[a.id])) binds[a.id] = "";
     }
   }
 
@@ -108,10 +121,10 @@
     return "";
   }
 
-  const owner = key => ACTIONS.find(a => key && binds[a.id] === key) || null;
+  const owner = (key, action) => ACTIONS.find(a => key && binds[a.id] === key && (!action || clash(a, action))) || null;
 
   function label(id) {
-    const key = binds[id];
+    const key = binds[real(id)];
     if (!key) return "–";
     const names = { " ": "Mezerník", shift: "Shift", control: "Ctrl", alt: "Alt", capslock: "Caps Lock" };
     return names[key] || key.toUpperCase();
@@ -132,7 +145,7 @@
     const why = /^(?:Digit|Numpad)\d$/.test(opts.code || "") ? "Číslice patří skupinám jednotek (1–9)." : problem(action, key);
     if (why) return { ok: false, error: why };
 
-    const other = owner(key);
+    const other = owner(key, action);
     if (other && other !== action) {
       if (!opts.swap) return { ok: false, error: `Klávesa ${key === " " ? "Mezerník" : key.toUpperCase()} už patří akci „${other.label}“.`, conflict: other.id };
       const prev = binds[id];
@@ -152,7 +165,7 @@
   }
 
   // Patří stisk klávesy dané akci? Shift u písmene nevadí (event.key je pak velké).
-  const is = (event, id) => !!binds[id] && norm(event.key) === binds[id];
+  const is = (event, id) => !!binds[real(id)] && norm(event.key) === binds[real(id)];
 
   /* ---------- stránka nastavení: seznam akcí, klik na klávesu a stisk nové ---------- */
   function mount(list, msg, resetBtn) {
@@ -263,7 +276,7 @@
   PK.keys = {
     ACTIONS,
     FIXED,
-    get: id => binds[id] || "",
+    get: id => binds[real(id)] || "",
     label,
     is,
     set,

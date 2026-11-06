@@ -18,11 +18,168 @@ const { createStats, MIN_DURATION } = require("./stats.js");
 const { createOAuth } = require("./oauth.js");
 const { createHallOfFame, POINTS } = require("./halloffame.js");
 const { createEvents } = require("./events.js");
+const { createTutorial } = require("./tutorial.js");
+const { createChallenges } = require("./challenges.js");
+const { createAiGames, MIN_WIN } = require("./aigames.js");
+const { Match } = require("../js/sim.js");
+const MAPS = require("../js/maps.js");
+require("./mapstore.js").load(); // mapy z repozitáře pro zápasy ve scénářích
+const R = require("../js/rules.js");
 
 const ADMIN_EMAIL = "info@jirisikora.cz";
 const ADMIN_PASSWORD = "test-admin-heslo";
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const tmp = prefix => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+
+/* ---------- počítání zápasů a síně slávy: scénáře nových hráčů ---------- */
+async function testScoring() {
+  const store = createStore(tmp("goralia-score-"));
+  const accounts = createAccounts(store, { adminName: "Jurek", adminEmail: ADMIN_EMAIL });
+  const stats = createStats(store);
+  const hall = createHallOfFame(store, accounts);
+  let clock = Date.parse("2026-10-31T12:00:00Z");
+  const ai = createAiGames({ accounts, stats, now: () => clock });
+  const wait = sec => { clock += sec * 1000; };
+
+  const join = async name => (await accounts.register({ name, email: `${name.toLowerCase()}@example.com`, password: "heslo-1234" }, "6.6.6.6")).user;
+  const row = user => hall.ranking().find(r => r.id === user.id);
+  const expected = (pvpWins, otherWins, games) => pvpWins * POINTS.pvpWin + otherWins * POINTS.otherWin + games * POINTS.game;
+
+  // Zápas na serveru stejně jako recordMatch v server.js: výsledek dává simulace.
+  const serverMatch = (mapId, roster, play, duration = 300) => {
+    const map = MAPS.get(mapId);
+    const players = map.slots.map((_, i) => roster[i] ? { name: roster[i].name, ai: !roster[i].user } : null);
+    const m = new Match(map, players);
+    play(m);
+    assert.strictEqual(m.phase, "ended", "zápas skončil");
+    return stats.record({
+      map: mapId, duration, reason: m.reason, coop: !!map.coop,
+      winner: m.winner ? R.TEAMS.indexOf(m.winner) : -1,
+      winners: m.winners.map(t => R.TEAMS.indexOf(t)),
+      players: roster.map((r, slot) => r && { slot, name: r.name, ai: !r.user, userId: r.user ? r.user.id : null, stats: {} }).filter(Boolean)
+    });
+  };
+
+  // nový hráč bez zápasu v síni slávy není
+  const nova = await join("Nova");
+  assert.strictEqual(row(nova), undefined, "nový hráč bez zápasu");
+  assert.deepStrictEqual([nova.stats.games, nova.stats.aiGames, nova.stats.aiWins], [0, 0, 0]);
+
+  // výhra proti AI v prohlížeči se započítá (dřív se připsal jen čas)
+  ai.report(nova, { e: "start", map: "valley" });
+  wait(420);
+  assert.deepStrictEqual(ai.report(nova, { e: "end", map: "valley", result: "win", duration: 415 }), { seconds: 415, result: "win", counted: true });
+  assert.deepStrictEqual([nova.stats.games, nova.stats.wins, nova.stats.aiGames, nova.stats.aiWins], [1, 1, 1, 1]);
+  assert.strictEqual(nova.stats.aiSeconds, 415);
+  assert.strictEqual(nova.stats.pvpWins, 0, "výhra proti AI není výhra proti lidem");
+  assert.deepStrictEqual(nova.stats.byMap.valley, { games: 1, wins: 1 });
+  let r = row(nova);
+  assert(r, "po výhře proti AI je hráč v síni slávy");
+  assert.deepStrictEqual([r.otherWins, r.pvpWins, r.games, r.score], [1, 0, 1, expected(0, 1, 1)]);
+  assert.strictEqual(r.aiSeconds, 415, "síň slávy ukazuje i čas proti AI");
+
+  // prohra proti AI: zápas ano, výhra ne
+  ai.report(nova, { e: "start", map: "valley" });
+  wait(200);
+  ai.report(nova, { e: "end", map: "valley", result: "loss", duration: 200 });
+  assert.deepStrictEqual([nova.stats.games, nova.stats.wins, nova.stats.losses], [2, 1, 1]);
+
+  // opuštěná hra (zavřená karta, nová hra) je prohra, i když klient tvrdí výhru
+  ai.report(nova, { e: "start", map: "valley" });
+  wait(120);
+  assert.strictEqual(ai.report(nova, { e: "end", map: "valley", result: "win", quit: true, duration: 118 }).result, "loss");
+  assert.deepStrictEqual([nova.stats.games, nova.stats.wins, nova.stats.losses], [3, 1, 2]);
+
+  // podvrhy a nesmysly: konec bez startu, dvojí konec, rychlá výhra, krátká hra, neznámý výsledek
+  const before = JSON.stringify(nova.stats);
+  assert.strictEqual(ai.report(nova, { e: "end", result: "win", duration: 600 }), null, "konec bez startu");
+  ai.report(nova, { e: "start" });
+  wait(MIN_WIN - 10);
+  const fast = ai.report(nova, { e: "end", result: "win", duration: 5000 });
+  assert.strictEqual(fast.counted, false, "výhra rychlejší než minuta se neuzná");
+  assert.strictEqual(fast.seconds, MIN_WIN - 5, "délka se ořízne na skutečný čas");
+  assert.strictEqual(ai.report(nova, { e: "end", result: "win", duration: 60 }), null, "druhý konec téže hry");
+  ai.report(nova, { e: "start" });
+  wait(MIN_DURATION - 6);
+  assert.strictEqual(ai.report(nova, { e: "end", result: "loss", duration: MIN_DURATION - 6 }).counted, false, "krátká hra");
+  ai.report(nova, { e: "start" });
+  wait(100);
+  assert.strictEqual(ai.report(nova, { e: "end", result: "bogus", duration: 100 }).counted, false, "neznámý výsledek");
+  ai.report(nova, { e: "start", map: "../x" });
+  wait(100);
+  ai.report(nova, { e: "end", map: "<script>", result: "draw", duration: 100 });
+  assert.strictEqual(nova.stats.draws, 1);
+  assert(!Object.keys(nova.stats.byMap).some(k => /[<.]/.test(k)), "neplatné jméno mapy se do statistik nedostane");
+  const after = JSON.parse(JSON.stringify(nova.stats));
+  const was = JSON.parse(before);
+  assert.deepStrictEqual([after.games - was.games, after.wins - was.wins], [1, 0], "z podvrhů se započítala jen remíza");
+
+  // výhra nového hráče proti člověku na serveru (soupeř se vzdal)
+  const ota = await join("Ota");
+  const pvp = serverMatch("valley", [{ name: "Nova", user: nova }, { name: "Ota", user: ota }], m => m.resign("red", "surrender"));
+  assert.strictEqual(pvp.players[0].result, "win");
+  assert.deepStrictEqual([nova.stats.pvpGames, nova.stats.pvpWins], [1, 1]);
+  assert.deepStrictEqual([ota.stats.games, ota.stats.wins, ota.stats.losses, ota.stats.pvpGames], [1, 0, 1, 1]);
+  assert.strictEqual(row(ota).score, expected(0, 0, 1), "prohra = jen body za zápas");
+  r = row(nova);
+  assert.deepStrictEqual([r.pvpWins, r.otherWins, r.games], [1, 1, 5]);
+  assert.strictEqual(r.score, expected(1, 1, 5));
+
+  // odpojení uprostřed zápasu: odpojený prohrává, zbylý vyhrává proti lidem
+  const pia = await join("Pia");
+  const gone = serverMatch("valley", [{ name: "Ota", user: ota }, { name: "Pia", user: pia }], m => m.resign("blue", "disconnect"));
+  assert.strictEqual(gone.reason, "disconnect");
+  assert.deepStrictEqual(gone.players.map(p => p.result), ["loss", "win"]);
+  assert.deepStrictEqual([pia.stats.pvpWins, ota.stats.losses], [1, 2]);
+
+  // všichni lidé odešli (zápas s AI opuštěn): prohra, ne výhra
+  serverMatch("valley", [{ name: "Pia", user: pia }, { name: "AI" }], m => m.finish(null, "abandoned"));
+  assert.deepStrictEqual([pia.stats.games, pia.stats.wins, pia.stats.losses], [2, 1, 1]);
+
+  // výhra proti AI na serveru (jeden člověk + AI): výhra proti AI, ne proti lidem
+  serverMatch("valley", [{ name: "Pia", user: pia }, { name: "AI" }], m => m.resign("red", "hq"));
+  assert.deepStrictEqual([pia.stats.wins, pia.stats.pvpWins, pia.stats.pvpGames], [2, 1, 1]);
+  assert.strictEqual(row(pia).otherWins, 1);
+
+  // kooperace proti nemrtvým: výhra celého týmu, žádná výhra proti lidem, v historii ne jako PvP
+  const coopMap = MAPS.list.find(m => m.coop);
+  const undead = coopMap.coop.ai;
+  const humans = coopMap.slots.map((_, i) => i).filter(i => i !== undead).slice(0, 2);
+  const roster = [];
+  roster[undead] = { name: R.UNDEAD.short };
+  roster[humans[0]] = { name: "Ota", user: ota };
+  roster[humans[1]] = { name: "Nova", user: nova };
+  const coop = serverMatch(coopMap.id, roster, m => m.resign(R.TEAMS[undead], "hq"));
+  assert(coop.coop);
+  assert.deepStrictEqual(coop.players.filter(p => !p.ai).map(p => p.result), ["win", "win"]);
+  assert.deepStrictEqual([ota.stats.pvpGames, nova.stats.pvpGames], [2, 1], "kooperace se do PvP nepočítá");
+  assert.strictEqual(stats.recentFor(ota.id, 1)[0].pvp, false, "kooperace není v historii PvP");
+  assert.strictEqual(stats.recentFor(pia.id, 5).find(m => m.id === gone.id).pvp, true);
+
+  // pořadí: body sedí se vzorcem pro všechny
+  for (const p of hall.ranking()) {
+    const u = accounts.getUser(p.id);
+    assert.strictEqual(p.games, u.stats.games);
+    assert.strictEqual(p.otherWins, u.stats.wins - u.stats.pvpWins);
+    assert.strictEqual(p.score, expected(u.stats.pvpWins, u.stats.wins - u.stats.pvpWins, u.stats.games));
+  }
+  const ranks = hall.ranking();
+  for (let i = 1; i < ranks.length; i++) assert(ranks[i - 1].score >= ranks[i].score, "seřazeno podle skóre");
+
+  // starý účet z doby před počítáním her proti AI: chybějící pole se po restartu doplní (žádné NaN v síni slávy)
+  const old = await join("Stary");
+  delete old.stats.aiGames;
+  delete old.stats.aiWins;
+  old.stats.games = 1;
+  store.flush();
+  const dir = path.dirname(store.file);
+  const restarted = createStore(dir);
+  createAccounts(restarted, {});
+  const oldBack = restarted.data.users[old.id];
+  assert.deepStrictEqual([oldBack.stats.aiGames, oldBack.stats.aiWins], [0, 0]);
+  const oldRow = createHallOfFame(restarted, accounts).ranking().find(p => p.id === old.id);
+  assert.strictEqual(oldRow.score, POINTS.game);
+}
 
 /* ---------- účty, relace, statistiky (bez serveru) ---------- */
 async function testAccounts() {
@@ -359,22 +516,22 @@ async function testOAuth() {
     return state;
   }
 
-  assert.strictEqual((await call("/auth/facebook")).headers.Location, "/?login=unavailable", "nenastavený poskytovatel");
+  assert.strictEqual((await call("/auth/facebook")).headers.Location, "/play?login=unavailable", "nenastavený poskytovatel");
 
   // státní ochrana proti podvržení: špatný state, cizí cookie, odmítnutí
-  assert.strictEqual((await withCookie("/auth/google/callback?code=abc&state=zle", "goralia_oauth=zle")).headers.Location, "/?login=failed");
+  assert.strictEqual((await withCookie("/auth/google/callback?code=abc&state=zle", "goralia_oauth=zle")).headers.Location, "/play?login=failed");
 
   let state = await begin();
-  assert.strictEqual((await withCookie(`/auth/google/callback?code=abc&state=${state}`, "goralia_oauth=jiny")).headers.Location, "/?login=failed", "cookie nesedí se state");
+  assert.strictEqual((await withCookie(`/auth/google/callback?code=abc&state=${state}`, "goralia_oauth=jiny")).headers.Location, "/play?login=failed", "cookie nesedí se state");
 
   state = await begin();
-  assert.strictEqual((await withCookie(`/auth/google/callback?error=access_denied&state=${state}`, `goralia_oauth=${state}`)).headers.Location, "/?login=denied");
+  assert.strictEqual((await withCookie(`/auth/google/callback?error=access_denied&state=${state}`, `goralia_oauth=${state}`)).headers.Location, "/play?login=denied");
   assert.strictEqual(calls.length, 0, "bez platného state se poskytovatel nevolá");
 
   // úspěšné přihlášení založí účet a relaci
   state = await begin();
   const first = await withCookie(`/auth/google/callback?code=THECODE&state=${state}`, `goralia_oauth=${state}`);
-  assert.strictEqual(first.headers.Location, "/?login=new");
+  assert.strictEqual(first.headers.Location, "/play?login=new");
   const cookies = [].concat(first.headers["Set-Cookie"]);
   assert(cookies.some(c => c.startsWith("goralia_oauth=;") && /Max-Age=0/.test(c)), "state cookie se smaže");
   const sid = cookies.find(c => c.startsWith("goralia_sid="));
@@ -386,21 +543,21 @@ async function testOAuth() {
   assert(exchange.body.includes("code=THECODE") && exchange.body.includes("client_secret=gsecret") && exchange.body.includes(encodeURIComponent("https://goralia.test/auth/google/callback")), exchange.body);
   assert.strictEqual(calls[1].headers.Authorization, "Bearer AT");
 
-  assert.strictEqual((await withCookie(`/auth/google/callback?code=THECODE&state=${state}`, `goralia_oauth=${state}`)).headers.Location, "/?login=failed", "state jde použít jen jednou");
+  assert.strictEqual((await withCookie(`/auth/google/callback?code=THECODE&state=${state}`, `goralia_oauth=${state}`)).headers.Location, "/play?login=failed", "state jde použít jen jednou");
 
   state = await begin();
-  assert.strictEqual((await withCookie(`/auth/google/callback?code=X&state=${state}`, `goralia_oauth=${state}`)).headers.Location, "/?login=ok", "druhé přihlášení už je do existujícího účtu");
+  assert.strictEqual((await withCookie(`/auth/google/callback?code=X&state=${state}`, `goralia_oauth=${state}`)).headers.Location, "/play?login=ok", "druhé přihlášení už je do existujícího účtu");
   assert.strictEqual(accounts.counts().users, 1);
 
   state = await begin();
   failToken = true;
-  assert.strictEqual((await withCookie(`/auth/google/callback?code=X&state=${state}`, `goralia_oauth=${state}`)).headers.Location, "/?login=failed", "poskytovatel odmítl kód");
+  assert.strictEqual((await withCookie(`/auth/google/callback?code=X&state=${state}`, `goralia_oauth=${state}`)).headers.Location, "/play?login=failed", "poskytovatel odmítl kód");
   failToken = false;
   console.warn = warn;
 
   accounts.getUser(1).banned = { at: Date.now(), reason: "" };
   state = await begin();
-  assert.strictEqual((await withCookie(`/auth/google/callback?code=X&state=${state}`, `goralia_oauth=${state}`)).headers.Location, "/?login=banned");
+  assert.strictEqual((await withCookie(`/auth/google/callback?code=X&state=${state}`, `goralia_oauth=${state}`)).headers.Location, "/play?login=banned");
 
   fs.rmSync(dir, { recursive: true, force: true });
 }
@@ -452,6 +609,7 @@ async function testServerApi() {
   const proc = spawn(process.execPath, [path.join(__dirname, "server.js")], {
     env: {
       ...process.env,
+      GORALIA_ENV_FILE: "",
       PORT: String(PORT),
       GORALIA_DATA_DIR: dataDir,
       GORALIA_MAPS_DIR: (() => { const d = tmp("goralia-maps-"); fs.copyFileSync(path.join(__dirname, "..", "maps", "valley.json"), path.join(d, "valley.json")); return d; })(),
@@ -494,6 +652,18 @@ async function testServerApi() {
     assert.strictEqual((await request("GET", "/admin.html")).status, 404);
     assert.strictEqual((await request("GET", "/js/admin.js")).status, 200);
     assert.strictEqual((await request("GET", "/")).headers["x-frame-options"], "DENY");
+
+    // úvodní stránka webu je na /, samotná hra na /play
+    assert.ok((await request("GET", "/")).text.includes('href="/play"'), "úvod odkazuje do hry");
+    assert.ok((await request("GET", "/play")).text.includes('id="game"'), "na /play běží hra");
+    assert.strictEqual((await request("GET", "/index.html")).status, 200, "staré odkazy na hru fungují dál");
+    const slash = await request("GET", "/play/?server=x");
+    assert.strictEqual(slash.status, 302);
+    assert.strictEqual(slash.headers.location, "/play?server=x", "lomítko na konci by rozbilo relativní cesty hry");
+    const part = await request("GET", "/assets/web/hero.mp4", undefined, { Range: "bytes=0-9" });
+    assert.strictEqual(part.status, 206, "video jde stahovat po částech (Safari)");
+    assert.strictEqual(part.headers["content-type"], "video/mp4");
+    assert.ok(/^bytes 0-9\/\d+$/.test(part.headers["content-range"]));
 
     const anon = await request("GET", "/api/me");
     assert.deepStrictEqual(anon.json, { user: null, canEditMaps: true, providers: { google: true, facebook: true } });
@@ -570,7 +740,7 @@ async function testServerApi() {
     const forged = await new Promise((resolve, reject) => {
       http.get({ host: "localhost", port: PORT, path: "/auth/google/callback?code=x&state=zle" }, res => { res.resume(); resolve(res); }).on("error", reject);
     });
-    assert.strictEqual(forged.headers.location, "/?login=failed");
+    assert.strictEqual(forged.headers.location, "/play?login=failed");
 
     /* ----- administrace ----- */
     assert.strictEqual((await request("GET", "/api/admin/overview")).status, 401);
@@ -745,8 +915,52 @@ async function testServerApi() {
   }
 }
 
+/* ---------- tutoriál: počty, trychtýř, titul Nováček ---------- */
+async function testTutorial() {
+  const store = createStore(tmp("goralia-tut-"));
+  const accounts = createAccounts(store, {});
+  const challenges = createChallenges(store, accounts);
+  const hall = createHallOfFame(store, accounts, challenges);
+  const tut = createTutorial(store, accounts, () => "2026-11-05", challenges);
+  const eva = (await accounts.register({ name: "Eva", email: "eva@example.com", password: "heslo-1234" }, "9.9.9.9")).user;
+
+  // anonymní prohlížeč: začne, dojde ke kroku 3 a přeskočí
+  tut.handle({ e: "start", first: true }, null);
+  for (let i = 0; i < 4; i++) tut.handle({ e: "step", step: i, first: true }, null);
+  tut.handle({ e: "skip", step: 3, first: true }, null);
+  // přihlášená Eva dohraje; druhé spuštění z nastavení se do "začalo" nepočítá
+  tut.handle({ e: "start", first: true }, eva);
+  const done = tut.handle({ e: "done", first: true }, eva);
+  tut.handle({ e: "start", first: true }, eva);
+  tut.handle({ e: "done", first: true }, eva);
+  assert.strictEqual(done.tutorialDone, true);
+  assert(eva.cosmetics.owned["title-novacek"], "titul Nováček mezi odměnami");
+  assert.strictEqual(done.look.title, "title-novacek", "titul se rovnou nasadí");
+  assert.strictEqual(Object.keys(eva.cosmetics.owned).length, 1, "titul jen jednou");
+  assert.strictEqual(tut.handle({ e: "nesmysl" }, null), null, "neznámé hlášení");
+  assert.strictEqual(tut.handle({ e: "claim" }, null), null, "titul bez účtu nejde");
+
+  const r = tut.report(7);
+  assert.strictEqual(r.started, 2, "začali dva hráči");
+  assert.strictEqual(r.finished, 1, "dokončila jedna");
+  assert.strictEqual(r.skipped, 1);
+  assert.strictEqual(r.skippedAt[3], 1);
+  assert.strictEqual(r.reached[3], 1);
+  assert.strictEqual(r.runs, 3);
+  assert.strictEqual(r.accounts.titled, 1);
+  assert.strictEqual(r.days[r.days.length - 1].started, 2);
+
+  // titul se ukáže v síni slávy i s nulovým skóre a jen jednou
+  // titul se ukáže v síni slávy i s nulovým skóre
+  const row = hall.ranking().find(p => p.name === "Eva");
+  assert(row && row.score === 0 && row.look.title === "title-novacek", "Nováček v síni slávy");
+  assert.strictEqual(accounts.selfView(eva).tutorialDone, true);
+}
+
 async function main() {
+  await testTutorial();
   await testAccounts();
+  await testScoring();
   await testOAuth();
   await testServerApi();
   console.log("OK: všechny testy účtů prošly");

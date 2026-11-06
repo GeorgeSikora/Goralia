@@ -313,54 +313,182 @@
     part(P, L => L.disc(27.5, 18, 1.8, 1.8, C.skin[1]), 0.3, 0.2);
   };
 
-  /* Hrdina: šedivý stařec s čelenkou, tyrkysové roucho, modrý plášť, lucerna. */
+  /* Hrdina: pěší rytíř. Uzavřená přilba se zlatou korunkou a týmovým chocholem, štít s Ringem. */
   make.hero = P => {
-    // plášť
-    part(P, L => L.disc(14, 31.5, 14, 10.5, sph(TEAMR, 10, 24, 14, 10)));
-    // roucho se zlatým límcem
-    part(P, L => L.disc(16, 31.5, 10.5, 8.5, sph(ROOF.concat([C.t[4]]), 13, 26, 11, 9)), 0.25, 0.3);
-    part(P, L => L.poly([[9, 22], [23, 21], [24, 24], [19, 26], [16, 23.5], [11, 25]], lin([C.gold[2], C.gold[1], C.gold[0]], 9, 21, 15, 26)), 0.2, 0.3);
-    ringMark(P, 15, 28.5, 2.6, C.gold[1], 1);
-
-    // dlouhé vlasy
-    const HAIR = [S[3], S[4], S[5], S[6]];
-    part(P, L => L.poly([[8, 9], [12, 3.5], [18, 3], [19, 12], [15, 23], [9, 23], [7, 16]], sph(HAIR, 12, 8, 9, 12)), 0.25, 0.3);
-    for (const x of [10, 13]) P.line(x, 12, x - 1, 21, S[3]);
-    // obličej
-    part(P, L => L.disc(19.5, 11.5, 4.3, 4.6, sph(SKIN, 19, 10, 4.5, 4.5, 0.1)), 0.1, 0.2);
-    P.set(21, 10, EYE);
-    P.set(21, 11, EYE);
-    P.rect(20, 9, 3, 1, S[6]);
-    P.set(24, 12, C.skin[1]);
-    // vousy
-    part(P, L => L.poly([[16, 13.5], [24, 13], [23.5, 16.5], [21, 21.5], [18, 21], [16, 17]], sph([S[4], S[5], S[6]], 19, 15, 5, 5, 0.1)), 0.25, 0.25);
-    P.line(20, 15, 23, 14, S[4]);
-    P.line(19, 17, 19, 20, S[4]);
-    // zlatá čelenka
-    P.line(14, 7, 23, 6, C.gold[1]);
-    P.line(14, 8, 23, 7, C.gold[0]);
-    P.set(19, 6, C.a[4]);
-    P.set(19, 7, C.a[2]);
-
-    // hůl s lucernou
-    part(P, L => L.rect(27, 10, 2, 22, C.w[2]), 0.3, 0.35);
-    part(P, L => L.disc(26.5, 23, 2, 2, C.skin[1]), 0.3, 0.25);
-    // lucerna
+    // meč za ramenem
     part(P, L => {
-      L.rect(25, 2, 6, 2, C.gold[0]);
-      L.rect(26, 1, 4, 1, C.gold[1]);
-      L.rect(25, 4, 6, 6, C.gold[0]);
-      L.rect(25, 10, 6, 1, C.gold[0]);
+      L.poly([[26, 22], [26, 4], [27.5, 1], [29, 4], [29, 22]], x => (x < 27 ? S[6] : x < 28 ? S[5] : S[3]));
+    }, 0.2, 0.3);
+    P.rect(24, 21, 7, 2, C.gold[1]);
+    P.rect(24, 21, 7, 1, C.gold[2]);
+
+    // plášť a plátová ramena
+    part(P, L => L.disc(15, 32, 14, 9, sph(TEAMR, 10, 25, 14, 9)));
+    part(P, L => L.disc(16, 31.5, 11, 7.5, sph(STEEL, 13, 25, 11, 8, -0.05)), 0.3, 0.3);
+    for (let x = 7; x < 26; x += 3) P.set(x, 27, S[2]);
+
+    // velká přilba (hrnec) se štěrbinou hledí
+    part(P, L => {
+      L.poly([[8, 7], [22, 7], [23.5, 10], [23, 22], [16, 24], [8, 22], [7, 10]], sph(STEEL, 14, 12, 9, 10));
+    }, 0.3, 0.3);
+    P.rect(13, 13, 10, 2, C.ink);
+    P.rect(13, 13, 10, 1, S[0]);
+    P.set(19, 13, C.a[3]);
+    P.line(15, 8, 15, 22, S[5]);
+    P.line(16, 16, 16, 22, S[2]);
+    for (const y of [17, 19]) for (const x of [18, 20]) P.set(x, y, S[1]);
+    // zlatá korunka hrdiny
+    part(P, L => {
+      L.rect(8, 6, 15, 2, C.gold[1]);
+      for (const x of [9, 13, 17, 21]) L.rect(x, 4, 1.5, 2, C.gold[2]);
     }, 0.35, 0.25);
-    P.rect(26, 4, 4, 6, C.a[3]);
-    P.rect(27, 5, 2, 4, C.a[4]);
-    P.rect(28, 4, 1, 6, C.gold[1]);
+    P.set(15, 6, C.a[4]);
+    // chochol
+    part(P, L => L.poly([[14, 4], [18, 0.5], [10, 0.8], [3, 3.5], [1, 9], [5, 5.5], [10, 4.5]], lin([T.l, T.m, T.s], 16, 1, 2, 8)), 0.35, 0.3);
+    P.line(5, 3, 14, 1.5, T.h);
+
+    // kite štít vlevo dole
+    part(P, L => {
+      L.poly([[2, 18], [11, 17], [12, 23], [7, 31.5], [1.5, 23]], sph(TEAMR, 5, 20, 7, 8, 0.05));
+    }, 0.35, 0.3);
+    P.line(2, 18, 11, 17, C.gold[1]);
+    ringMark(P, 6.5, 23, 2.4, C.gold[2], 1);
   };
 
+  /* Výpad: meč bodá šikmo vzhůru, za ním šmouhy pohybu, na hrotu záblesk. */
+  make.lunge = P => {
+    // šmouhy rychlosti
+    for (const [x0, y0, len, c] of [[2, 22, 9, S[4]], [4, 27, 7, S[3]], [1, 17, 6, S[3]], [8, 30, 5, S[2]]]) {
+      for (let i = 0; i < len; i++) if (bayer(x0 + i, y0 - i) < 1 - i / len * 0.6) P.set(x0 + i, y0 - i, c);
+    }
+    // čepel
+    part(P, L => {
+      L.poly([[11, 22], [25, 8], [29.5, 2.5], [24, 6.5], [9, 20]], (x, y) => (x + y < 31 ? S[6] : x + y < 33 ? S[5] : S[3]));
+    }, 0.2, 0.35);
+    P.line(12, 19, 25, 6, C.white);
+    // záštita, rukojeť, hlavice
+    part(P, L => {
+      L.poly([[6, 17], [8, 15], [16, 23], [14, 25]], lin([C.gold[0], C.gold[1], C.gold[2]], 15, 24, 7, 16));
+      L.poly([[8, 22], [10, 20], [6, 26], [4, 28]], C.w[2]);
+      L.disc(3.5, 28.5, 2.2, 2.2, sph(GOLD, 3, 28, 2, 2));
+    }, 0.3, 0.3);
+    P.line(9, 21, 5, 26, C.w[1]);
+  };
+
+  /* Bojový pokřik: válečný roh, z něj vycházejí rudozlaté zvukové vlny. */
+  make.warcry = P => {
+    const HORN = [C.bone[2], C.bone[1], C.bone[0], C.white];
+    part(P, L => {
+      L.poly([[2, 26], [5, 19], [9, 14], [14, 11], [16, 15], [12, 18], [8, 22], [6, 28]], lin(HORN, 3, 27, 14, 12));
+      L.disc(15.5, 13, 3.6, 4.6, sph(HORN, 15, 12, 4, 5));
+    }, 0.25, 0.3);
+    P.disc(16, 13.5, 1.6, 2.6, C.w[0]);
+    for (const [x, y] of [[5, 22], [9, 17]]) P.line(x, y, x + 2, y + 2, C.gold[1]);
+    // vlny
+    for (const [r, c] of [[6, C.a[3]], [10, C.a[2]], [14, C.r[4]]]) {
+      for (let k = -9; k <= 9; k++) {
+        const a = k / 9 * 0.95 - 0.55;
+        const x = Math.round(16 + Math.cos(a) * r);
+        const y = Math.round(13 + Math.sin(a) * r);
+        if (x < 31 && y >= 0 && y < 32 && (r < 14 || (k & 1) === 0)) P.set(x, y, c);
+      }
+    }
+    P.set(28, 3, C.a[4]);
+    P.set(29, 23, C.a[3]);
+  };
+
+  /* Štítová zeď: velký týmový štít, za ním modrá bariéra z jemných dílků. */
+  make.shieldwall = P => {
+    const BAR = [C.u[2], C.u[3], C.u[4]];
+    for (let y = 1; y < 31; y++) {
+      for (let x = 1; x < 31; x++) {
+        const d = Math.hypot(x + 0.5 - 16, (y + 0.5 - 17) * 1.15);
+        if (d > 15 || d < 12.5) continue;
+        if (((x >> 1) + (y >> 1)) % 3 === 0) continue;
+        P.set(x, y, pick(BAR, 1 - (y / 32)));
+      }
+    }
+    part(P, L => {
+      L.poly([[6, 5], [16, 3], [26, 5], [25.5, 15], [21, 24], [16, 29.5], [11, 24], [6.5, 15]], sph(TEAMR, 13, 10, 11, 13, 0.05));
+    }, 0.35, 0.3);
+    part(P, L => {
+      L.poly([[6, 5], [16, 3], [26, 5], [26, 6.5], [16, 4.5], [6, 6.5]], GOLD[1]);
+    }, 0.3, 0.2);
+    ringMark(P, 16, 14, 5, C.gold[2], 1.6);
+    P.set(16, 14, C.gold[1]);
+    P.line(9, 8, 10, 16, T.h);
+  };
+
+  /* Vyvolání kostlivců: lebka a kostnatá ruka se derou ze země, kolem zelené runy. */
+  make.summon = P => {
+    const GL = [C.glow[0], C.glow[1], C.glow[2]];
+    // runový kruh na zemi
+    for (let k = 0; k < 40; k++) {
+      const a = k / 40 * Math.PI * 2;
+      const x = Math.round(16 + Math.cos(a) * 14);
+      const y = Math.round(26 + Math.sin(a) * 4.5);
+      if (k % 5 !== 2) P.set(x, y, GL[k % 3 === 0 ? 2 : 1]);
+    }
+    // hlína
+    part(P, L => L.disc(16, 28, 9, 3.4, sph([C.w[0], C.w[1], C.d[3]], 14, 27, 9, 3)), 0.25, 0.3);
+    // ruka
+    part(P, L => {
+      L.rect(23, 14, 2, 13, C.bone[1]);
+      for (const [x, h] of [[21, 5], [23, 7], [25, 6], [27, 4]]) L.rect(x, 14 - h, 1.5, h, C.bone[0]);
+    }, 0.3, 0.3);
+    // lebka
+    part(P, L => {
+      L.disc(13, 14, 7, 7, sph([C.bone[2], C.bone[1], C.bone[0], C.white], 11, 11, 7, 7));
+      L.poly([[9, 18], [17, 18], [16.5, 23], [9.5, 23]], sph([C.bone[2], C.bone[1], C.bone[0]], 11, 19, 6, 4));
+    }, 0.3, 0.3);
+    P.rect(9, 13, 3, 3, C.ink);
+    P.rect(14, 13, 3, 3, C.ink);
+    P.set(10, 14, C.glow[1]);
+    P.set(15, 14, C.glow[1]);
+    P.set(12, 17, C.ink);
+    P.set(13, 17, C.ink);
+    for (const x of [10, 12, 14, 16]) P.set(x, 21, C.ink);
+  };
+
+  /* Mrazivá aura: ledový krystal se šesti rameny v kruhu mrazu. */
+  make.frost = P => {
+    const ICE = [C.v[1], C.v[2], C.v[3], C.v[4], C.white];
+    for (let k = 0; k < 6; k++) {
+      const a = k / 6 * Math.PI * 2 - Math.PI / 2;
+      part(P, L => {
+        const ex = 16 + Math.cos(a) * 13;
+        const ey = 16 + Math.sin(a) * 13;
+        const nx = -Math.sin(a);
+        const ny = Math.cos(a);
+        L.poly([[16 + nx * 1.6, 16 + ny * 1.6], [ex, ey], [16 - nx * 1.6, 16 - ny * 1.6]], lin(ICE.slice().reverse(), ex, ey, 16, 16));
+        for (const t of [0.45, 0.72]) {
+          const bx = 16 + Math.cos(a) * 13 * t;
+          const by = 16 + Math.sin(a) * 13 * t;
+          for (const sd of [-1, 1]) {
+            const b2 = a + sd * 0.8;
+            L.line(bx, by, bx + Math.cos(b2) * 4, by + Math.sin(b2) * 4, ICE[3]);
+          }
+        }
+      }, 0.3, 0.3);
+    }
+    part(P, L => L.disc(16, 16, 3.4, 3.4, sph(ICE, 15, 15, 3.4, 3.4)), 0.3, 0.2);
+    P.set(15, 15, C.white);
+  };
 
   /* Záře a jiskry se kreslí až po obrysu, aby nebyly obtažené. */
   const after = {
-    hero: P => halo(P, 28, 6.5, 6.5, C.a[2], 0.5)
+    hero: P => halo(P, 15, 6, 5, C.a[3], 0.35),
+    lunge: P => {
+      halo(P, 28, 3, 4, C.white, 0.6);
+      for (const [x, y] of [[30, 1], [27, 0], [31, 5]]) P.set(x, y, C.white);
+    },
+    warcry: P => halo(P, 16, 13, 9, C.a[2], 0.25),
+    shieldwall: P => halo(P, 16, 17, 16, C.u[3], 0.18),
+    summon: P => halo(P, 16, 20, 14, C.glow[1], 0.22),
+    frost: P => {
+      halo(P, 16, 16, 15, C.v[3], 0.3);
+      for (const [x, y] of [[4, 5], [27, 25], [26, 4]]) P.set(x, y, C.white);
+    }
   };
 
   /* Gmina (radnice): tyrkysová valbová střecha, kamenný štít s Ringem, zlatá koule. */
@@ -822,8 +950,8 @@
     P.set(12, 14, C.white);
   };
 
-  /* Ohnivá koule: žhnoucí jádro, ohon k levému hornímu rohu. */
-  make.fire = P => {
+  /* Ohnivá koule (lich): žhnoucí jádro, ohon k levému hornímu rohu. */
+  make.fireball = P => {
     const FIRE = [C.r[1], C.r[2], C.r[3], C.r[4], C.a[2], C.a[3], C.a[4]];
     // ohon
     P.poly([[1, 1], [9, 4], [15, 9], [24, 13], [13, 24], [9, 15], [4, 9]], (x, y) => {
@@ -844,35 +972,6 @@
     for (const [x, y] of [[27, 15], [28, 20], [25, 27], [20, 29], [12, 26]]) P.set(x, y, C.r[3]);
   };
 
-  /* Léčení: zářivý kříž s měkkou září a jiskrami. */
-  make.heal = P => {
-    const GL = [C.glow[0], mix(C.glow[0], C.glow[1], 0.5), C.glow[1], C.glow[2]];
-    part(P, L => {
-      L.rect(12, 3, 9, 27, 1);
-      L.rect(3, 12, 27, 9, 1);
-      for (let y = 0; y < 32; y++) {
-        for (let x = 0; x < 32; x++) {
-          if (L.get(x, y) < 0) continue;
-          L.set(x, y, pick(GL, tone(x, y, 15, 15, 15, 15) + 0.08));
-        }
-      }
-    }, 0.45, 0.4);
-    P.rect(14, 5, 2, 23, C.glow[2]);
-    P.rect(5, 14, 23, 2, C.glow[2]);
-    P.rect(14, 14, 2, 2, C.white);
-  };
-
-  const afterHeal = P => {
-    halo(P, 16.5, 16.5, 16, C.glow[0], 0.3);
-    for (const [x, y] of [[4, 4], [27, 5], [5, 27]]) {
-      P.set(x, y, C.glow[2]);
-      P.set(x - 1, y, C.glow[1]);
-      P.set(x + 1, y, C.glow[1]);
-      P.set(x, y - 1, C.glow[1]);
-      P.set(x, y + 1, C.glow[1]);
-    }
-  };
-  after.heal = afterHeal;
 
   /* Rozkaz: jantarová šipka kurzoru s kruhy cíle u hrotu. */
   make.command = P => {
@@ -1021,6 +1120,28 @@
     return PK.fine(P);
   })();
 
+  /* Nové jednotky (kopiník, kušiník, zvěd): ikona je výřez hlavy a hrudi přímo ze spritu jednotky
+   * (stejná jemná mřížka 1:1, nic se nezvětšuje). ox, oy = posun výřezu od hlavy v jemných px.
+   * Obrys už sprite má, druhý obrys z build smyčky ho jen zesílí na okraji ikony. */
+  const fromUnit = (type, ox, oy, anim = "idle", frame = 0) => P => {
+    const U = PK.units;
+    if (!U || !U.frame) return;
+    const rec = U.frame(type, "blue", anim, frame, 0);
+    const head = rec.meta.head || [0, -12];
+    const cx = Math.round(U.AX * HD + head[0] * HD) + ox;
+    const cy = Math.round(U.AY * HD + head[1] * HD) + oy;
+    const src = rec.pix;
+    for (let y = 0; y < 32; y++) {
+      for (let x = 0; x < 32; x++) {
+        const c = src.get(cx - 16 + x, cy - 12 + y);
+        if (c >= 0) P.set(x, y, c);
+      }
+    }
+  };
+  make.spearman = fromUnit("spearman", 1, 1);
+  make.crossbow = fromUnit("crossbow", 2, 3);
+  make.scout = fromUnit("scout", 6, 4);
+
   /* ---------- velké ikony -> plátna (normální / zašedlé) ---------- */
   const big = {};
   const bigOff = {};
@@ -1090,6 +1211,67 @@
     return canvas;
   }
 
+  /* ---------- nápis GORALIA (logo) ---------- */
+  /* Pixelové písmo loga: písmena 9 px vysoká, tahy 2 px, kulaté G, O a A ladí s kruhovým
+   * znakem G. Světlo zleva shora, zářící horní hrana, tmavší spodní, obrys inkoustem.
+   * Vrací plátno přesně v px (zvětšovat jen celočíselně, v menu 3x jako znak ringEmblem(32)). */
+  const LOGO_FONT = {
+    G: ["..#####", ".##....", "##.....", "##.....", "##..###", "##...##", "##...##", ".##..##", "..####."],
+    O: ["..###..", ".##.##.", "##...##", "##...##", "##...##", "##...##", "##...##", ".##.##.", "..###.."],
+    R: ["#####..", "##..##.", "##...##", "##..##.", "#####..", "##.##..", "##..##.", "##...##", "##...##"],
+    A: ["..###..", ".##.##.", "##...##", "##...##", "#######", "##...##", "##...##", "##...##", "##...##"],
+    L: ["##....", "##....", "##....", "##....", "##....", "##....", "##....", "##....", "######"],
+    I: ["##", "##", "##", "##", "##", "##", "##", "##", "##"]
+  };
+  const wordCache = new Map();
+
+  function wordmark(word = "GORALIA", color = C.a[2]) {
+    const key = `${word}|${color}`;
+    if (wordCache.has(key)) return wordCache.get(key);
+
+    const gap = 1;
+    const pad = 2;
+    const rows = [...word].map(ch => LOGO_FONT[ch]);
+    const F = rows[0].length;
+    const W = rows.reduce((s, r) => s + r[0].length, 0) + gap * (rows.length - 1) + pad * 2;
+    const H = F + pad * 2;
+
+    // maska + střed písmene (světlá polovina je vlevo nahoře od středu)
+    const mask = new Int16Array(W * H).fill(-1);
+    const centers = [];
+    let ox = pad;
+    rows.forEach((r, i) => {
+      const w = r[0].length;
+      centers.push([ox + w / 2, pad + F / 2]);
+      r.forEach((line, y) => {
+        for (let x = 0; x < w; x++) if (line[x] === "#") mask[(pad + y) * W + ox + x] = i;
+      });
+      ox += w + gap;
+    });
+
+    const lit = mix(color, 0xffffff, 0.35);
+    const P = new Pix(W, H);
+    const empty = (x, y) => x < 0 || y < 0 || x >= W || y >= H || mask[y * W + x] < 0;
+
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = mask[y * W + x];
+        if (i < 0) continue;
+        const [cx, cy] = centers[i];
+        const upper = x + 0.5 - cx + (y + 0.5 - cy) < 0;
+        let col = upper ? lit : color;
+        // tahy jsou jen 2 px: horní hrana se rozzáří, spodní ztmavne, boční zůstávají v barvě
+        if (empty(x, y - 1)) col = upper ? mix(lit, WARM, 0.4) : mix(color, WARM, 0.2);
+        else if (empty(x, y + 1)) col = mix(color, C.dusk, 0.3);
+        P.set(x, y, col);
+      }
+    }
+    P.outline(C.ink, 0.72);
+    const canvas = P.rawCanvas();
+    wordCache.set(key, canvas);
+    return canvas;
+  }
+
   /* ---------- pixel cursors ---------- */
   const cursors = {};
 
@@ -1138,6 +1320,6 @@
     P.set(8, 8, C.white);
   }, "crosshair");
 
-  PK.icons = { big, bigOff, small, ringEmblem, glyph };
+  PK.icons = { big, bigOff, small, ringEmblem, wordmark, glyph };
   PK.cursors = cursors;
 })();

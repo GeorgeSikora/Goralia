@@ -18,7 +18,7 @@ const POINTS = {
 const MAX_TOURNAMENTS = 500;
 const MAX_ENTRANTS = 64;
 
-function createHallOfFame(store, accounts) {
+function createHallOfFame(store, accounts, challenges = null) {
   const data = store.data;
   if (!Array.isArray(data.tournaments)) data.tournaments = [];
   if (!data.nextTournamentId) data.nextTournamentId = 1;
@@ -55,7 +55,8 @@ function createHallOfFame(store, accounts) {
     const rows = Object.values(data.users)
       .filter(u => !u.banned)
       .map(u => ({ user: u, ...scoreOf(u, tours[u.id]) }))
-      .filter(r => r.score > 0);
+      // i hráč s nulovým skóre se ukáže, když nosí titul (např. Nováček za tutoriál)
+      .filter(r => r.score > 0 || !!(challenges && challenges.lookOf(r.user).title));
 
     rows.sort((a, b) => b.score - a.score || b.pvpWins - a.pvpWins || b.medals.gold - a.medals.gold || a.user.name.localeCompare(b.user.name));
 
@@ -67,7 +68,9 @@ function createHallOfFame(store, accounts) {
       // jen veřejné údaje: síň slávy vidí každý návštěvník hry
       return {
         rank, id: user.id, name: user.name, admin: user.role === "admin",
-        playSeconds: user.stats.playSeconds, aiSeconds: user.stats.aiSeconds, ...rest
+        playSeconds: user.stats.playSeconds, aiSeconds: user.stats.aiSeconds, ...rest,
+        // vybrané odměny z výzev: titul u jména, rámeček a barva portrétu
+        look: challenges ? challenges.lookOf(user) : {}
       };
     });
   }

@@ -501,7 +501,8 @@ function createAccounts(store, options = {}) {
   /* ---------- veřejné pohledy ---------- */
   const selfView = user => ({
     id: user.id, name: user.name, email: user.email, role: user.role,
-    hasPassword: !!user.passHash, google: !!user.google, facebook: !!user.facebook
+    hasPassword: !!user.passHash, google: !!user.google, facebook: !!user.facebook,
+    games: user.stats.games, tutorialDone: !!(user.tutorial && user.tutorial.done)
   });
 
   function getUser(id) {

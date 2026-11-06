@@ -44,6 +44,8 @@
     X: "X...X X...X .X.X. ..X.. .X.X. X...X X...X",
     Y: "X...X X...X .X.X. ..X.. ..X.. ..X.. ..X..",
     Z: "XXXXX ....X ...X. ..X.. .X... X.... XXXXX",
+    // ponaszymu (polský pravopis): Ł nemá rozklad na písmeno + značku
+    "Ł": ".X... .X... .X.X. .XX.. XX... .X... .XXXX",
     0: ".XXX. X...X X..XX X.X.X XX..X X...X .XXX.",
     1: "..X.. .XX.. ..X.. ..X.. ..X.. ..X.. .XXX.",
     2: ".XXX. X...X ....X ...X. ..X.. .X... XXXXX",
@@ -105,6 +107,7 @@
     X: "X.X X.X .X. X.X X.X",
     Y: "X.X X.X .X. .X. .X.",
     Z: "XXX ..X .X. X.. XXX",
+    "Ł": "X.. XX. X.. X.. XXX",
     0: "XXX X.X X.X X.X XXX",
     1: ".X. XX. .X. .X. XXX",
     2: "XX. ..X .X. X.. XXX",
@@ -132,7 +135,8 @@
   const MARKS = {
     "\u030c": { 5: [".X.X.", "..X.."], 3: ["...", "..."] },
     "\u0301": { 5: ["...X.", "..X.."], 3: ["...", "..."] },
-    "\u030a": { 5: ["..XX.", "..XX."], 3: ["...", "..."] }
+    "\u030a": { 5: ["..XX.", "..XX."], 3: ["...", "..."] },
+    "\u0307": { 5: ["..X..", "....."], 3: ["...", "..."] } // tečka nad Ż (ponaszymu)
   };
 
   function glyphOf(ch, font) {
@@ -153,12 +157,17 @@
 
     if (width >= 5) return m[5];
     if (width === 3) {
+      if (mark === "\u0307") return [".X.", "..."];
       return mark === "\u0301" ? ["..X", ".X."] : ["X.X", ".X."];
     }
     return ["..X.", ".X.."].map(r => r.slice(0, width));
   }
 
+  // texty z kódu jsou česky, na plátně se ukážou v jazyce hry (js/i18n.js)
+  const loc = str => (PK.tr ? PK.tr(String(str)) : String(str));
+
   function textWidth(str, font = "5", scale = 1) {
+    str = loc(str);
     let w = 0;
 
     for (const ch of String(str).toUpperCase()) {
@@ -238,7 +247,7 @@
    * opts: align "left"|"center"|"right", scale, font, shadow (colour or null), outline, alpha
    */
   function text(g, str, x, y, color = PK.C.white, opts = {}) {
-    str = String(str).toUpperCase();
+    str = loc(str).toUpperCase();
     if (!str) return 0;
 
     const font = opts.font || "5";
@@ -270,7 +279,7 @@
 
   /* Greedy word wrap using the real glyph widths. */
   function wrap(str, maxW, font = "5") {
-    const words = String(str).split(" ");
+    const words = loc(str).split(" ");
     const lines = [];
     let line = "";
 

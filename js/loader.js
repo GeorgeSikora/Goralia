@@ -13,9 +13,9 @@
   const PK = (window.PK = window.PK || {});
 
   const SCRIPTS = [
-    "rules", "maps", "nav", "ai", "sim", "admincmd", "audio", "music", "pixel", "shaders", "font", "keys",
-    "units", "fame", "buildings", "props", "icons", "world", "fx", "hud", "net", "menubg",
-    "custommaps", "charts", "matchview", "account", "events", "voice", "chat", "voicechat", "adminbar",
+    "rules", "cosmetics", "maps", "nav", "ai", "sim", "admincmd", "audio", "music", "pixel", "shaders", "font", "keys",
+    "units", "fame", "buildings", "props", "decor", "halloween", "winter", "icons", "biomes", "krajiny", "world", "fx", "critters", "hud", "net", "menubg",
+    "custommaps", "charts", "matchview", "account", "events", "challenges", "voice", "chat", "voicechat", "adminbar", "tutorial",
     "campaign-maps", "campaign", "cutscene", "game"
   ];
 
@@ -29,10 +29,21 @@
     "Buda zvedne limit jednotek o 5.",
     "Ctrl + číslo uloží výběr do skupiny, dvojí stisk čísla na ni skočí kamerou.",
     "Kovárna vylepšuje zbroj a zbraně všech jednotek.",
-    "Hrdina umí ohnivou kouli (A) a léčení (S).",
+    "Vyber hrdinu a sesílej schopnosti klávesami Q, W a E.",
     "Vyhrává poslední, komu zůstane hlavní budova.",
     "Kolečkem myši měníš přiblížení, prostředním tlačítkem posouváš mapu."
   ];
+  // Halloween (20. 10. - 2. 11.): sezónní tip; halloween.js se načítá až s ostatními skripty
+  const hd = new Date();
+  if ((hd.getMonth() === 9 && hd.getDate() >= 20) || (hd.getMonth() === 10 && hd.getDate() <= 2)) TIPS.push("Halloween! Na mapách svítí dýně a v noci létají netopýři.");
+  // Zima (1. 12. - 6. 1., nebo ?zima=1): tip na dárky
+  let snowy = hd.getMonth() === 11 || (hd.getMonth() === 0 && hd.getDate() <= 6);
+  try {
+    const q = new URLSearchParams(location.search).get("zima");
+    const f = q === "1" || q === "0" ? q : localStorage.getItem("pk-winter");
+    if (f === "1" || f === "0") snowy = f === "1";
+  } catch (e) { /* kalendář */ }
+  if (snowy) TIPS.push("Zima! Na mapě leží dárky. Pošli pro ně dělníka a dostaneš zlato.");
 
   const root = document.querySelector("#loading");
   if (!root) return;
@@ -66,13 +77,19 @@
     }
   }
 
-  function drawLogo() {
-    if (logo.dataset.done || !PK.hud || !PK.hud.drawLogo) return;
+  // Logo je obrázek vložený v index.html (vidět hned, bez čekání na skripty). Na localhostu
+  // ověříme, že pořád sedí s kreslením v menu, jinak by se při přechodu do menu změnilo.
+  function checkLogo() {
+    if (!/^(localhost|127\.0\.0\.1)$/.test(location.hostname) || !PK.hud || !logo.complete) return;
     try {
-      PK.hud.drawLogo(logo);
-      logo.dataset.done = "1";
-      logo.classList.add("ready");
-    } catch (e) { /* logo počká na další skript */ }
+      const want = document.createElement("canvas");
+      PK.hud.drawLogo(want);
+      const have = document.createElement("canvas");
+      have.width = logo.naturalWidth;
+      have.height = logo.naturalHeight;
+      have.getContext("2d").drawImage(logo, 0, 0);
+      if (have.toDataURL() !== want.toDataURL()) console.warn("Logo načítací obrazovky nesedí s menu: spusť node tools/logo-nacitani.js");
+    } catch (e) { /* jen kontrola pro vývoj */ }
   }
 
   function drawWalker(moving) {
@@ -120,12 +137,13 @@
     target = 0;
     shown = 0;
     root.hidden = false;
-    root.classList.remove("done");
+    root.classList.remove("done", "leaving");
+    logo.style.transform = "";
+    logo.closest(".ld-box").style.setProperty("--ld-dy", "0px"); // před zápasem menu pod obrazovkou není
     root.setAttribute("aria-busy", "true");
     open = true;
     setText(text);
     tip.textContent = note || "";
-    drawLogo();
     setProgress(0);
   }
 
@@ -140,6 +158,67 @@
         open = false;
       }, 320);
     }, 180);
+  }
+
+  /* První odchod do menu: pruh a texty zmizí, pozadí se rozplyne do scény menu a logo
+   * plynule dojede přesně na místo loga v menu (stejné pixely), kde ho vystřídá. Pak
+   * shora dolů najede obsah menu. Když menu není vidět, obyčejně se rozplyne. */
+  function revealMenu() {
+    const body = document.body;
+    const menu = document.querySelector("#menu");
+    const target = document.querySelector("#logo");
+    const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    const unlock = () => {
+      if (!body.classList.contains("booting")) return;
+      body.classList.remove("booting");
+      if (!menu || calm) return;
+      // obsah aktuální stránky menu postupně shora dolů
+      const items = [menu.querySelector(".tagline"), ...menu.querySelectorAll(".page:not([hidden]) > *"), menu.querySelector(".footer")]
+        .filter(el => el && !el.hidden && el.offsetParent !== null);
+      items.forEach((el, i) => el.style.setProperty("--d", `${Math.min(i, 10) * 0.05}s`));
+      menu.classList.add("intro");
+      setTimeout(() => {
+        menu.classList.remove("intro");
+        items.forEach(el => el.style.removeProperty("--d"));
+      }, 1200);
+    };
+
+    setProgress(1);
+    root.setAttribute("aria-busy", "false");
+    removeEventListener("resize", realign);
+
+    hideTimer = setTimeout(() => {
+      const a = logo.getBoundingClientRect();
+      const b = target && menu && !menu.hidden ? target.getBoundingClientRect() : null;
+      const fits = b && b.width > 1 && a.height > 0 && b.top >= 0 && b.bottom <= innerHeight;
+      if (!fits || calm) {
+        unlock();
+        hide();
+        return;
+      }
+
+      const k = b.height / a.height;
+      target.style.visibility = "hidden"; // logo v menu se ukáže, až to z načítání doletí
+      root.classList.add("leaving");
+      logo.style.transform = `translate(${b.left - a.left}px, ${b.top - a.top}px) scale(${k})`;
+
+      const land = () => {
+        logo.removeEventListener("transitionend", land);
+        if (root.hidden) return;
+        clearTimeout(hideTimer);
+        clearTimeout(early);
+        unlock();
+        target.style.visibility = ""; // stejné pixely na stejném místě: výměna není vidět
+        root.hidden = true;
+        open = false;
+        root.classList.remove("leaving");
+        logo.style.transform = "";
+      };
+      logo.addEventListener("transitionend", land);
+      const early = setTimeout(unlock, 380); // obsah menu začne najíždět už během doletu loga
+      hideTimer = setTimeout(land, 750); // pojistka, kdyby transitionend nepřišel
+    }, 260);
   }
 
   /* ---------- běh práce po kouscích ---------- */
@@ -185,6 +264,11 @@
   /* ---------- první načtení stránky ---------- */
   let bootCalled = false;
 
+  // logo stojí na místě loga v menu i po změně velikosti okna (jinak se během načítání nehýbe;
+  // případný malý rozdíl po překladu textů menu dorovná na konci plynulý dojezd)
+  const realign = () => { if (PK.alignLoader) PK.alignLoader(); };
+  addEventListener("resize", realign);
+
   function loadScripts() {
     let done = 0;
     tip.textContent = `Tip: ${TIPS[Math.floor(Math.random() * TIPS.length)]}`;
@@ -196,8 +280,10 @@
       s.async = false; // spustí se ve správném pořadí
       s.onload = () => {
         setProgress(SHARE.scripts * ++done / SCRIPTS.length);
-        if (name === "hud") drawLogo();
-        if (done === SCRIPTS.length && !bootCalled) hide(); // hra se nepřihlásila, nic nedržet
+        if (done === SCRIPTS.length && !bootCalled) { // hra se nepřihlásila, nic nedržet
+          document.body.classList.remove("booting");
+          hide();
+        }
       };
       s.onerror = () => {
         setText("Hru se nepodařilo načíst. Zkus obnovit stránku.");
@@ -210,7 +296,7 @@
   /* Zavolá game.js na konci: steps = pečení podkladů, ready = start smyčky hry. */
   function boot(steps, ready) {
     bootCalled = true;
-    drawLogo();
+    checkLogo();
 
     let bake = 0;
     let voices = PK.voice && PK.voice.enabled ? 0 : 1;
@@ -222,7 +308,7 @@
     }).catch(() => {});
 
     const finish = () => {
-      try { ready(); } finally { hide(); }
+      try { ready(); } finally { revealMenu(); }
     };
 
     drive(steps, p => { bake = p; sum(); })
@@ -269,7 +355,7 @@
     boot, prepare, span,
     get busy() { return !!busy; },
     // obrazovka zakrývá vše: animace pod ní (pozadí menu) nemusí kreslit
-    get covering() { return !root.hidden && !root.classList.contains("done"); }
+    get covering() { return !root.hidden && !root.classList.contains("done") && !root.classList.contains("leaving"); }
   };
   loadScripts();
 })();

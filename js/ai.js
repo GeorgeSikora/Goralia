@@ -126,8 +126,14 @@
     const ready = barracks.filter(b => b.progress >= 1);
     const towers = own("tower");
     const huts = own("hut");
-    const hasHero = army.some(u => u.type === "hero");
+    const hasHero = army.some(u => u.hero) || (hq.heroT != null);
     const builder = workers.find(w => !w.order || w.order.type !== "build") || workers[0];
+
+    // padlý hrdina má přednost: znovu ho vycvičí v gmině, jakmile na něj bude
+    if (!hasHero && workers.length >= 4) {
+      if (canPay(eco, "hero")) match.command(team, { c: "train", type: "hero" });
+      else if (match.elapsed > 60) return;
+    }
 
     if (workers.length < (match.elapsed > 240 ? WORKERS_LATE : WORKERS_WANTED) && canPay(eco, "worker")) {
       match.command(team, { c: "train", type: "worker" });
@@ -170,20 +176,27 @@
     }
     if (match.elapsed > 420 && eco.gold > 320 && eco.wood > 200) match.command(team, { c: "research", kind: "masonry" });
 
-    if (!hasHero && canPay(eco, "hero")) match.command(team, { c: "train", type: "hero" });
 
     const count = type => army.filter(u => u.type === type).length;
+    // co staví nepřítel: proti jezdcům a zrůdám kopiníci
+    const foesBig = match.units.filter(u => alive(u) && !match.friendly(u.team, team) && R.SPEAR.vs.includes(u.type)).length;
+    const stable = own("stable").some(b => b.progress >= 1);
     const can = {
-      knight: own("stable").some(b => b.progress >= 1),
+      knight: stable,
+      scout: stable && count("scout") < 3,
       catapult: own("workshop").some(b => b.progress >= 1) && count("catapult") < 3,
-      monk: count("monk") < Math.min(3, Math.floor(army.length / 6))
+      monk: count("monk") < Math.min(3, Math.floor(army.length / 6)),
+      crossbow: own("smithy").some(b => b.progress >= 1),
+      spearman: foesBig >= 2 && count("spearman") < Math.max(2, foesBig)
     };
 
     for (let i = 0; i < 2; i++) {
       const n = brain.flip++;
-      let type = n % 3 === 2 ? "archer" : "soldier";
-      if (can.monk && n % 5 === 4) type = "monk";
+      let type = n % 3 === 2 ? (can.crossbow && n % 2 === 0 ? "crossbow" : "archer") : "soldier";
+      if (can.spearman && n % 3 === 1) type = "spearman";
+      else if (can.monk && n % 5 === 4) type = "monk";
       else if (can.catapult && n % 7 === 3) type = "catapult";
+      else if (can.scout && n % 11 === 5) type = "scout";
       else if (can.knight && n % 2 === 1) type = "knight";
       // na dražší jednotku se počká, jinak by ji levní vojáci vždycky předběhli
       if (!canPay(eco, type)) {
@@ -264,23 +277,59 @@
       }
     }
 
-    const hero = army.find(u => u.type === "hero");
-    if (!hero) return;
+    heroThink(match, brain, hq, army);
+  }
 
-    if (hero.healCooldown <= 0) {
-      const hurt = army.filter(u => u.hp < u.maxHp * 0.7 && distance(u, hero) <= 90).length;
-      if (hurt >= 2) match.command(team, { c: "heal" });
+  /*
+   * Rytíř-hrdina AI: výpad na nejcennější cíl na dosah (lučištník, mnich, katapult, zraněný),
+   * pokřik, když bojuje s dost spojenci, štítová zeď při přesile nebo nízkém zdraví.
+   * Těžce raněný hrdina mimo útok ustoupí ke gmině (mniši ho tam vyléčí).
+   */
+  const VALUE = { archer: 3, crossbow: 3, monk: 3, catapult: 4, hero: 2.5, lich: 2.5, skeleton: 2, banshee: 2, necromancer: 3.5 };
+
+  function heroThink(match, brain, hq, army) {
+    const team = brain.team;
+    const hero = army.find(u => u.hero);
+    if (!hero || hero.dash) return;
+
+    const abs = R.HERO.abilities[hero.type];
+    const ready = k => hero.cds[k] <= 0 && hero.mana >= abs[k].mana;
+    const foes = match.units.filter(u => alive(u) && !match.friendly(u.team, team) && !match.out.has(u.team));
+    const near = r => foes.filter(u => distance(u, hero) <= r);
+    const allies = r => army.filter(u => u !== hero && distance(u, hero) <= r).length;
+    const fight = near(200);
+
+    // ústup: hrdina se nevrhá do smrti sám
+    if (hero.hp < hero.maxHp * 0.25 && fight.length >= 2 && !brain.attacking) {
+      if (ready(2)) match.command(team, { c: "cast", k: 2 });
+      match.command(team, { c: "order", k: "move", ids: [hero.id], x: hq.x, y: hq.y + 80 });
+      return;
     }
 
-    if (hero.fireCooldown <= 0) {
-      let target = null;
+    if (!fight.length) return;
 
-      for (const e of [...match.units, ...match.buildings]) {
-        if (match.friendly(e.team, team) || !alive(e) || match.out.has(e.team)) continue;
-        if (distance(e, hero) < 170 && (!target || distance(e, hero) < distance(target, hero))) target = e;
+    if (ready(2) && (near(150).length >= 3 || (hero.hp < hero.maxHp * 0.55 && near(120).length >= 1))) {
+      return match.command(team, { c: "cast", k: 2 });
+    }
+
+    if (ready(1) && allies(abs[1].radius) >= 3 && near(180).length >= 2) {
+      return match.command(team, { c: "cast", k: 1 });
+    }
+
+    if (ready(0) && hero.hp > hero.maxHp * 0.4) {
+      let best = null;
+      let bestScore = 0;
+      for (const e of near(abs[0].range)) {
+        const d = distance(e, hero);
+        if (d < 50) continue; // zblízka stačí obyčejný úder
+        const crowd = foes.filter(o => distance(o, e) <= abs[0].radius).length;
+        const score = (VALUE[e.type] || 1) + crowd * 0.8 + (1 - e.hp / e.maxHp);
+        if (score > bestScore) {
+          best = e;
+          bestScore = score;
+        }
       }
-
-      if (target) match.command(team, { c: "fire", x: target.x, y: target.y });
+      if (best && bestScore >= 2.5) match.command(team, { c: "cast", k: 0, x: best.x, y: best.y });
     }
   }
 
@@ -298,7 +347,8 @@
     const army = mine.filter(u => u.type !== "worker");
 
     assignWorkers(match, brain, hq, workers);
-    produce(match, brain, hq, workers, army);
+    // slabá AI (tutoriál): jen těží a brání se tím, co má, nic nestaví ani necvičí
+    if (!brain.weak) produce(match, brain, hq, workers, army);
     command(match, brain, hq, army);
   }
 

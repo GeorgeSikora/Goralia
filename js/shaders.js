@@ -55,7 +55,10 @@
     let t = (p - p0) / (p1 - p0);
     t = t * t * (3 - 2 * t);
     const mix = (x, y) => x + (y - x) * t;
-    return { amb: [mix(a0[0], a1[0]), mix(a0[1], a1[1]), mix(a0[2], a1[2])], gain: mix(g0, g1), bloom: mix(b0, b1), rays: [mix(r0[0], r1[0]), mix(r0[1], r1[1]), mix(r0[2], r1[2])] };
+    let amb = [mix(a0[0], a1[0]), mix(a0[1], a1[1]), mix(a0[2], a1[2])];
+    if (PK.halloween && PK.halloween.tint) amb = PK.halloween.tint(amb);
+    if (PK.winter && PK.winter.on) amb = PK.winter.tint(amb);
+    return { amb, gain: mix(g0, g1), bloom: mix(b0, b1), rays: [mix(r0[0], r1[0]), mix(r0[1], r1[1]), mix(r0[2], r1[2])] };
   }
 
   const canvas = document.createElement("canvas");
@@ -78,6 +81,13 @@
   };
   S.mood = t => mood(t);
   PK.shaders = S;
+
+  // Je v čase zápasu `time` (s) noc? Hudba podle toho hraje noční skladby (jen když je denní doba vidět).
+  S.isNight = function (time) {
+    if (!S.active || time == null) return false;
+    const p = S.phase != null ? S.phase : ((START_PHASE + time / CYCLE) % 1 + 1) % 1;
+    return p >= 0.52 && p < 0.87;
+  };
 
   // světla a překážky nasbírané během kreslení snímku
   const lights = [];
@@ -220,7 +230,9 @@ void main() {
   float mx = max(src.r, max(src.g, src.b));
   float sat = (mx - min(src.r, min(src.g, src.b))) / max(mx, 1e-3);
   float lum = dot(src, vec3(0.3, 0.59, 0.11));
-  float e = smoothstep(0.6, 0.82, lum) * smoothstep(0.3, 0.5, sat);
+  // jen opravdu žhavé body (jádro plamene, okno, láva); zlaté lemy, žluté květy a světlá tráva
+  // dřív v noci svítily jako jiskry a dělaly šum (Kingdom: ve tmě září jen skutečné ohně)
+  float e = smoothstep(0.83, 0.93, lum) * smoothstep(0.35, 0.55, sat);
   L = mix(L, max(L, vec3(1.0)), e);
   vec3 lit = src * L;
 
@@ -496,7 +508,9 @@ void main() {
 
     const view = { x: cam.x, y: cam.y, w: w / zoom, h: mapH / zoom };
     const m = mood(time);
-    const nl = pack(view, m.gain);
+    S.amb = m.amb; // poslední šero (halloween.js podle něj rozsvěcí dýně)
+    // sníh světlo odráží víc než tráva: v zimě světla slabší, ať se závěje kolem lamp nepřepálí do bílé
+    const nl = pack(view, m.gain * (PK.winter && PK.winter.on ? PK.winter.gain : 1));
 
     gl.disable(gl.BLEND);
     // 1) osvětlení; zdroj má řádek 0 nahoře, framebuffery mají y zdola,

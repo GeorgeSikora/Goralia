@@ -736,7 +736,7 @@
       const actions = el("td", "actions-cell");
       const box2 = el("div", "actions");
       box2.append(
-        mapLink(m.custom ? "Upravit" : "Upravit kopii", `/editor.html?map=${encodeURIComponent(m.id)}`),
+        mapLink(m.custom ? "Upravit" : "Upravit kopii", `/editor?map=${encodeURIComponent(m.id)}`),
         mapLink("Hrát", `/index.html?map=${encodeURIComponent(m.id)}`)
       );
 
@@ -945,8 +945,183 @@
     }
   });
 
+  /* ---------- výzvy a odměny ---------- */
+  const UNIT_NAMES = {
+    worker: "dělník", soldier: "voják", archer: "lučištník", hero: "hrdina", monk: "mnich", knight: "rytíř", catapult: "katapult",
+    spearman: "kopiník", crossbow: "kušiník", scout: "zvěd",
+    hall: "gmina", barracks: "kasárna", tower: "strážní věž", hut: "buda", smithy: "kovárna", stable: "stáj", workshop: "dílna"
+  };
+  const RARITY = { common: "běžná (denní)", rare: "vzácná (týdenní)", tutorial: "za tutoriál" };
+  let chData = null;
+
+  const option = (value, label) => {
+    const o = el("option", "", label);
+    o.value = value;
+    return o;
+  };
+
+  function fillUnits() {
+    const m = chData && chData.metrics[$("tpl-metric").value];
+    const sel = $("tpl-unit");
+    sel.replaceChildren(option("", m && m.units ? "jakýkoli" : "–"), ...((m && m.units) || []).map(u => option(u, UNIT_NAMES[u] || u)));
+    sel.disabled = !(m && m.units);
+  }
+
+  function tplCondition(t) {
+    const parts = [`${chData.metrics[t.metric] ? chData.metrics[t.metric].name : t.metric}${t.unit ? `: ${UNIT_NAMES[t.unit] || t.unit}` : ""} ≥ ${t.target}`];
+    parts.push(t.scope === "match" ? "v jednom zápase" : "součet");
+    if (t.win) parts.push("jen výhry");
+    if (t.maxMinutes) parts.push(`do ${t.maxMinutes} min`);
+    if (t.mode !== "any") parts.push(chData.modes[t.mode]);
+    return parts.join(" · ");
+  }
+
+  const rewardName = id => {
+    const r = PK.cosmetics.get(id);
+    return r ? `${r.name} (${PK.cosmetics.KIND_NAMES[r.kind].toLowerCase()})` : "–";
+  };
+
+  async function loadChallenges() {
+    const data = await api("GET", "/api/admin/challenges");
+    const first = !chData;
+    chData = data;
+
+    if (first) {
+      $("tpl-metric").replaceChildren(...Object.entries(data.metrics).map(([k, m]) => option(k, m.name)));
+      $("tpl-scope").replaceChildren(...Object.entries(data.scopes).map(([k, n]) => option(k, n)));
+      $("tpl-mode").replaceChildren(...Object.entries(data.modes).map(([k, n]) => option(k, n)));
+      $("grant-reward").replaceChildren(...data.rewards.map(r => option(r.id, `${r.name} · ${PK.cosmetics.KIND_NAMES[r.kind]}`)));
+      fillUnits();
+    }
+
+    const box = $("ch-current");
+    box.replaceChildren(...["daily", "weekly"].map(period => {
+      const cur = data[period];
+      const card = el("div", "ch-period");
+      const head = el("div", "ch-period-head");
+      head.append(
+        el("b", "", period === "daily" ? `Denní · ${cur.key}` : `Týdenní · od ${cur.key}`),
+        el("span", "muted", `nové losování ${when(cur.resetsAt)} · hráčů s postupem: ${cur.active}`),
+        button("Vylosovat znovu", async () => {
+          if (!window.confirm("Vylosovat nové výzvy hned teď? Rozehraný postup hráčů v tomto období se vynuluje.")) return;
+          await api("POST", "/api/admin/challenges/reroll", { period });
+          await loadChallenges();
+        }, true)
+      );
+      const wrap = el("div", "table-wrap");
+      wrap.append(table(["Výzva", "Podmínka", "Odměna", "Splnilo"], cur.picks.map(p => [p.tpl.text, tplCondition(p.tpl), rewardName(p.reward), p.done || 0]), "Žádná zapnutá šablona."));
+      card.append(head, wrap);
+      return card;
+    }));
+
+    $("templates").replaceChildren(table(
+      ["ID", "Období", "Text", "Podmínka", "Původ", "Stav", "Akce"],
+      data.templates.map(t => {
+        const actions = [button(t.enabled ? "Vypnout" : "Zapnout", async () => {
+          await api("POST", `/api/admin/challenges/${t.id}`, { enabled: !t.enabled });
+          await loadChallenges();
+        })];
+        if (t.custom) actions.push(button("Smazat", async () => {
+          if (!window.confirm(`Smazat šablonu „${t.text}“?`)) return;
+          await api("DELETE", `/api/admin/challenges/${t.id}`);
+          await loadChallenges();
+        }, true));
+        const text = t.en || t.szl ? `${t.text} / ${t.en || "–"} / ${t.szl || "–"}` : t.text;
+        return [t.id, t.period === "daily" ? "denní" : "týdenní", text, tplCondition(t), t.custom ? `admin ${t.by}` : "vestavěná", t.enabled ? "zapnuto" : "vypnuto", { actions }];
+      })
+    ));
+
+    $("rewards").replaceChildren(table(
+      ["Odměna", "Druh", "Rarita", "Má hráčů"],
+      data.rewards.map(r => [r.name, PK.cosmetics.KIND_NAMES[r.kind], RARITY[r.rarity], r.owners])
+    ));
+
+    $("grants").replaceChildren(table(
+      ["Kdy", "Hráč", "Odměna", "Poznámka", "Udělil", "Akce"],
+      data.grants.map(g => [when(g.at), g.user, rewardName(g.reward), g.note, g.admin, { actions: [
+        button("Odebrat", async () => {
+          if (!window.confirm(`Odebrat ${g.user} odměnu ${rewardName(g.reward)}?`)) return;
+          await api("POST", "/api/admin/rewards/revoke", { userId: g.userId, reward: g.reward });
+          await loadChallenges();
+        }, true)
+      ] }]),
+      "Zatím žádná ručně udělená odměna."
+    ));
+  }
+
+  $("tpl-metric").addEventListener("change", fillUnits);
+
+  $("tpl-form").addEventListener("submit", async event => {
+    event.preventDefault();
+    try {
+      const res = await api("POST", "/api/admin/challenges", {
+        text: $("tpl-text").value, en: $("tpl-en").value, szl: $("tpl-szl").value, period: $("tpl-period").value,
+        metric: $("tpl-metric").value, unit: $("tpl-unit").value, target: Number($("tpl-target").value),
+        scope: $("tpl-scope").value, mode: $("tpl-mode").value, maxMinutes: Number($("tpl-max").value), win: $("tpl-win").checked
+      });
+      for (const id of ["tpl-text", "tpl-en", "tpl-szl"]) $(id).value = "";
+      await loadChallenges();
+      notice(`Šablona „${res.template.text}“ je přidaná a dostane se do příštího losování.`);
+    } catch (e) {
+      fail(e);
+    }
+  });
+
+  $("grant-form").addEventListener("submit", async event => {
+    event.preventDefault();
+    try {
+      const res = await api("POST", "/api/admin/rewards/grant", { user: $("grant-user").value, reward: $("grant-reward").value, note: $("grant-note").value });
+      notice(`Hráč ${res.user.name} dostal odměnu ${rewardName($("grant-reward").value)}.`);
+      $("grant-note").value = "";
+      await loadChallenges();
+    } catch (e) {
+      fail(e);
+    }
+  });
+
   /* ---------- záložky ---------- */
-  const loaders = { overview: loadOverview, traffic: loadTraffic, users: loadUsers, live: loadLive, matches: loadMatches, tournaments: loadTournaments, maps: loadMapsTab, audit: loadAudit };
+  /* ---------- tutoriál ---------- */
+  const TUT_STEPS = {
+    select: "Výběr dělníka", wood: "Těžba dřeva", gold: "Těžba zlata", hut: "Stavba budy", barracks: "Stavba kasáren",
+    train: "Výcvik vojáků", research: "Výzkum", attack: "Útok na věž", victory: "Vítězství"
+  };
+
+  async function loadTutorial() {
+    const d = await api("GET", "/api/admin/tutorial?days=30");
+    const pct = (a, b) => (b ? `${Math.round((a / b) * 100)} %` : "–");
+    const tiles = [
+      ["Začalo", d.started, "hráčů (první spuštění)"],
+      ["Dokončilo", d.finished, `${pct(d.finished, d.started)} z těch, kdo začali`],
+      ["Přeskočilo", d.skipped, pct(d.skipped, d.started)],
+      ["Odešlo uprostřed", d.quit, "zavřeli hru nebo menu"],
+      ["Spuštění celkem", d.runs, `${d.replays} opakovaně (z nastavení)`],
+      ["Účty s titulem Nováček", d.accounts.titled, `${d.accounts.started} účtů začalo, ${d.accounts.finished} dokončilo`]
+    ];
+
+    const cards = el("div", "cards");
+    for (const [label, value, hint] of tiles) {
+      const card = el("div", "card");
+      card.append(el("div", "label", label), el("div", "value", Number(value || 0).toLocaleString("cs-CZ")), el("div", "hint", hint));
+      cards.append(card);
+    }
+
+    const names = d.steps.map((id, i) => `${i + 1}. ${TUT_STEPS[id] || id}`);
+    const labels = d.steps.map((_, i) => String(i + 1)); // pod sloupci jen číslo kroku, název v tooltipu a v legendě
+    const grid = el("div", "chart-grid");
+    grid.append(
+      chartCard("Kam hráči došli", "kolik hráčů se dostalo ke kroku (jen první průchod)", GChart.bars({
+        labels, values: d.reached, color: PALETTE[0], name: "hráčů", every: 1, tipTitle: i => names[i], empty: "Zatím nikdo."
+      })),
+      chartCard("Kde přeskočili", "u kterého kroku hráč tutoriál přeskočil", GChart.bars({
+        labels, values: d.skippedAt, color: PALETTE[1], name: "přeskočení", every: 1, tipTitle: i => names[i], empty: "Zatím nikdo."
+      })),
+      dayChart(d.days, "Tutoriál po dnech", "začali, dokončili a přeskočili za den (30 dní)", [["Začali", "started"], ["Dokončili", "finished"], ["Přeskočili", "skipped"]])
+    );
+
+    $("tutorial").replaceChildren(cards, grid, el("p", "muted", `Kroky: ${names.join(" · ")}`));
+  }
+
+  const loaders = { overview: loadOverview, traffic: loadTraffic, users: loadUsers, live: loadLive, matches: loadMatches, tournaments: loadTournaments, challenges: loadChallenges, tutorial: loadTutorial, maps: loadMapsTab, audit: loadAudit };
 
   function refresh() {
     return loaders[tab]().catch(fail);

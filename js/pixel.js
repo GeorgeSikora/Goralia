@@ -143,6 +143,41 @@
     }
   };
 
+  /*
+   * Barvy týmu navíc (odměny z výzev, js/cosmetics.js). Hráč s takovou barvou má místo barvy
+   * svého slotu tuto paletu; PK.skins = { tým slotu: klíč palety } nastaví game.js pro zápas.
+   * Sprity se hledají přes PK.skin(tým), takže cache jednotek a budov je podle palety.
+   */
+  Object.assign(TEAM, {
+    emerald: {
+      d: 0x0a3a2a, m: 0x20b878, s: 0x14784e, l: 0x5ce8a8, h: 0xc0ffe0,
+      accent: C.a[2], accentL: C.a[3], light: C.a[2], ui: 0x2fd08a
+    },
+    amber: {
+      d: 0x5a2c06, m: 0xd88410, s: 0x9a5a0c, l: 0xffb43c, h: 0xffe4a0,
+      accent: C.u[2], accentL: C.u[3], light: 0xffb43c, ui: 0xf0a020
+    },
+    frost: {
+      d: 0x23506e, m: 0x7cc8ec, s: 0x4a8cb4, l: 0xb8ecff, h: 0xf0ffff,
+      accent: C.white, accentL: C.white, light: 0xb8ecff, ui: 0x9ee4ff
+    },
+    midnight: {
+      d: 0x0c0e30, m: 0x3a3cb0, s: 0x22246c, l: 0x6a70f0, h: 0xb8c0ff,
+      accent: C.a[2], accentL: C.a[3], light: 0x6a70f0, ui: 0x5a64e8
+    },
+    crimson: {
+      d: 0x3c0410, m: 0xc81430, s: 0x86081e, l: 0xf0485a, h: 0xffa8b0,
+      accent: C.a[2], accentL: C.a[3], light: C.a[2], ui: 0xe8203c
+    },
+    bone: {
+      d: 0x4a4232, m: 0xd8ccae, s: 0x9a8e72, l: 0xf0e8d0, h: 0xfffcf0,
+      accent: C.r[2], accentL: C.r[3], light: C.a[2], ui: 0xe8dcc0
+    }
+  });
+
+  const skins = {};
+  const skin = team => skins[team] || team;
+
   /* ---------- random + noise ---------- */
   const rng = seed => {
     let a = seed >>> 0;
@@ -639,7 +674,7 @@
 
   Object.assign(PK, {
     HD, hdLater, hdOf, hdBakeAll, fine,
-    C, TEAM, rgb, mix, css, rng, hash, vnoise, fbm, tnoise, bayer, dither,
+    C, TEAM, skins, skin, rgb, mix, css, rng, hash, vnoise, fbm, tnoise, bayer, dither,
     clamp, smooth, makeCanvas, Pix, strokeEllipse,
     // Rozměry bufferu v art px; game.js je mění podle velikosti okna.
     view: { w: 480, h: 310, mapH: 240, hudH: 70, inset: 0 }

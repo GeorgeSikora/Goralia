@@ -1,8 +1,12 @@
 /*
  * Server hry: statické soubory, místnosti s hostitelem (2 až 6 hráčů + AI) a autoritativní běh zápasů.
  * Spuštění: npm install && npm start  (port z proměnné PORT, výchozí 3000)
+ * Nastavení jde dát do souboru .env v kořeni projektu (vzor .env.example); proměnné prostředí mají přednost.
  */
 "use strict";
+
+// Jako první: moduly níže čtou proměnné prostředí už při načtení.
+require("./env.js").loadEnv();
 
 const http = require("http");
 const fs = require("fs");
@@ -18,11 +22,13 @@ const { createAccounts } = require("./accounts.js");
 const { createStats } = require("./stats.js");
 const { createHallOfFame } = require("./halloffame.js");
 const { createEvents } = require("./events.js");
+const { createChallenges } = require("./challenges.js");
 const { createTraffic } = require("./traffic.js");
+const { createTutorial } = require("./tutorial.js");
 const { createGeo } = require("./geoip.js");
 const { createMapConfig } = require("./mapconfig.js");
 const { createApi, SID } = require("./api.js");
-const { SECURITY_HEADERS, parseCookies, sameOrigin, clientIp } = require("./httputil.js");
+const { SECURITY_HEADERS, parseCookies, sameOrigin, clientIp, redirect } = require("./httputil.js");
 
 const PORT = Number(process.env.PORT) || 3000;
 const ROOT = path.resolve(__dirname, "..");
@@ -36,10 +42,13 @@ const MAX_MSG_PER_SEC = 80;
 const BUFFER_LIMIT = 2 * 1024 * 1024;
 const MAX_MAP_BYTES = 1024 * 1024;
 const MAX_WS_PAYLOAD = 16 * 1024; // zprávy hráčů; nejdelší je popis spojení hlasového chatu (SDP)
-const PAGES = ["index.html", "editor.html", "privacy.html", "terms.html", "manifest.webmanifest", "robots.txt", "sitemap.xml"];
-// Hezké adresy bez přípony (např. https://goralia.cz/privacy).
-const PRETTY = { "/privacy": "/privacy.html", "/terms": "/terms.html" };
+const PAGES = ["uvod.html", "index.html", "editor.html", "privacy.html", "terms.html", "manifest.webmanifest", "robots.txt", "sitemap.xml"];
+// Hezké adresy bez přípony (např. https://goralia.cz/privacy). Na / je úvodní stránka webu, hra sama běží na /play.
+const PRETTY = { "/": "/uvod.html", "/play": "/index.html", "/editor": "/editor.html", "/privacy": "/privacy.html", "/terms": "/terms.html" };
+// Stránky, jejichž zobrazení se počítá do návštěvnosti (úvod webu i samotná hra).
+const COUNTED = ["/uvod.html", "/index.html"];
 const ADMIN_PAGE = "admin.html";
+const NOT_FOUND_PAGE = path.join(ROOT, "404.html");
 // Servery pro navázání hlasového spojení mezi prohlížeči. STUN stačí většině domácích sítí;
 // pro hráče za přísným NATem (mobilní data, firemní sítě) lze přidat vlastní TURN (např. coturn na VPS).
 const ICE_SERVERS = [{ urls: (process.env.GORALIA_STUN_URLS || "stun:stun.l.google.com:19302").split(",").map(u => u.trim()).filter(Boolean) }];
@@ -62,7 +71,9 @@ const accounts = createAccounts(store, {
   onCreate: user => { if (user.role !== "admin") traffic.bump("registrations"); }
 });
 const stats = createStats(store);
-const hall = createHallOfFame(store, accounts);
+const challenges = createChallenges(store, accounts);
+const hall = createHallOfFame(store, accounts, challenges);
+const tutorial = createTutorial(store, accounts, traffic.dayKey, challenges);
 const mapConfig = createMapConfig(store, MAPS);
 
 const MIME = {
@@ -70,6 +81,10 @@ const MIME = {
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".mp4": "video/mp4",
   ".mp3": "audio/mpeg",
   ".json": "application/json; charset=utf-8",
   ".ico": "image/x-icon",
@@ -192,7 +207,7 @@ const adminMaps = {
 
 const events = createEvents(store, accounts, { mapExists: id => MAPS.list.some(m => m.id === id) });
 
-const api = createApi({ accounts, stats, hall, events, store, live, traffic, adminMaps, isLocalRequest, publicUrl: PUBLIC_URL });
+const api = createApi({ accounts, stats, hall, events, challenges, store, live, traffic, tutorial, adminMaps, isLocalRequest, publicUrl: PUBLIC_URL });
 // Domény webu hry: odkaz z nich je přechod v rámci webu, ne zdroj návštěvy.
 const ownHosts = req => {
   const hosts = [String(req.headers.host || "")];
@@ -221,18 +236,26 @@ const server = http.createServer((req, res) => {
     return res.end();
   }
 
-  if (pathname === "/") pathname = "/index.html";
-  const pretty = PRETTY[pathname.replace(/\/$/, "")];
+  // /play/ by rozbilo relativní cesty ke skriptům a stylům hry, proto lomítko na konci zahodíme.
+  if (pathname.length > 1 && pathname.endsWith("/") && PRETTY[pathname.replace(/\/+$/, "")]) {
+    const search = query.toString();
+    return redirect(res, pathname.replace(/\/+$/, "") + (search ? `?${search}` : ""));
+  }
+
+  // Editor má hezkou adresu /editor, stará /editor.html na ni trvale přesměruje.
+  if (pathname === "/editor.html") {
+    const search = query.toString();
+    return redirect(res, "/editor" + (search ? `?${search}` : ""), {}, 301);
+  }
+
+  const pretty = PRETTY[pathname];
   if (pretty) pathname = pretty;
 
   // Panel serveru vidí jen přihlášený admin, ostatním stránka neexistuje.
   if (pathname === "/admin" || pathname === "/admin.html") {
     const user = api.userOf(req);
 
-    if (!user || user.role !== "admin") {
-      res.writeHead(404);
-      return res.end("Not found");
-    }
+    if (!user || user.role !== "admin") return notFound(req, res, pathname);
 
     pathname = `/${ADMIN_PAGE}`;
   }
@@ -242,27 +265,56 @@ const server = http.createServer((req, res) => {
   const isAdminPage = rel.length === 1 && rel[0] === ADMIN_PAGE && pathname === `/${ADMIN_PAGE}`;
   const allowed = rel.length === 1 ? PAGES.includes(rel[0]) || isAdminPage : PUBLIC_DIRS.includes(rel[0]);
 
-  if (!allowed || rel.includes("..")) {
-    res.writeHead(404);
-    return res.end("Not found");
-  }
+  if (!allowed || rel.includes("..")) return notFound(req, res, pathname);
 
   fs.readFile(file, (err, data) => {
-    if (err) {
-      res.writeHead(404);
-      return res.end("Not found");
+    if (err) return notFound(req, res, pathname);
+
+    if (COUNTED.includes(pathname) && req.method === "GET") traffic.pageView(clientIp(req), req.headers["user-agent"], { referer: req.headers.referer, query, hosts: ownHosts(req) });
+
+    const headers = {
+      "Content-Type": MIME[path.extname(file)] || "application/octet-stream",
+      // Obrázky a videa úvodní stránky se nemění často a jsou velké, ať se nestahují při každé návštěvě znovu.
+      "Cache-Control": isAdminPage ? "no-store" : rel[0] === "assets" && rel[1] === "web" ? "public, max-age=86400" : "no-cache",
+      "Accept-Ranges": "bytes",
+      ...SECURITY_HEADERS
+    };
+
+    // Safari na iPhonu přehraje video jen tehdy, když server umí posílat jeho části (Range).
+    const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || "");
+    if (range && (range[1] || range[2])) {
+      const size = data.length;
+      let start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2]));
+      let end = range[1] && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
+
+      if (start >= size || start > end) {
+        res.writeHead(416, { ...headers, "Content-Range": `bytes */${size}` });
+        return res.end();
+      }
+
+      res.writeHead(206, { ...headers, "Content-Range": `bytes ${start}-${end}/${size}`, "Content-Length": end - start + 1 });
+      return res.end(req.method === "HEAD" ? undefined : data.subarray(start, end + 1));
     }
 
-    if (pathname === "/index.html" && req.method === "GET") traffic.pageView(clientIp(req), req.headers["user-agent"], { referer: req.headers.referer, query, hosts: ownHosts(req) });
-
-    res.writeHead(200, {
-      "Content-Type": MIME[path.extname(file)] || "application/octet-stream",
-      "Cache-Control": isAdminPage ? "no-store" : "no-cache",
-      ...SECURITY_HEADERS
-    });
+    res.writeHead(200, headers);
     res.end(req.method === "HEAD" ? undefined : data);
   });
 });
+
+// Neznámá adresa: lidem stránka 404 ve stylu webu, chybějícím skriptům, obrázkům a podobně jen krátký text.
+function notFound(req, res, pathname) {
+  const ext = path.extname(pathname);
+
+  if (ext && ext !== ".html") {
+    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8", ...SECURITY_HEADERS });
+    return res.end("Not found");
+  }
+
+  fs.readFile(NOT_FOUND_PAGE, (err, data) => {
+    res.writeHead(404, { "Content-Type": err ? "text/plain; charset=utf-8" : MIME[".html"], "Cache-Control": "no-cache", ...SECURITY_HEADERS });
+    res.end(req.method === "HEAD" ? undefined : err ? "Not found" : data);
+  });
+}
 
 /* ---------- lobby ---------- */
 const wss = new WebSocketServer({ server, maxPayload: MAX_WS_PAYLOAD });
@@ -359,6 +411,11 @@ function adminCommand(client, room, text, viaChat) {
 
   const match = room && room.match;
   const result = ADMIN.run(match, client.team, text);
+  // /zima: volba platí i pro další zápasy na serveru (do restartu)
+  if (result.ok && match && match.winterForce != null) {
+    winterForce = match.winterForce === "auto" ? null : !!match.winterForce;
+    match.winterForce = null;
+  }
   if (result.changed) {
     match.recorded = true;
     accounts.audit(client.user, "admin-cmd", `${text.slice(0, 60)} · místnost ${room.id} (${room.map.id})`);
@@ -513,14 +570,19 @@ function changeMap(room, map) {
   room.slots = next;
 }
 
+// Zimní sezóna: podle kalendáře serveru, admin ji může příkazem /zima vynutit nebo vypnout.
+let winterForce = null;
+const winterNow = () => (winterForce == null ? R.isWinter() : winterForce);
+
 function startMatch(room) {
   const players = room.slots.map((slot, i) => {
-    if (slot.kind === "human") return { name: slot.client.name };
+    if (slot.kind === "human") return { name: slot.client.name, look: challenges.lookOf(slot.client.user) };
     if (slot.kind === "ai") return { name: room.map.coop && room.map.coop.ai === i ? R.UNDEAD.short : `AI ${R.TEAM_NAMES[R.TEAMS[i]]}`, ai: true };
     return null;
   });
 
-  room.match = new Match(room.map, players);
+  // zimní mapa (krajina "winter") má sníh a dárky vždy, jinak rozhoduje kalendář nebo /zima
+  room.match = new Match(room.map, players, { winter: winterNow() || MAPS.isWinterMap(room.map) });
   room.started = Date.now();
   room.cmds = {};
   room.out = {};
@@ -533,13 +595,14 @@ function startMatch(room) {
     if (p) room.participants.push({ slot: i, name: p.name, ai: !!p.ai, userId: p.ai ? null : room.slots[i].client.user.id });
   });
 
-  const roster = players.map((p, slot) => (p ? { slot, name: p.name, ai: !!p.ai } : null)).filter(Boolean);
+  // look = vybrané kosmetické odměny hráče (vlajka na věžích, barva týmu, titul), viz challenges.js
+  const roster = players.map((p, slot) => (p ? { slot, name: p.name, ai: !!p.ai, look: p.look || {} } : null)).filter(Boolean);
   room.roster = roster;
 
   room.slots.forEach((slot, i) => {
     if (slot.kind !== "human") return;
     slot.client.team = R.TEAMS[i];
-    send(slot.client, { t: "match", map: room.map.id, slot: i, players: roster });
+    send(slot.client, { t: "match", map: room.map.id, slot: i, players: roster, winter: room.match.winter });
   });
 
   broadcastRooms();
@@ -555,7 +618,7 @@ function closeRoom(room) {
 /* ---------- průběh zápasu pro statistiky ---------- */
 const TIMELINE_STEP = 10; // s herního času mezi vzorky
 const TIMELINE_MAX = 180; // víc vzorků se prořeďuje (každý druhý pryč, krok ×2)
-const ARMY = new Set(["soldier", "archer", "hero", "monk", "knight", "catapult"]);
+const ARMY = new Set(["soldier", "archer", "hero", "monk", "knight", "catapult", "spearman", "crossbow", "scout"]);
 
 // Jeden vzorek: pro každý tým armáda, dělníci, budovy, natěžené suroviny, zásoba a zabití.
 function sampleTimeline(room) {
@@ -650,7 +713,14 @@ function recordMatch(room) {
     })
   });
 
-  if (recorded) traffic.match(recorded);
+  if (recorded) {
+    traffic.match(recorded);
+    // výzvy se vyhodnocují tady, ze statistik zápasu na serveru
+    for (const { userId, done } of challenges.onMatch(recorded)) {
+      const client = byUser.get(userId);
+      if (client) send(client, { t: "challenges", done });
+    }
+  }
 }
 
 // Po konci zápasu se hráči vrátí do místnosti.
@@ -914,7 +984,7 @@ wss.on("connection", (ws, req) => {
       unwatch(client);
       client.watching = target;
       target.spectators.add(client);
-      send(client, { t: "match", map: target.map.id, slot: -1, spectate: true, players: target.roster });
+      send(client, { t: "match", map: target.map.id, slot: -1, spectate: true, players: target.roster, winter: !!(target.match && target.match.winter) });
       broadcastRooms();
       return;
     }
@@ -1055,6 +1125,9 @@ setInterval(() => {
 setInterval(() => {
   for (const client of clients) creditOnline(client);
 }, 60000).unref();
+
+// O půlnoci (a v pondělí) se vylosují nové výzvy, i když zrovna nikdo nehraje ani se nedívá do menu.
+setInterval(() => challenges.ensure(), 30000).unref();
 
 mapstore.load();
 traffic.startSampling(live.counts);

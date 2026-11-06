@@ -12,7 +12,7 @@
 <header class="top">
   <h1>Goralia · Server panel</h1>
   <span id="who" class="who"></span>
-  <a class="link" href="/">Do hry</a>
+  <a class="link" href="/play">Do hry</a>
 </header>
 
 <nav id="tabs" class="tabs" aria-label="Sekce">
@@ -22,6 +22,8 @@
   <button type="button" data-tab="live">Online</button>
   <button type="button" data-tab="matches">Zápasy</button>
   <button type="button" data-tab="tournaments">Turnaje</button>
+  <button type="button" data-tab="challenges">Výzvy</button>
+  <button type="button" data-tab="tutorial">Tutoriál</button>
   <button type="button" data-tab="maps">Mapy</button>
   <button type="button" data-tab="audit">Záznam akcí</button>
 </nav>
@@ -108,9 +110,51 @@
     <div id="tournaments" class="table-wrap"></div>
   </section>
 
+  <section id="tab-challenges" class="tab" hidden>
+    <h2>Aktuální výzvy</h2>
+    <p class="muted">Server losuje každý den o půlnoci 3 denní výzvy a každé pondělí 2 týdenní ze zapnutých šablon. Postup se počítá ze statistik zápasů na serveru (multiplayer i místnosti s AI) a z ověřeného hlášení hry proti AI v prohlížeči. Odměny jsou jen kosmetické.</p>
+    <div id="ch-current" class="ch-current"></div>
+
+    <h2>Udělit odměnu ručně</h2>
+    <form id="grant-form" class="tour-form">
+      <label>Hráč <input id="grant-user" type="text" maxlength="40" required placeholder="přezdívka nebo ID"></label>
+      <label>Odměna <select id="grant-reward"></select></label>
+      <label>Poznámka <input id="grant-note" type="text" maxlength="60" placeholder="např. vítěz turnaje"></label>
+      <div class="actions"><button type="submit">Udělit odměnu</button></div>
+    </form>
+    <div id="grants" class="table-wrap"></div>
+
+    <h2>Přidat šablonu výzvy</h2>
+    <form id="tpl-form" class="tour-form">
+      <label class="wide">Text výzvy (česky) <input id="tpl-text" type="text" maxlength="80" required placeholder="Vycvič 8 vojáků v jednom zápase"></label>
+      <label>Anglicky (nepovinné) <input id="tpl-en" type="text" maxlength="80" placeholder="Train 8 soldiers in one match"></label>
+      <label>Po našimu (nepovinné) <input id="tpl-szl" type="text" maxlength="80" placeholder="Vycvič 8 vojokóv v jednym zopasě"></label>
+      <label>Období <select id="tpl-period"><option value="daily">denní</option><option value="weekly">týdenní</option></select></label>
+      <label>Co se počítá <select id="tpl-metric"></select></label>
+      <label>Typ <select id="tpl-unit"></select></label>
+      <label>Cíl <input id="tpl-target" type="number" min="1" max="100000" value="5" required></label>
+      <label>Započítání <select id="tpl-scope"></select></label>
+      <label>Druh zápasu <select id="tpl-mode"></select></label>
+      <label>Nejdelší zápas (min, 0 = bez limitu) <input id="tpl-max" type="number" min="0" max="300" value="0"></label>
+      <label class="check"><span>Jen vyhrané zápasy</span><input id="tpl-win" type="checkbox"></label>
+      <div class="actions"><button type="submit">Přidat šablonu</button></div>
+    </form>
+
+    <h2>Šablony</h2>
+    <div id="templates" class="table-wrap"></div>
+
+    <h2>Odměny</h2>
+    <div id="rewards" class="table-wrap"></div>
+  </section>
+
+  <section id="tab-tutorial" class="tab" hidden>
+    <p class="muted">Tutoriál pro nové hráče (hlášení z prohlížeče). Hráč = první spuštění v prohlížeči; přihlášený účet se nepočítá dvakrát.</p>
+    <div id="tutorial"></div>
+  </section>
+
   <section id="tab-maps" class="tab" hidden>
     <div class="bar">
-      <a class="button" href="/editor.html" target="_blank" rel="noopener">Nová mapa v editoru</a>
+      <a class="button" href="/editor" target="_blank" rel="noopener">Nová mapa v editoru</a>
       <button id="map-upload" type="button">Nahrát mapu (JSON)…</button>
       <input id="map-file" type="file" accept=".json,application/json" hidden>
       <span id="map-summary" class="muted"></span>
@@ -135,6 +179,7 @@
 </div>
 
 <script src="js/rules.js"></script>
+<script src="js/cosmetics.js"></script>
 <script src="js/maps.js"></script>
 <script src="js/charts.js"></script>
 <script src="js/geomap.js"></script>

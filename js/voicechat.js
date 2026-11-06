@@ -60,7 +60,7 @@
 
   const colorOf = slot => {
     const team = R.TEAMS[slot];
-    return team && PK.TEAM[team] ? PK.css(PK.TEAM[team].ui) : "#c4ccdc";
+    return team && PK.TEAM[team] ? PK.css(PK.TEAM[PK.skin(team)].ui) : "#c4ccdc";
   };
 
   function render() {

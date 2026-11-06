@@ -162,13 +162,79 @@ function testSimulation() {
   testSmithy();
   testRepair();
   testFireball();
+  testHeroes();
   testCollisions();
   testNewTroops();
   testNewResearch();
   testAdminCommands();
+  testWinter();
 }
 
 // Budovy nejdou procházet: jednotky je obcházejí, k okraji ale dojdou (těžba, stavba, útok).
+/* ---------- zima: kalendář, dárky, příkaz /zima ---------- */
+function testWinter() {
+  const d = (m, day) => new Date(2026, m - 1, day, 12);
+  assert(R.isWinter(d(12, 1)) && R.isWinter(d(12, 24)) && R.isWinter(d(1, 6)), "zima 1. 12. - 6. 1.");
+  assert(!R.isWinter(d(11, 30)) && !R.isWinter(d(1, 7)) && !R.isWinter(d(7, 1)), "mimo zimu");
+
+  const map = MAPS.get("crowns");
+  const players = [{ name: "A" }, { name: "B" }, null, null];
+
+  // bez zimy žádné dárky a nic jiného se nemění
+  const plain = new Match(map, players, { countdown: 0 });
+  assert.strictEqual(plain.gifts.length, 0);
+  assert.strictEqual(plain.snapshot("blue").wi, 0);
+  assert.strictEqual(plain.snapshot("blue").gf, undefined);
+  for (let i = 0; i < 200; i++) { plain.step(TICK); plain.endTick(); }
+  assert.strictEqual(plain.gifts.length, 0, "mimo zimu dárky nepadají");
+
+  // v zimě leží od startu R.WINTER.first dárků, daleko od základen a na průchozím místě
+  const m = new Match(map, players, { countdown: 0, winter: true });
+  assert.strictEqual(m.gifts.length, R.WINTER.first);
+  const halls = m.buildings.filter(b => b.type === "hall");
+  for (const g of m.gifts) {
+    assert(!m.nav.isBlocked(g.x, g.y), "dárek není ve vodě ani ve skále");
+    assert(halls.every(b => distance(b, g) >= R.WINTER.fromBase * 0.6), "dárek není u základny");
+  }
+  const snap = m.snapshot("blue");
+  assert.strictEqual(snap.wi, 1);
+  assert.strictEqual(snap.gf.length, R.WINTER.first);
+
+  // dělník dojde k dárku: tým dostane zlato, dárek zmizí, přijde událost
+  const gift = m.gifts[0];
+  const worker = m.units.find(u => u.team === "blue" && u.type === "worker");
+  const gold = m.econ.blue.gold;
+  worker.x = gift.x + 4;
+  worker.y = gift.y;
+  worker.order = null;
+  m.step(TICK);
+  assert.strictEqual(m.econ.blue.gold, gold + R.WINTER.gold, "dárek přinese zlato");
+  assert(!m.gifts.includes(gift), "sebraný dárek zmizí");
+  assert(m.events.some(e => e.e === "gift" && e.id === worker.id && e.n === R.WINTER.gold));
+  m.endTick();
+
+  // vojáci dárky nesbírají
+  const soldier = m.createUnit("soldier", "blue", m.gifts[0].x, m.gifts[0].y);
+  const left = m.gifts.length;
+  m.step(TICK);
+  assert.strictEqual(m.gifts.length, left, "voják dárek nesebere");
+  soldier.hp = 0;
+  m.endTick();
+
+  // nové dárky přibývají po R.WINTER.every s, nejvýš R.WINTER.max najednou
+  for (let t = 0; t < R.WINTER.every * (R.WINTER.max + 2); t += TICK) { m.step(TICK); m.endTick(); }
+  assert.strictEqual(m.gifts.length, R.WINTER.max, "dárků je nejvýš R.WINTER.max");
+
+  // příkaz správce /zima: vypne a zapne zimu v zápase, volbu si server vezme pro další zápasy
+  let r = ADMIN.run(m, "blue", "/zima off");
+  assert(r.ok && r.changed && !m.winter && m.gifts.length === 0 && m.winterForce === false);
+  r = ADMIN.run(m, "blue", "/zima on");
+  assert(r.ok && m.winter && m.gifts.length === R.WINTER.first && m.winterForce === true);
+  r = ADMIN.run(m, "blue", "/zima auto");
+  assert(r.ok && m.winterForce === "auto" && m.winter === R.isWinter());
+  assert(m.cheated, "zápas s /zima se nepočítá do statistik");
+}
+
 function testCollisions() {
   const run = (m, seconds, each) => {
     for (let t = 0; t < seconds; t += TICK) { m.step(TICK); m.endTick(); if (each) each(); }
@@ -428,8 +494,11 @@ function testAdminCommands() {
   assert(run("/spawn knight 5").ok);
   assert.strictEqual(m.units.filter(u => u.team === "blue" && u.type === "knight").length, 5);
   assert(!run("/spawn ghoul").ok && !run("/spawn").ok, "jen lidské jednotky");
+  assert(!run("/spawn hero").ok, "hrdina jen jeden (rytíř je tu od začátku)");
+  m.heroOf("blue").hp = 0;
+  m.step(TICK);
   assert(run("/spawn hero 3").ok && !run("/spawn hero").ok, "hrdina jen jeden");
-  assert.strictEqual(m.units.filter(u => u.team === "blue").length, before + 6);
+  assert.strictEqual(m.units.filter(u => u.team === "blue").length, before + 5);
   run("/spawn soldier 999");
   assert.strictEqual(m.units.filter(u => u.team === "blue" && u.type === "soldier").length, 50, "nejvýš 50 najednou");
 
@@ -518,15 +587,17 @@ function testSmithy() {
 }
 
 // oprava: dělník přidává životy hotové budově po krocích, každý krok stojí 1 zlato a 1 dřevo
-// Ohnivá koule ubere životy až při dopadu, ne už při výstřelu.
+// Ohnivá koule (schopnost licha) ubere životy až při dopadu, ne už při výstřelu.
 function testFireball() {
-  const m = new Match(MAPS.get("valley"), [{ name: "A" }, { name: "B" }], { countdown: 0 });
-  const hero = m.createUnit("hero", "blue", 400, 400);
+  const fresh = () => new Match(MAPS.get("valley"), [{ name: "A" }, { name: "B" }], { countdown: 0, heroes: false });
+  const m = fresh();
+  const hero = m.createUnit("lich", "blue", 400, 400);
   const foe = m.createUnit("soldier", "red", 480, 400);
   const hp0 = foe.hp;
 
-  m.command("blue", { c: "fire", x: foe.x, y: foe.y });
-  assert.strictEqual(hero.fireCooldown, 10, "koule vyletěla");
+  m.command("blue", { c: "cast", k: 0, x: foe.x, y: foe.y });
+  assert.strictEqual(hero.cds[0], R.HERO.abilities.lich[0].cd, "koule vyletěla");
+  assert.strictEqual(hero.mana, hero.maxMana - R.HERO.abilities.lich[0].mana, "stála manu");
   assert.strictEqual(foe.hp, hp0, "při výstřelu se ještě nic neubere");
   assert(!m.events.some(e => e.e === "hit"), "zásah ještě nepřišel");
 
@@ -545,13 +616,142 @@ function testFireball() {
   assert(foe.hp < hp0, "po dopadu se životy uberou");
 
   // kdo z místa dopadu stihne utéct, nedostane nic
-  const m2 = new Match(MAPS.get("valley"), [{ name: "A" }, { name: "B" }], { countdown: 0 });
-  m2.createUnit("hero", "blue", 400, 400);
+  const m2 = fresh();
+  m2.createUnit("lich", "blue", 400, 400);
   const runner = m2.createUnit("soldier", "red", 480, 400);
-  m2.command("blue", { c: "fire", x: runner.x, y: runner.y });
+  m2.command("blue", { c: "cast", k: 0, x: runner.x, y: runner.y });
   runner.x = 700;
   for (let t = 0; t < 0.5; t += TICK) { runner.order = null; m2.step(TICK); m2.endTick(); }
   assert.strictEqual(runner.hp, runner.maxHp, "uteklý cíl zůstane bez zranění");
+}
+
+// Hrdinové: rytíř od začátku, výcvik v gmině, schopnosti, mana, přebíjení, úrovně do 5, determinismus.
+function testHeroes() {
+  const H = R.HERO;
+  const run = (m, seconds) => { for (let t = 0; t < seconds - 1e-9; t += TICK) { m.step(TICK); m.endTick(); } };
+  const m = new Match(MAPS.get("valley"), [{ name: "A" }, { name: "B" }], { countdown: 0 });
+  const knight = m.heroOf("blue");
+  assert(knight && knight.type === "hero", "rytíř je tu od začátku");
+  assert(m.heroOf("red"), "každý hráč má hrdinu");
+  assert.strictEqual(m.stats.blue.heroLevel, 1);
+
+  // jen jeden: dalšího vycvičit nejde, dokud žije
+  m.econ.blue.gold = 5000; m.econ.blue.wood = 5000;
+  m.command("blue", { c: "train", type: "hero" });
+  assert(!m.hqOf("blue").heroT, "druhý hrdina se necvičí");
+
+  // výpad: rytíř doletí k cíli a zraní okolí
+  knight.x = 400; knight.y = 400;
+  const foe = m.createUnit("soldier", "red", 520, 400);
+  const far = m.createUnit("soldier", "red", 900, 400);
+  const lunge = H.abilities.hero[0];
+  m.command("blue", { c: "cast", k: 0, x: 900, y: 400 });
+  assert(!knight.dash, "mimo dosah se výpad nespustí");
+  m.command("blue", { c: "cast", k: 0, x: 515, y: 400 });
+  assert(knight.dash, "výpad začal");
+  assert.strictEqual(knight.mana, knight.maxMana - lunge.mana);
+  let hit = false;
+  for (let i = 0; i < 20 && !hit; i++) {
+    foe.order = null; foe.x = 520; foe.y = 400;
+    m.step(TICK);
+    hit = m.events.some(e => e.e === "lunge");
+    m.endTick();
+  }
+  assert(hit && !knight.dash, "výpad dopadl");
+  assert(Math.abs(knight.x - 515) < 8, "rytíř stojí v cíli výpadu");
+  assert.strictEqual(foe.maxHp - foe.hp, lunge.damage, "zásah výpadem");
+  assert.strictEqual(far.hp, far.maxHp, "vzdálený nepřítel bez zranění");
+  m.command("blue", { c: "cast", k: 0, x: 515, y: 400 });
+  assert(!knight.dash, "výpad se přebíjí");
+
+  // bojový pokřik: spojenci v okolí dávají víc poškození
+  const ally = m.createUnit("soldier", "blue", 540, 420);
+  const lone = m.createUnit("soldier", "blue", 900, 700);
+  m.command("blue", { c: "cast", k: 1 });
+  assert(ally.dmgT > 0 && knight.dmgT > 0 && !(lone.dmgT > 0), "pokřik zasáhne jen okolí");
+  const dummy = m.createUnit("soldier", "red", 1200, 900);
+  m.damage(ally, dummy, 20);
+  assert.strictEqual(dummy.maxHp - dummy.hp, Math.round(20 * (1 + H.abilities.hero[1].bonus)), "pokřik zvýší poškození");
+
+  // štítová zeď: rytíř dostane méně
+  m.command("blue", { c: "cast", k: 2 });
+  assert(knight.guardT > 0, "štít je zvednutý");
+  const hp1 = knight.hp;
+  m.damage(dummy, knight, 40);
+  assert.strictEqual(hp1 - knight.hp, Math.round(40 * (1 - H.abilities.hero[2].self)), "štít snižuje poškození");
+
+  // mana dochází a znovu se plní
+  knight.mana = 5;
+  knight.cds = [0, 0, 0];
+  m.command("blue", { c: "cast", k: 1 });
+  assert.strictEqual(knight.cds[1], 0, "bez many se nic nesešle");
+  run(m, 2);
+  assert(knight.mana > 5, "mana se doplňuje");
+
+  // úrovně: nejvýš 5, víc zdraví a kratší přebíjení
+  const hp0 = knight.maxHp;
+  for (let i = 0; i < 40; i++) {
+    const v = m.createUnit("worker", "red", knight.x + 10, knight.y);
+    m.damage(knight, v, 999);
+  }
+  assert.strictEqual(knight.level, H.maxLevel, "úroveň nejvýš 5");
+  assert.strictEqual(knight.maxHp, hp0 + (H.maxLevel - 1) * H.perLevel.hero.hp);
+  knight.cds = [0, 0, 0]; knight.mana = knight.maxMana; knight.dash = null;
+  m.command("blue", { c: "cast", k: 1 });
+  assert(Math.abs(knight.cds[1] - H.abilities.hero[1].cd * (1 - H.cdPerLevel * 4)) < 0.02, "na 5. úrovni kratší přebíjení");
+
+  // po smrti: výcvik v gmině za cenu a čas
+  knight.hp = 0;
+  run(m, TICK);
+  assert(!m.heroOf("blue"));
+  const gold0 = m.econ.blue.gold;
+  m.command("blue", { c: "train", type: "hero" });
+  assert.strictEqual(gold0 - m.econ.blue.gold, R.COSTS.hero.gold, "výcvik stojí zlato");
+  assert(m.hqOf("blue").heroT, "výcvik běží");
+  m.command("blue", { c: "train", type: "hero" });
+  assert.strictEqual(gold0 - m.econ.blue.gold, R.COSTS.hero.gold, "dva výcviky naráz nejdou");
+  run(m, H.train - 1);
+  assert(!m.heroOf("blue"), "hrdina ještě není");
+  run(m, 1.2);
+  const again = m.heroOf("blue");
+  assert(again && again.level === 1, "hrdina je zpátky od 1. úrovně");
+  const snap = m.snapshot("blue");
+  assert(snap.u.some(r => r[0] === again.id && r.length === 20), "snímek hrdiny má přebíjení a manu");
+
+  // lich: kostlivci se po čase rozpadnou, mráz zpomaluje
+  const u = new Match(MAPS.get("valley"), [{ name: "A" }, { name: "B" }], { countdown: 0, heroes: false });
+  const lich = u.createUnit("lich", "blue", 400, 400);
+  const victim = u.createUnit("soldier", "red", 460, 400);
+  u.command("blue", { c: "cast", k: 1 });
+  const bones = u.units.filter(x => x.summoned != null);
+  assert.strictEqual(bones.length, H.abilities.lich[1].count, "dva kostlivci");
+  u.command("blue", { c: "cast", k: 2 });
+  run(u, TICK);
+  assert(victim.slowT > 0 && victim.slowK > 0.4, "mráz zpomaluje");
+  victim.order = { type: "move", x: 900, y: 400 };
+  const x0 = victim.x;
+  run(u, 1);
+  assert(victim.x - x0 < R.UNITS.soldier.speed * 0.7, "zmrazený jde pomaleji");
+  run(u, H.abilities.lich[1].life);
+  assert(!u.units.some(x => x.summoned != null), "vyvolaní se rozpadli");
+  assert(lich.hp > 0);
+
+  // stejné vstupy = stejný výsledek (simulace schopností nepoužívá náhodu)
+  const replay = () => {
+    const r = new Match(MAPS.get("valley"), [{ name: "A" }, { name: "B" }], { countdown: 0, heroes: false });
+    const a = r.createUnit("hero", "blue", 400, 400);
+    const l = r.createUnit("lich", "red", 520, 420);
+    for (let i = 0; i < 6; i++) r.createUnit(i % 2 ? "soldier" : "archer", i < 3 ? "blue" : "red", 380 + i * 30, 380 + (i % 3) * 20);
+    const cmds = { 5: ["blue", { c: "cast", k: 0, x: 515, y: 420 }], 6: ["red", { c: "cast", k: 2 }], 10: ["red", { c: "cast", k: 1 }],
+      20: ["blue", { c: "cast", k: 1 }], 30: ["red", { c: "cast", k: 0, x: 420, y: 400 }], 40: ["blue", { c: "cast", k: 2 }] };
+    for (let i = 0; i < 200; i++) {
+      if (cmds[i]) r.command(...cmds[i]);
+      r.step(TICK);
+      r.endTick();
+    }
+    return JSON.stringify(r.units.map(x => [x.id, x.type, Math.round(x.x * 100), Math.round(x.y * 100), x.hp, x.mana || 0]).concat([[a.hp, l.hp]]));
+  };
+  assert.strictEqual(replay(), replay(), "simulace hrdinů je deterministická");
 }
 
 function testRepair() {
@@ -846,7 +1046,7 @@ async function testServer() {
   for (const id of ["valley", "highland", "crowns", "brana-pekel"]) fs.copyFileSync(path.join(repoMaps, `${id}.json`), path.join(mapsDir, `${id}.json`));
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "goralia-data-"));
   const proc = spawn(process.execPath, [path.join(__dirname, "server.js")], {
-    env: { ...process.env, PORT: String(PORT), GORALIA_MAPS_DIR: mapsDir, GORALIA_DATA_DIR: dataDir, GORALIA_ADMIN_PASSWORD: ADMIN_PASSWORD },
+    env: { ...process.env, GORALIA_ENV_FILE: "", PORT: String(PORT), GORALIA_MAPS_DIR: mapsDir, GORALIA_DATA_DIR: dataDir, GORALIA_ADMIN_PASSWORD: ADMIN_PASSWORD },
     stdio: ["ignore", "pipe", "inherit"]
   });
 
@@ -882,8 +1082,32 @@ async function testServer() {
     assert.strictEqual(await get("/package.json"), 404);
     assert.strictEqual(await get("/js/..%2Fpackage.json"), 404);
     assert.strictEqual(await get("/%2e%2e/package.json"), 404);
-    assert.strictEqual(await get("/editor.html"), 200);
+    assert.strictEqual(await get("/editor"), 200);
+    const moved = await new Promise((resolve, reject) => {
+      http.get({ host: "localhost", port: PORT, path: "/editor.html?map=duel" }, res => {
+        res.resume();
+        resolve([res.statusCode, res.headers.location]);
+      }).on("error", reject);
+    });
+    assert.deepStrictEqual(moved, [301, "/editor?map=duel"]);
     assert.strictEqual(await get("/maps/x.json"), 404);
+
+    // neznámá stránka: stylová 404 se stavem 404, chybějící skript jen krátký text
+    const page = p => new Promise((resolve, reject) => {
+      http.get({ host: "localhost", port: PORT, path: p }, res => {
+        let body = "";
+        res.on("data", chunk => (body += chunk));
+        res.on("end", () => resolve({ status: res.statusCode, type: res.headers["content-type"], body }));
+      }).on("error", reject);
+    });
+    const lost = await page("/tahle/stranka/neni");
+    assert.strictEqual(lost.status, 404);
+    assert.match(lost.type, /text\/html/);
+    assert.match(lost.body, /Zabloudil jsi do mlhy války/);
+    assert.strictEqual((await page("/admin")).status, 404, "panel pro nepřihlášené vypadá jako neexistující stránka");
+    const noScript = await page("/js/neexistuje.js");
+    assert.strictEqual(noScript.status, 404);
+    assert.match(noScript.type, /text\/plain/);
 
     // vlastní mapy: ukládání jen z místního počítače a jen platné mapy
     const api = (method, p, body, headers = {}) => new Promise((resolve, reject) => {
@@ -1156,7 +1380,7 @@ async function testServer() {
     // během odpočtu se nic nestane
     a.cmd({ c: "train", type: "worker" });
     await Promise.all([a, b].map(p => p.until(() => p.snap.p === "playing", 6000, "start hry")));
-    assert.strictEqual(a.snap.u.length, 6);
+    assert.strictEqual(a.snap.u.length, 8, "3 dělníci a rytíř-hrdina na hráče");
 
     const mine = p => p.match.slot;
 
@@ -1172,7 +1396,7 @@ async function testServer() {
     await spec.until(() => spec.match && spec.snap && spec.snap.p === "playing", 3000, "snímky pro diváka");
     assert.strictEqual(spec.match.slot, -1);
     assert.strictEqual(spec.match.spectate, true);
-    assert.strictEqual(spec.snap.u.length, 6, "divák vidí všechny jednotky");
+    assert.strictEqual(spec.snap.u.length, 8, "divák vidí všechny jednotky");
     assert.strictEqual(spec.snap.ec.length, 2, "divák vidí suroviny obou týmů");
     assert(spec.snap.ec.every(r => r.length === 6 && r[1] >= 0 && r[2] >= 0 && r[3] > 0), "tvar řádku surovin");
     assert(!("ec" in a.snap), "hráči soupeřovy suroviny nedostanou");
@@ -1195,7 +1419,7 @@ async function testServer() {
     assert.strictEqual(a.snap.g, 260);
     a.send({ t: "cmd", c: "train", type: "hero", gold: 99999 });
     await sleep(150);
-    assert.strictEqual(a.snap.g, 260, "bez kasáren se hrdina nevycvičí");
+    assert.strictEqual(a.snap.g, 260, "druhý hrdina se nevycvičí, dokud první žije");
     a.send({ t: "cmd", c: "train", type: "worker", gold: 99999 });
     await sleep(150);
     assert.strictEqual(a.snap.g, 260 - R.COSTS.worker.gold, "dělník stojí svou cenu");
@@ -1208,7 +1432,8 @@ async function testServer() {
     a.cmd({ c: "order", k: "attack", ids: [a.units(mine(a))[0][0]], target: a.units(mine(a))[1][0] });
     a.cmd({ c: "build", type: "tower", x: mine(a) === 0 ? 1100 : 400, y: 300, ids: a.units(mine(a)).filter(u => u[1] === 0).map(u => u[0]) });
     a.cmd({ c: "build", type: "citadel", x: 100, y: 100, ids: enemyIds });
-    a.cmd({ c: "fire", x: 1e9, y: 0 });
+    a.cmd({ c: "cast", k: 0, x: 1e9, y: 0 });
+    a.cmd({ c: "cast", k: 7 });
     a.cmd({ c: "bogus" });
     a.ws.send("{nejson");
     a.ws.send(JSON.stringify([1, 2, 3]));
@@ -1274,9 +1499,9 @@ async function testServer() {
     await Promise.all([a, b].map(p => p.until(() => p.match && p.snap && p.snap.p === "playing", 6000, "start 3 hráčů")));
     assert.strictEqual(a.match.players.length, 3);
     assert.strictEqual(a.match.players[2].ai, true);
-    assert.strictEqual(a.snap.u.length, 9);
+    assert.strictEqual(a.snap.u.length, 12, "3 dělníci a hrdina na hráče");
     assert(a.snap.b.every(x => x[2] <= 2));
-    assert.strictEqual(a.snap.u.filter(u => u[2] === 2).length, 3, "AI má své jednotky");
+    assert.strictEqual(a.snap.u.filter(u => u[2] === 2).length, 4, "AI má své jednotky i hrdinu");
 
     // první vzdá hráč A: hra pokračuje, B ještě bojuje
     a.cmd({ c: "surrender" });
@@ -1337,7 +1562,7 @@ async function testServer() {
     c.send({ t: "start" });
     await Promise.all([a, b, c].map(p => p.until(() => p.match && p.snap && p.snap.p === "playing", 6000, "start 4 hráčů")));
     assert.strictEqual(a.match.players.length, 3);
-    assert.strictEqual(a.snap.u.length, 9);
+    assert.strictEqual(a.snap.u.length, 12); // 3 dělníci + hrdina na hráče
     assert.strictEqual(a.snap.b.length, 3);
 
     // odpojení hostitele uprostřed hry nikoho jiného neukončí
@@ -1473,6 +1698,32 @@ function testMapDocs() {
   bad({ name: "  " }, "prázdný název");
   bad({ size: [10, 10] }, "malá mapa");
   bad({ size: [5001, 5000] }, "obrovská mapa");
+
+  // obsah z editoru: kulisy, zvířata, druhy půdy, druhy stromů, budovy a jednotky na startu, překlady
+  const rich = MAPS.normalizeDoc({
+    ...doc,
+    trees: [[100, 80, 3], [1100, 600, 99]],
+    props: [["windmill", 500, 120], ["../zle jmeno", 10, 10]],
+    critters: [["deer", 200, 100], ["drak", 50, 50]],
+    ground: [[2, 150, 150, 40]],
+    buildings: [["tower", 0, 320, 360], ["crypt", 1, 900, 400]],
+    units: [["knight", 0, 300, 420], ["crossbow", 1, 920, 420], ["drak", 0, 0, 0]],
+    wild: false,
+    i18n: { en: { name: "Test Arena" }, szl: { name: "Zkušebno arena" }, xx: { name: "?" } }
+  }).doc;
+  assert.deepStrictEqual(rich.props, [["windmill", 500, 120]], "kulisa se špatným jménem se zahodí");
+  assert.deepStrictEqual(rich.critters, [["deer", 200, 100]], "neznámé zvíře se zahodí");
+  assert.strictEqual(rich.trees[0][2], 3, "druh stromu zůstane");
+  assert.strictEqual(rich.units.length, 2, "neznámá jednotka se zahodí");
+  assert(!rich.i18n.xx, "jen známé jazyky");
+  const richMap = MAPS.compileDoc(rich);
+  assert.strictEqual(richMap.slots[0].units.filter(u => u.type === "knight").length, 1, "jednotka patří základně");
+  assert(richMap.slots[1].units.some(u => u.type === "crossbow"));
+  assert(richMap.slots[0].buildings.some(b => b.type === "tower"));
+  assert(CHECK.check(richMap).some(p => /nemrtv|frakc/i.test(p)), "krypta u lidské základny je chyba");
+  assert.strictEqual(richMap.terrain.wild, false);
+  assert.strictEqual(MAPS.localized(richMap, "name", "en"), "Test Arena");
+  assert.strictEqual(MAPS.localized(richMap, "name", "cs"), "Zkušební aréna");
   bad({ bases: [{ x: 100, y: 100 }] }, "jedna základna");
 
   // nesmysly uvnitř se ořížnou nebo zahodí
@@ -1705,6 +1956,31 @@ function testSources() {
   assert.strictEqual(rep.days[rep.days.length - 1].visitors, 3);
 }
 
+/* ---------- nastavení ze souboru .env ---------- */
+function testEnvFile() {
+  const { loadEnv, parseEnv } = require("./env.js");
+  assert.deepStrictEqual(parseEnv([
+    "# komentář",
+    "PORT=3100\r",
+    "export PUBLIC_URL = https://goralia.cz  # vlastní doména",
+    'GORALIA_TURN_PASS="tajne # heslo"',
+    "GOOGLE_CLIENT_ID='abc'",
+    "PRAZDNA=",
+    "nesmysl"
+  ].join("\n")), { PORT: "3100", PUBLIC_URL: "https://goralia.cz", GORALIA_TURN_PASS: "tajne # heslo", GOOGLE_CLIENT_ID: "abc", PRAZDNA: "" });
+
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "goralia-env-")), ".env");
+  fs.writeFileSync(file, "GORALIA_TEST_A=z-souboru\nGORALIA_TEST_B=z-souboru\n");
+  process.env.GORALIA_TEST_A = "z-prostredi";
+  assert.strictEqual(loadEnv(file), file);
+  assert.strictEqual(process.env.GORALIA_TEST_A, "z-prostredi", "proměnná prostředí má přednost");
+  assert.strictEqual(process.env.GORALIA_TEST_B, "z-souboru");
+  assert.strictEqual(loadEnv(file + ".chybi"), null, ".env není povinný");
+  assert.strictEqual(loadEnv(""), null);
+  delete process.env.GORALIA_TEST_A;
+  delete process.env.GORALIA_TEST_B;
+}
+
 async function main() {
   require("./mapstore.js").load(); // mapy z repozitáře (maps/*.json)
   testMaps();
@@ -1714,6 +1990,7 @@ async function main() {
   testCoop();
   testGeo();
   testSources();
+  testEnvFile();
   await testServer();
 }
 

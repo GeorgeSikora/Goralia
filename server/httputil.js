@@ -63,8 +63,8 @@ function sendJson(res, status, body, headers = {}) {
   res.end(JSON.stringify(body));
 }
 
-function redirect(res, location, headers = {}) {
-  res.writeHead(302, { Location: location, "Cache-Control": "no-store", ...SECURITY_HEADERS, ...headers });
+function redirect(res, location, headers = {}, status = 302) {
+  res.writeHead(status, { Location: location, "Cache-Control": "no-store", ...SECURITY_HEADERS, ...headers });
   res.end();
 }
 

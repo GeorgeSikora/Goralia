@@ -47,6 +47,8 @@
   const rnd = (a, b) => a + Math.random() * (b - a);
   const hex = c => `#${c.toString(16).padStart(6, "0")}`;
   const hash = n => { const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
+  // zima (winter.js): zasněžená louka a hory, sněhuláci mezi stromy, padající sníh
+  const WN = () => !!(PK.winter && PK.winter.on);
 
   function mixRGB(a, b, t) {
     const ch = s => Math.round(((a >> s) & 255) + (((b >> s) & 255) - ((a >> s) & 255)) * t);
@@ -95,6 +97,10 @@
     const h = c.height;
     const lit = mixRGB(color, 0xffb66b, 0.25);
     const dark = mixRGB(color, 0x140c2e, 0.25);
+    const snow = WN();
+    // sníh v barvě oblohy: na svahu ke světlu růžový od západu, ve stínu levandulový
+    const sLit = mixRGB(0xf6e6ee, color, 0.12);
+    const sShade = mixRGB(0xb4a4d2, color, 0.25);
     let prev = 0;
     for (let x = 0; x < P * K; x++) {
       const y = Math.round(h - amp * K * (1.1 + 0.6 * Math.sin(x * w * k1 + phase) + 0.4 * Math.sin(x * w * k2 + phase * 2.3)));
@@ -103,6 +109,12 @@
         let col = yy < y + 2 ? (y < prev ? lit : color) : color;
         if (yy > y + 6 && ((x * 7 + yy * 3) % 11) === 0 && y < prev) col = lit;
         if ((yy - y) > (h - y) * 0.6 && PK.bayer(x, yy) < ((yy - y) / (h - y) - 0.6) * 1.8) col = dark;
+        if (snow) {
+          // vyšší štíty mají víc sněhu, okraj sněhové čepice je zubatý
+          const depth = 2 + Math.max(0, (h - y) - amp * K * 1.1) * 0.5 + Math.sin(x * 0.09) * 1.5 + (hash(x >> 1) > 0.7 ? 1 : 0);
+          if (yy - y < depth) col = y < prev ? sLit : (yy - y) < 2 ? sLit : sShade;
+          else if (yy - y < depth + 3 && PK.bayer(x, yy) < 0.35) col = sShade;
+        }
         set(x, yy, col);
       }
       prev = y;
@@ -169,7 +181,12 @@
         for (let r = 0; r < h; r++) {
           const half = Math.max(0.5, (r / h) * 7.5 - ((r % 7) < 3 ? 1.5 : 0));
           const y = H2 - h + r;
-          for (let xx = Math.round(cx - half); xx <= Math.round(cx + half); xx++) set(((xx % (P * K)) + P * K) % (P * K), y, xx < cx - half + 1 && r > 2 ? 0x2a1f45 : 0x1d1533);
+          const snowy = WN() && (r % 7) < 2 && r > 1;
+          for (let xx = Math.round(cx - half); xx <= Math.round(cx + half); xx++) {
+            let c = xx < cx - half + 1 && r > 2 ? 0x2a1f45 : 0x1d1533;
+            if (snowy && xx < cx + half * 0.5) c = (r % 7) === 0 ? 0x8a7aa8 : 0x5e5280; // sníh na patrech větví
+            set(((xx % (P * K)) + P * K) % (P * K), y, c);
+          }
         }
       }
       for (let y = H2 - 6; y < H2; y++) for (let x = 0; x < P * K; x++) set(x, y, 0x1d1533);
@@ -177,7 +194,35 @@
     }
 
     layers.ground = makeLayer(H - GY);
-    {
+    if (WN()) {
+      // zasněžená pláň: u obzoru růžový odlesk západu, dopředu do modrého stínu, závěje a třpyt
+      const { set, done } = surface(layers.ground);
+      const GH = (H - GY) * K;
+      const PW = P * K;
+      for (let y = 0; y < GH; y++) {
+        const ty = y / GH;
+        for (let x = 0; x < PW; x++) {
+          const t = ty + (bayer(x, y) - 0.5) * 0.06;
+          let c = mixRGB(0xc9bad8, 0x3e3e6e, Math.max(0, Math.min(1, t * 1.15)));
+          const n = PK.tnoise(x / 70, y / 22, PW / 70, 23) + (PK.tnoise(x / 20, y / 8, PW / 20, 24) - 0.5) * 0.4;
+          const lv = Math.floor((n - 0.5) * 5 + bayer(x, y) - 0.5);
+          if (lv >= 1) c = mixRGB(c, 0xf4ecf4, Math.min(2, lv) * 0.16 * (1 - ty * 0.5));
+          else if (lv <= -1) c = mixRGB(c, 0x2a2a58, Math.min(2, -lv) * 0.14);
+          if (bayer(x, y) < (0.22 - ty) * 3) c = mixRGB(c, 0xe0a0b8, 0.25);
+          if (hash(x * 0.37 + y * 13.1) > 0.9975) c = 0xffffff;
+          set(x, y, c);
+        }
+      }
+      // suchá stébla trčící ze sněhu
+      for (let i = 0; i < 700; i++) {
+        const x = Math.floor(Math.random() * PW);
+        const y = Math.floor(Math.random() * GH);
+        const c = Math.random() < 0.6 ? 0x6a5a48 : 0x8a7658;
+        set(x, y, c);
+        set(x, y + 1, mixRGB(c, 0x2a2a58, 0.4));
+      }
+      done();
+    } else {
       const { set, done } = surface(layers.ground);
       const GH = (H - GY) * K;
       // louka: odspodu tma, u obzoru teplý odlesk západu; skvrny zlaté a chladné trávy
@@ -333,6 +378,56 @@
   function treeAt(j) {
     if (hash(j + 400) > 0.7) return null;
     return { x: j * 34 + hash(j + 401) * 30, y: GY + 4 + hash(j + 402) * (H - GY - 6), v: PK.props.treeKind(hash(j + 403)), s: hash(j + 404) * 6.28 };
+  }
+
+  // Halloween: mezi stromy svítí dýně a místo ptáků létají netopýři
+  const HW = PK.halloween && PK.halloween.on && PK.props.doodads.jackLantern ? PK.halloween : null;
+
+  function pumpkinAt(j) {
+    if (!HW || hash(j + 700) > 0.4) return null;
+    const kind = ["jackLantern", "pumpkins", "jackEvil", "pumpkin", "graveA"][Math.floor(hash(j + 701) * 5)];
+    return { x: j * 34 + 8 + hash(j + 702) * 18, y: GY + 10 + hash(j + 703) * (H - GY - 14), kind, s: hash(j + 704) * 6.28 };
+  }
+
+  function snowmanAt(j) {
+    if (!WN() || !PK.props.doodads.snowmanA || hash(j + 900) > 0.28) return null;
+    const kind = ["snowmanA", "xmasTree", "snowmanB", "snowmanC"][Math.floor(hash(j + 901) * 4)];
+    return { x: j * 34 + 8 + hash(j + 902) * 18, y: GY + 10 + hash(j + 903) * (H - GY - 14), kind, s: hash(j + 904) * 6.28 };
+  }
+
+  function drawSnowman(p) {
+    const d = PK.props.doodads[p.kind];
+    const x = q(p.x - cam);
+    const y = Math.round(p.y);
+    shadow(x + 1, y, d.w / 2, 1.5);
+    ctx.drawImage(d.c, x - d.ax, y - d.ay);
+    if (!d.bulbs) return;
+    // baňky na stromku blikají
+    d.bulbs.forEach(([bx, by], i) => {
+      if (Math.sin(clock * 2.2 + i * 1.7 + p.s) < -0.3) return;
+      ctx.fillStyle = ["#ffd27a", "#ff8fa0", "#b4e0ff", "#5ff0c0"][i % 4];
+      ctx.fillRect(q(x - d.ax + bx), q(y - d.ay + by), 1 / K, 1 / K);
+    });
+  }
+
+  function drawPumpkin(p) {
+    const d = PK.props.doodads[p.kind];
+    const x = q(p.x - cam);
+    const y = Math.round(p.y);
+    shadow(x + 1, y, d.w / 2, 1.5);
+    ctx.drawImage(d.c, x - d.ax, y - d.ay);
+    if (!d.glow) return;
+    const a = 0.16 + 0.05 * Math.sin(clock * 7 + p.s) * Math.sin(clock * 2.9 + p.s * 2);
+    const cx = x - d.ax + d.glow.x;
+    const cy = y - d.ay + d.glow.y;
+    const gr = ctx.createRadialGradient(cx, cy, 0, cx, cy, d.glow.r * 1.4);
+    gr.addColorStop(0, `rgba(255,170,70,${a.toFixed(3)})`);
+    gr.addColorStop(1, "rgba(255,170,70,0)");
+    ctx.fillStyle = gr;
+    ctx.fillRect(cx - d.glow.r * 1.4, cy - d.glow.r * 1.4, d.glow.r * 2.8, d.glow.r * 2.8);
+    ctx.globalAlpha = 0.6 + a;
+    ctx.drawImage(d.face, x - d.ax, y - d.ay);
+    ctx.globalAlpha = 1;
   }
 
   function drawTree(t) {
@@ -563,6 +658,7 @@
     ctx.fillStyle = "#2a1c3c";
     const f = 1 / K;
     for (const b of birds) {
+      if (HW) { HW.bat(ctx, b.x, b.y, Math.floor(clock * 11 + b.p * 3), f); continue; }
       const up = Math.sin(clock * 9 + b.p) > 0 ? -1 : 1;
       const x = q(b.x);
       const y = q(b.y);
@@ -584,11 +680,17 @@
     for (let j = Math.floor((cam - 40) / 34); j <= Math.floor((cam + W + 40) / 34); j++) {
       const t = treeAt(j);
       if (t) items.push({ y: t.y + 14, tree: t });
+      const p = pumpkinAt(j);
+      if (p) items.push({ y: p.y, pumpkin: p });
+      const sm = snowmanAt(j);
+      if (sm) items.push({ y: sm.y, snowman: sm });
     }
     for (const u of units) items.push({ y: u.dead ? -1 : u.y, u });
     items.sort((a, b) => a.y - b.y);
     for (const it of items) {
       if (it.tree) drawTree(it.tree);
+      else if (it.pumpkin) drawPumpkin(it.pumpkin);
+      else if (it.snowman) drawSnowman(it.snowman);
       else drawUnit(it.u);
     }
 
@@ -675,6 +777,8 @@
     ctx.fillStyle = gl;
     ctx.fillRect(0, GY - 20, W, 40);
 
+    if (WN()) drawSnow();
+
     if (flash > 0.02) {
       ctx.fillStyle = `rgba(255,220,170,${(flash * 0.25).toFixed(2)})`;
       ctx.fillRect(0, 0, W, H);
@@ -682,6 +786,20 @@
 
     ctx.restore();
     if (vignette) ctx.drawImage(vignette, 0, 0, W, H);
+  }
+
+  // padající sníh: tři vrstvy (vzdálené drobné a pomalé, blízké větší), po jemných bodech
+  function drawSnow() {
+    const f = 1 / K;
+    for (let i = 0; i < 150; i++) {
+      const layer = i % 3;
+      const v = 6 + layer * 6 + hash(i + 50) * 4;
+      const x = q(((hash(i + 10) * W - cam * (0.3 + layer * 0.35) + clock * 4 + Math.sin(clock * 0.8 + i) * 3) % W + W) % W);
+      const y = q((hash(i + 20) * H + clock * v) % H);
+      ctx.fillStyle = layer === 2 ? "#ffffff" : layer === 1 ? "#ece4f4" : "#c8bcdc";
+      ctx.fillRect(x, y, f, f);
+      if (layer === 2) { ctx.fillRect(x + f, y, f, f); ctx.fillRect(x, y + f, f, f); ctx.fillRect(x + f, y + f, f, f); }
+    }
   }
 
   // elipsa z jemných bodů (rázová vlna, cíl dopadu)
@@ -708,6 +826,9 @@
     update(dt);
     draw();
   }
+
+  // zima se přepnula (winter.js): krajinu upéct znovu
+  PK.menubg = { reseason: () => { if (layers) build(); } };
 
   if (window.ResizeObserver) new ResizeObserver(resize).observe(canvas);
   window.addEventListener("resize", resize);

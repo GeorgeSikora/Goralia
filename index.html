@@ -9,7 +9,8 @@
 <meta name="author" content="Jiří Sikora">
 <meta name="robots" content="index, follow, max-image-preview:large">
 <meta name="theme-color" content="#15121f">
-<link rel="canonical" href="https://goralia.cz/">
+<meta name="color-scheme" content="dark">
+<link rel="canonical" href="https://goralia.cz/play">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="assets/favicon-192.png">
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
@@ -21,7 +22,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Goralia">
 <meta property="og:locale" content="cs_CZ">
-<meta property="og:url" content="https://goralia.cz/">
+<meta property="og:url" content="https://goralia.cz/play">
 <meta property="og:title" content="Goralia – online RTS strategie v prohlížeči">
 <meta property="og:description" content="Postav základnu, trénuj armádu a poraz ostatní. Zdarma, bez instalace, až 16 hráčů.">
 <meta property="og:image" content="https://goralia.cz/assets/og-image.png">
@@ -35,15 +36,33 @@
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"VideoGame","name":"Goralia","url":"https://goralia.cz/","inLanguage":"cs","description":"Online real-time strategie zdarma v prohlížeči s multiplayerem pro až 16 hráčů.","image":"https://goralia.cz/assets/og-image.png","genre":["Real-time strategy"],"gamePlatform":"Web browser","playMode":["SinglePlayer","MultiPlayer"],"applicationCategory":"Game","operatingSystem":"Any","offers":{"@type":"Offer","price":"0","priceCurrency":"CZK"}}
 </script>
+<!-- tmavé pozadí hned od první chvíle, ať stránka před načtením stylů nebliká bíle -->
+<style>html { background: #0b0914; }</style>
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/charts.css">
 <link rel="stylesheet" href="css/fame.css">
 <link rel="stylesheet" href="css/events.css">
+<link rel="stylesheet" href="css/challenges.css">
+<link rel="stylesheet" href="css/flags.css">
 </head>
-<body>
+<body class="booting">
 <div id="loading" class="loading" role="progressbar" aria-label="Načítání hry" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-busy="true">
   <div class="ld-box">
-    <canvas class="ld-logo" width="1" height="1" aria-hidden="true"></canvas>
+    <!-- logo je vložené přímo ve stránce (tools/logo-nacitani.js), takže stojí na místě od prvního vykreslení -->
+    <img class="ld-logo" id="ld-logo" src="data:image/png;base64,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" width="165" height="148" alt="" aria-hidden="true">
+    <script>
+      // zimní logo s čepičkou sněhu: stejné pravidlo jako winter.js (?zima, pk-winter, jinak 1. 12. - 6. 1.)
+      (function () {
+        var WINTER_LOGO = "data:image/png;base64,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";
+        var d = new Date(), f = null;
+        try {
+          var q = new URLSearchParams(location.search).get("zima");
+          f = q === "1" || q === "0" ? q : localStorage.getItem("pk-winter");
+        } catch (e) { /* bez localStorage platí kalendář */ }
+        var on = f === "1" || f === "0" ? f === "1" : d.getMonth() === 11 || (d.getMonth() === 0 && d.getDate() <= 6);
+        if (on) document.getElementById("ld-logo").src = WINTER_LOGO;
+      })();
+    </script>
     <div class="ld-road">
       <canvas class="ld-walker" width="1" height="1" aria-hidden="true"></canvas>
       <div class="ld-track"><div class="ld-fill"></div></div>
@@ -76,7 +95,7 @@
     <canvas id="menubg" class="menubg" aria-hidden="true"></canvas>
     <div class="panel">
       <h1 class="logo" id="menu-title">
-        <canvas id="logo" role="img" aria-label="Goralia"></canvas>
+        <canvas id="logo" role="img" aria-label="Goralia" width="165" height="148"></canvas>
       </h1>
       <p class="tagline">Postav hrad, shromáždi armádu, dobyj království</p>
 
@@ -87,6 +106,7 @@
           <span id="m-event-name" class="event-name"></span>
           <span id="m-event-time" class="event-time"></span>
         </button>
+        <button id="m-tutorial" class="btn big" type="button" hidden>Naučit se hrát</button>
         <button id="m-online" class="btn big" type="button">Multiplayer</button>
         <button id="m-campaign" class="btn big" type="button">Kampaň</button>
         <button id="m-play" class="btn big" type="button">Hra proti AI</button>
@@ -96,10 +116,12 @@
         <button id="m-retry" class="btn big" type="button" hidden>Opakovat kapitolu</button>
         <button id="m-leave" class="btn big" type="button" hidden>Hlavní menu</button>
         <button id="m-players" class="btn big" type="button">Hráči</button>
+        <button id="m-challenges" class="btn big" type="button">Výzvy</button>
         <button id="m-account" class="btn big" type="button">Přihlásit se</button>
         <a id="m-admin" class="btn big" href="/admin" target="_blank" rel="noopener" hidden>Server panel</a>
         <button id="m-settings" class="btn big" type="button">Nastavení</button>
         <button id="m-help" class="btn big" type="button">Ovládání</button>
+        <div id="m-lang" class="lang-flags lang-pick" aria-label="Jazyk"></div>
       </section>
 
       <section id="panel-online" class="page" data-page="online" hidden>
@@ -148,7 +170,7 @@
           <p id="a-status" class="status" aria-live="polite"></p>
           <button id="a-submit" class="btn big" type="submit">Přihlásit se</button>
           <button id="a-toggle" class="btn" type="button">Nemáš účet? Zaregistruj se</button>
-          <p class="status small legal">Přihlášením nebo registrací souhlasíš s <a href="/terms" target="_blank" rel="noopener">podmínkami užívání</a> a bereš na vědomí <a href="/privacy" target="_blank" rel="noopener">zásady ochrany soukromí</a>.</p>
+          <p class="status small legal" data-i18n-html="account.legal">Přihlášením nebo registrací souhlasíš s <a href="/terms" target="_blank" rel="noopener">podmínkami užívání</a> a bereš na vědomí <a href="/privacy" target="_blank" rel="noopener">zásady ochrany soukromí</a>.</p>
         </form>
         <button class="btn big" type="button" data-back>Zpět</button>
       </section>
@@ -230,6 +252,32 @@
         <button class="btn big" type="button" data-back>Zpět</button>
       </section>
 
+      <section id="panel-challenges" class="page" data-page="challenges" hidden>
+        <div class="fame-head">
+          <h2 class="ch-heading">Výzvy</h2>
+          <p class="status small">Plň výzvy v multiplayeru i ve hře proti AI a sbírej vlajky, barvy, tituly a rámečky. Odměny jsou jen na ozdobu, hru nemění.</p>
+        </div>
+        <div id="ch-login" class="ch-login" hidden>
+          <p class="status small">Postup a odměny se ukládají k účtu.</p>
+          <button id="ch-login-btn" class="btn" type="button">Přihlásit se</button>
+        </div>
+        <p id="ch-status" class="status" aria-live="polite"></p>
+        <div class="ch-cols">
+          <div class="ch-block">
+            <div class="ch-block-head"><h3>Denní výzvy</h3><span id="ch-daily-reset" class="ch-reset"></span></div>
+            <div id="ch-daily" class="ch-list"></div>
+          </div>
+          <div class="ch-block weekly">
+            <div class="ch-block-head"><h3>Týdenní výzvy</h3><span id="ch-weekly-reset" class="ch-reset"></span></div>
+            <div id="ch-weekly" class="ch-list"></div>
+          </div>
+        </div>
+        <div class="ch-block-head"><h3>Sbírka odměn</h3><span id="ch-count" class="ch-reset"></span></div>
+        <div id="ch-preview" class="ch-preview"></div>
+        <div id="ch-collection" class="ch-collection"></div>
+        <button class="btn big" type="button" data-back>Zpět</button>
+      </section>
+
       <section id="panel-lobby" class="page" data-page="lobby" hidden>
         <h2 id="l-title">Hra proti AI</h2>
         <div class="lobby">
@@ -259,6 +307,10 @@
 
       <section id="panel-settings" class="page" data-page="settings" hidden>
         <h2>Nastavení</h2>
+        <div class="row">
+          <span>Jazyk</span>
+          <div id="s-lang" class="lang-flags compact" aria-label="Jazyk"></div>
+        </div>
         <label class="row">
           <span>Hlasitost</span>
           <input id="s-volume" type="range" min="0" max="100" step="5">
@@ -277,6 +329,10 @@
           <input id="s-music-vol" type="range" min="0" max="100" step="5">
           <output id="s-music-out">60 %</output>
         </label>
+        <div class="row">
+          <span>Hraje: <b id="s-music-now" class="music-now" data-i18n-skip>–</b></span>
+          <button id="s-music-next" class="btn" type="button">Další skladba</button>
+        </div>
         <label class="row">
           <span>Ruchy prostředí</span>
           <input id="s-ambient" type="checkbox">
@@ -289,6 +345,10 @@
           <span id="s-vchat-label">Hlasový chat (online)</span>
           <input id="s-vchat" type="checkbox">
         </label>
+        <div class="row">
+          <span>Tutoriál</span>
+          <button id="s-tutorial" class="btn" type="button">Spustit znovu</button>
+        </div>
         <div class="row">
           <span>Klávesové zkratky (i push-to-talk)</span>
           <button id="s-keys" class="btn" type="button">Změnit</button>
@@ -328,14 +388,14 @@
 
       <section id="panel-help" class="page" data-page="help" hidden>
         <h2>Ovládání</h2>
-        <p class="goal">
+        <p class="goal" data-i18n-html="help.controls">
           <b>Levé tlačítko</b> vybírá (tažením rámeček), <b>pravé</b> vydává rozkazy, <b>kolečko</b> mění zoom.
           Kameru posouvají <b>šipky</b>, <b>okraj obrazovky</b>, <b>prostřední tlačítko</b> a <b>minimapa</b>.
           Vyhrává poslední, komu zůstane hlavní budova. Přes vodu se chodí jen po brodech.
           Avatar ve výběru vybere jednu jednotku (Shift ji odebere, Ctrl vybere stejný typ).
         </p>
         <h3 class="touch-title">Dotykové ovládání</h3>
-        <ul class="touch-help">
+        <ul class="touch-help" data-i18n-html="help.touch">
           <li><b>Klepnutí</b> vybere jednotku či budovu, na zem, nepřítele nebo surovinu vydá rozkaz.</li>
           <li><b>Dvojité klepnutí</b> vybere všechny jednotky stejného typu, do prázdna zruší výběr.</li>
           <li><b>Tažení</b> posouvá mapu, <b>podržení a tažení</b> vybírá rámečkem.</li>
@@ -353,8 +413,7 @@
           <li><kbd data-key="smithy">K</kbd>kovárna</li>
           <li><kbd data-key="armor">Z</kbd>zbroj (v kovárně)</li>
           <li><kbd data-key="weapon">X</kbd>zbraně (v kovárně)</li>
-          <li><kbd data-key="fire">A</kbd>ohnivá koule</li>
-          <li><kbd data-key="heal">S</kbd>léčení</li>
+          <li><kbd data-key="ab1">Q</kbd><kbd data-key="ab2">W</kbd><kbd data-key="ab3">E</kbd>schopnosti vybraného hrdiny</li>
           <li><kbd data-key="command">M</kbd>rozkaz</li>
           <li><kbd>←↑→↓</kbd>kamera</li>
           <li><kbd>Tab</kbd>další typ ve výběru</li>
@@ -369,10 +428,46 @@
         <button class="btn big" type="button" data-back>Zpět</button>
       </section>
     </div>
-    <p class="footer">Goralia &middot; Esc otevře menu &middot; <a href="editor.html" target="_blank" rel="noopener">Editor map</a> &middot; <a href="/terms" target="_blank" rel="noopener">Podmínky</a> &middot; <a href="/privacy" target="_blank" rel="noopener">Soukromí</a></p>
+    <p class="footer" data-i18n-html="menu.footer"><a href="/">Goralia</a> &middot; Esc otevře menu &middot; <a href="/editor" target="_blank" rel="noopener">Editor map</a> &middot; <a href="/terms" target="_blank" rel="noopener">Podmínky</a> &middot; <a href="/privacy" target="_blank" rel="noopener">Soukromí</a></p>
   </div>
 </div>
 
+<script>
+  // Logo načítací obrazovky stojí od začátku přesně tam, kde je logo v menu (pod ní), takže při
+  // přechodu do menu se nikam neposouvá. loader.js volá totéž při změně velikosti okna.
+  (function () {
+    var PK = (window.PK = window.PK || {});
+    // svislá poloha podle rozložení (offsetTop), bez rozjetých animací a posunů
+    function top(el) {
+      var y = 0;
+      for (; el; el = el.offsetParent) y += el.offsetTop - (el.offsetParent ? el.offsetParent.scrollTop : 0);
+      return y;
+    }
+    PK.alignLoader = function () {
+      var box = document.querySelector("#loading .ld-box");
+      var logo = document.getElementById("ld-logo");
+      var menu = document.getElementById("menu");
+      var target = document.getElementById("logo");
+      if (!box || !logo) return;
+      var dy = 0;
+      if (menu && target && !menu.hidden && target.offsetParent) {
+        var t = top(target);
+        dy = t - top(logo);
+        // jen když se pod logo vejde i pruh
+        if (top(box) + box.offsetHeight + dy > innerHeight - 8 || t < 0) dy = 0;
+      }
+      box.style.setProperty("--ld-dy", dy + "px");
+    };
+    PK.alignLoader();
+  })();
+</script>
+<script src="js/i18n.js"></script>
+<script src="js/lang/en.js"></script>
+<script src="js/lang/szl.js"></script>
+<script src="js/lang/hrdinove.js"></script>
+<script src="js/lang/mapy.js"></script>
+<script src="js/lang/jednotky.js"></script>
+<script src="js/flags.js"></script>
 <script src="js/loader.js"></script>
 </body>
 </html>

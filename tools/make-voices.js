@@ -52,12 +52,7 @@ const fetch = global.fetch || ((url, opts = {}) => new Promise((resolve, reject)
 }));
 
 // Klíče a id hlasů lze dát do souboru .env v kořeni projektu (řádky KLÍČ=hodnota); proměnné prostředí mají přednost.
-try {
-  for (const line of fs.readFileSync(path.join(__dirname, "..", ".env"), "utf8").split("\n")) {
-    const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/.exec(line);
-    if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2].replace(/^["']|["']$/g, "");
-  }
-} catch (e) { /* .env není povinný */ }
+require("../server/env.js").loadEnv();
 const args = Object.fromEntries(process.argv.slice(2).map(a => {
   const m = /^--([^=]+)(?:=(.*))?$/.exec(a);
   return m ? [m[1], m[2] === undefined ? true : m[2]] : [a, true];

@@ -51,7 +51,7 @@ Každý pixel ve hře je **nakreslený kódem**: jednotky, budovy, stromy, efekt
 
 <img src="docs/readme/menu.png" align="right" width="46%" alt="Hlavní menu s animovanou bitvou v pozadí">
 
-- 🏹 **7 hratelných jednotek** od dělníka po katapult a hrdina, který sbírá zkušenosti a umí ohnivou kouli i léčení
+- 🏹 **7 hratelných jednotek** od dělníka po katapult a hrdina (pěší rytíř), který sbírá zkušenosti až do 5. úrovně a má tři schopnosti: výpad, bojový pokřik a štítovou zeď
 - 🏰 **7 budov** hráče a **5 pekelných budov** nemrtvých
 - ⚒️ **5 výzkumů** v kovárně a gmině, každý v několika stupních
 - 💀 **Kooperativní režim** proti AI frakci nemrtvých, která roste a útočí ve vlnách
@@ -88,7 +88,7 @@ Každá jednotka má vlastní ručně „nakódovanou“ animaci chůze, útoku,
 <td valign="top"><sub>Těží zlato, kácí dřevo, staví a opravuje budovy. Nosí náklad na zádech.</sub></td>
 <td valign="top"><sub>Pěšák se štítem a mečem, páteř každé armády.</sub></td>
 <td valign="top"><sub>Střílí z dálky, s výzkumem Střelba víc a dál.</sub></td>
-<td valign="top"><sub>Sbírá zkušenosti a úrovně. Umí <b>ohnivou kouli</b> (A) a <b>léčení</b> (S).</sub></td>
+<td valign="top"><sub>Pěší rytíř se štítem, jen jeden. Roste do 5. úrovně a má <b>výpad</b> (Q), <b>bojový pokřik</b> (W) a <b>štítovou zeď</b> (E).</sub></td>
 </tr>
 <tr>
 <td align="center"><img src="docs/readme/jednotky/monk.gif" width="150" alt="Mnich"><br><b>🙏 Mnich</b></td>
@@ -109,7 +109,7 @@ Každá jednotka má vlastní ručně „nakódovanou“ animaci chůze, útoku,
 | Dělník | Gmina | 50 | 0 | 65 | 6 | 22 | 55 |
 | Voják | Kasárna | 65 | 15 | 110 | 15 | 25 | 45 |
 | Lučištník | Kasárna | 80 | 30 | 70 | 11 | 110 | 49 |
-| Hrdina | Kasárna | 150 | 50 | 210 | 23 | 34 | 53 |
+| Hrdina | Gmina | 150 | 50 | 240 | 21 | 30 | 52 |
 | Mnich | Kasárna | 75 | 25 | 60 | 4 *(léčí 12)* | 90 | 48 |
 | Rytíř | Stáj | 135 | 45 | 190 | 18 *(+14 nápor)* | 27 | 72 |
 | Katapult | Dílna | 150 | 110 | 130 | 34 *(plošně)* | 200 | 30 |
@@ -124,7 +124,7 @@ Každá jednotka má vlastní ručně „nakódovanou“ animaci chůze, útoku,
 
 ## 💀 Nemrtví z pekla
 
-Na kooperativních mapách (třeba **Brána pekel**) stojí hráči v jednom týmu proti AI frakci nemrtvých. Ta nemá ekonomiku: její budovy samy chrlí jednotky, Nekropole a zikkuraty střílí, pevnost se časem rozrůstá a v **sílících vlnách** útočí na základny hráčů. Z Nekropole jednou povstane **Pekelný lich** s pekelným výbuchem.
+Na kooperativních mapách (třeba **Brána pekel**) stojí hráči v jednom týmu proti AI frakci nemrtvých. Ta nemá ekonomiku: její budovy samy chrlí jednotky, Nekropole a zikkuraty střílí, pevnost se časem rozrůstá a v **sílících vlnách** útočí na základny hráčů. Z Nekropole jednou povstane **Pekelný lich**, hrdina nemrtvých: metá ohnivé koule, vyvolává kostlivce a obklopí se mrazivou aurou, která nepřátele zpomalí.
 
 <table>
 <tr>
@@ -154,7 +154,7 @@ Na kooperativních mapách (třeba **Brána pekel**) stojí hráči v jednom tý
 | Budova | 🪙 | 🪵 | Co umí |
 |---|--:|--:|---|
 | **Gmina** | – | – | Hlavní budova. Cvičí dělníky, zkoumá Nástroje a Opevnění. Kdo o ni přijde, prohrál. |
-| **Kasárna** | 125 | 70 | Voják, lučištník, hrdina a mnich. |
+| **Kasárna** | 125 | 70 | Voják, lučištník a mnich. |
 | **Strážní věž** | 90 | 55 | Sama střílí po nepřátelích. Nahoře vlaje vlajka v barvě týmu. |
 | **Buda** | 70 | 40 | Zvedne limit jednotek o 5 (až na 60). |
 | **Kovárna** | 120 | 80 | Výzkumy Zbroj, Zbraně a Střelba. |
@@ -264,7 +264,7 @@ Nad hotovým obrazem světa běží **WebGL 2 shadery**: každá lucerna, oheň,
 
 ## 🧭 Editor map
 
-Vlastní mapy se kreslí přímo v prohlížeči na `/editor.html`: štětce pro **vodu, hory, hradby, cesty, stromy, doly a základny**, symetrie podle os a průběžná **kontrola hratelnosti**, která česky řekne, co mapě chybí. Uložená mapa se hned objeví mezi ostatními a admin ji může pro multiplayer zapnout nebo vypnout. Editor zvládne i mapy 10 000 × 10 000 jednotek.
+Vlastní mapy se kreslí přímo v prohlížeči na `/editor`: štětce pro **vodu, hory, hradby, cesty, stromy, doly a základny**, symetrie podle os a průběžná **kontrola hratelnosti**, která česky řekne, co mapě chybí. Uložená mapa se hned objeví mezi ostatními a admin ji může pro multiplayer zapnout nebo vypnout. Editor zvládne i mapy 10 000 × 10 000 jednotek.
 
 <div align="center">
 <img src="docs/readme/editor.png" width="100%" alt="Editor map s mapou Čtyři koruny">
@@ -294,15 +294,15 @@ Na `/admin.html` má admin přehled o celém serveru: návštěvnost, živé mí
 
 Myš: levé tlačítko vybírá (i tažením), pravé posílá rozkazy, kolečko přibližuje, prostřední tlačítko posouvá mapu. Na dotykovém displeji to jde prsty. **Všechny klávesy jdou v Nastavení přemapovat.**
 
-| Jednotky | | Stavby | | Výzkum a kouzla | | Ostatní | |
+| Jednotky | | Stavby | | Výzkum a schopnosti | | Ostatní | |
 |---|:-:|---|:-:|---|:-:|---|:-:|
 | Dělník | `Q` | Strážní věž | `T` | Zbroj | `Z` | Menu / pauza | `P` `Esc` |
 | Voják | `W` | Kasárna | `F` | Zbraně | `X` | Chat | `Enter` |
 | Lučištník | `E` | Buda | `G` | Střelba | `B` | Hlasový chat | `V` (držet) |
-| Hrdina | `H` | Kovárna | `K` | Nástroje | `U` | Kamera | šipky |
+| Hrdina (v gmině) | `H` | Kovárna | `K` | Nástroje | `U` | Kamera | šipky |
 | Mnich | `N` | Stáj | `L` | Opevnění | `O` | Skupina | `Ctrl` + číslo |
-| Rytíř | `J` | Dílna | `D` | Ohnivá koule | `A` | Další typ ve výběru | `Tab` |
-| Katapult | `C` | | | Léčení | `S` | Příkazy admina | `/` |
+| Rytíř | `J` | Dílna | `D` | 1. schopnost hrdiny | `Q` | Další typ ve výběru | `Tab` |
+| Katapult | `C` | | | 2. a 3. schopnost | `W` `E` | Příkazy admina | `/` |
 
 ---
 
@@ -312,7 +312,7 @@ Potřebuješ [Node.js](https://nodejs.org).
 
 ```bash
 npm install
-npm start            # server na http://localhost:3000 (port z proměnné PORT)
+npm start            # web na http://localhost:3000, hra na /play (port z proměnné PORT)
 npm test             # testy map, simulace, serveru a účtů
 ```
 
@@ -324,6 +324,8 @@ Další užitečné příkazy:
 | `npm run voices` | vyrobí hlášky jednotek do `assets/voices` |
 | `npm run geoip` | stáhne nebo aktualizuje GeoIP databázi pro mapu připojení |
 
+Nastavení serveru patří do souboru `.env` v kořeni projektu: `cp .env.example .env` a doplň hodnoty (vzor [.env.example](.env.example) obsahuje všechny proměnné). Proměnné z prostředí mají před `.env` přednost.
+
 Přihlášení přes Google a Facebook se zapne proměnnými `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` a `FACEBOOK_APP_ID` / `FACEBOOK_APP_SECRET`. Pro hlasový chat za přísným NATem pomůže vlastní TURN server (`GORALIA_TURN_URL`, `GORALIA_TURN_USER`, `GORALIA_TURN_PASS`). Podrobnosti k nasazení s pm2 jsou v [HELP.txt](HELP.txt).
 
 ---
@@ -331,7 +333,8 @@ Přihlášení přes Google a Facebook se zapne proměnnými `GOOGLE_CLIENT_ID` 
 ## 🧱 Jak je to postavené
 
 ```
-index.html        hra (menu, lobby, zápas)
+uvod.html         úvodní stránka webu na / (js/web.js, css/web.css, média v assets/web)
+index.html        hra na /play (menu, lobby, zápas)
 editor.html       editor map
 admin.html        panel serveru
 js/               klient i sdílená logika (globální jmenný prostor PK)
