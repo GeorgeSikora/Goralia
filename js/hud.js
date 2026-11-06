@@ -975,6 +975,6 @@
   }
 
   PK.hud = {
-    buttons, types: ALL.map(([type]) => type), tip: type => TIPS[type] || "", hitButton, selectionHit, setCard, cardHas, minimapHit, relayout, draw, drawEnd, drawLogo, layout: LAYOUT
+    buttons, types: ALL.map(([type]) => type), tip: type => TIPS[type] || "", hitButton, selectionHit, setCard, cardHas, minimapHit, relayout, draw, drawEnd, drawLogo, frame, layout: LAYOUT
   };
 })();

@@ -751,6 +751,10 @@ makers.push(() => {
 require("./genmaps-krajiny.js")({ makers, Draft, grid, gridRoads, mirrorX, mirrorY });
 
 /* ---------- zápis a kontrola ---------- */
+// Stavebnici map používá i generátor map kampaně (tools/campaign-maps.js).
+module.exports = { Draft, mulberry, distSeg };
+if (require.main !== module) return;
+
 fs.mkdirSync(OUT, { recursive: true });
 let bad = 0;
 
