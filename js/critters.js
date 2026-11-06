@@ -625,7 +625,7 @@
   function icon(type) {
     if (type === "rabbit") return rows("rabbit|sit", RABBIT.sit, FUR);
     if (type === "sparrow") return rows("sp|stand", SPARROW.stand, BIRD);
-    if (type === "crow") return rows("crow|mid", CROW.mid, CROWC);
+    if (type === "crow") return rows("crow|up", CROW.up, CROWC);
     if (type === "butterfly") return rows("bf|0|open", WINGS.open, BUTTER[0], 0.55);
     if (type === "frog") return rows("frog|sit", FROG.sit, FROGC);
     if (type === "duck") return rows("duck|1|swim", DUCK.swim, DUCKC);

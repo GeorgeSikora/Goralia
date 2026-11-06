@@ -314,8 +314,8 @@
     renderTeams();
     scheduleDraw();
     scheduleMini();
-    clearTimeout(timers.validate);
-    timers.validate = setTimeout(validate, isBig() ? 1200 : 500);
+    // kontrola nejpozději po chvíli i při souvislém kreslení (nečeká na úplný klid)
+    if (!timers.validate) timers.validate = setTimeout(validate, isBig() ? 1200 : 500);
     clearTimeout(timers.draft);
     timers.draft = setTimeout(saveDraft, 800);
     if (view.real && !isBig()) scheduleBake();
@@ -2184,6 +2184,7 @@
   /* ---------- kontrola mapy ---------- */
   function validate() {
     clearTimeout(timers.validate);
+    timers.validate = 0;
     const own = [];
     const located = new Map(); // text -> místa
     const at = (text, x, y) => { if (!located.has(text)) located.set(text, []); located.get(text).push([x, y]); };

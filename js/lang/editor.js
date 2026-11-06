@@ -377,6 +377,10 @@
     "Každé základně dva doly": "Two mines for each base",
     "Zapnout odpovídající symetrii": "Turn on the matching symmetry",
     "doly": "mines", "jednotky": "units", "budovy": "buildings", "voda": "water", "cesty": "roads", "hory": "mountains", "hradby": "walls", "kooperace": "co-op",
+    "Jetel": "Clover", "Step": "Steppe", "Vrba": "Willow", "Kopretiny": "Daisies", "Levandule": "Lavender", "Orobinec": "Bulrushes",
+    "Mohylka": "Cairn", "Menhir": "Menhir", "Sloup": "Column", "Studna": "Well", "Plot": "Fence", "Sudy": "Barrels", "Pytle": "Sacks",
+    "Bedny": "Crates", "Lucerna": "Lantern", "Stan": "Tent", "Kosti": "Bones", "Vrabci": "Sparrows", "Srnka": "Roe deer", "Ryby": "Fish",
+    "Start": "Start",
     "Rozmístit": "Arrange"
   });
 
@@ -750,6 +754,10 @@
     "Každé základně dva doly": "Každej bazě dva doły",
     "Zapnout odpovídající symetrii": "Zapnyč pasujóncóm symetrije",
     "doly": "doły", "jednotky": "jednotki", "budovy": "budynki", "voda": "voda", "cesty": "cesty", "hory": "góry", "hradby": "mury", "kooperace": "kooperacyja",
+    "Jetel": "Jetel", "Step": "Step", "Vrba": "Vjyrba", "Kopretiny": "Kopretiny", "Levandule": "Levanduła", "Orobinec": "Pałka",
+    "Mohylka": "Kupka kamjyňi", "Menhir": "Menhir", "Sloup": "Słup", "Studna": "Studňa", "Plot": "Płot", "Sudy": "Bečki", "Pytle": "Měchy",
+    "Bedny": "Kisty", "Lucerna": "Latarňa", "Stan": "Stan", "Kosti": "Kosči", "Vrabci": "Vruble", "Srnka": "Šarna", "Ryby": "Ryby",
+    "Start": "Start",
     "Rozmístit": "Rozestavjač"
   });
 })();

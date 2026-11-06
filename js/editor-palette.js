@@ -79,12 +79,12 @@
   const UNITS = {
     worker: "Dělník", soldier: "Voják", archer: "Lučištník", spearman: "Kopiník", crossbow: "Kušiník", monk: "Mnich",
     knight: "Rytíř", scout: "Zvěd", catapult: "Katapult", hero: "Hrdina",
-    ghoul: "Ghúl", skeleton: "Kostlivec", hound: "Pekelný pes", banshee: "Banshee", necromancer: "Nekromant",
-    plague: "Morový", abomination: "Ohavnost", lich: "Lich"
+    ghoul: "Ghúl", skeleton: "Kostlivý střelec", hound: "Pekelný pes", banshee: "Přízrak", necromancer: "Nekromant",
+    plague: "Morovák", abomination: "Zrůda", lich: "Pekelný lich"
   };
   const BUILDINGS = {
-    barracks: "Kasárna", tower: "Strážní věž", hut: "Chatrč", smithy: "Kovárna", stable: "Stáj", workshop: "Dílna",
-    crypt: "Krypta", slaughterhouse: "Jatka", ziggurat: "Zikkurat", portal: "Brána pekel"
+    barracks: "Kasárna", tower: "Strážní věž", hut: "Buda", smithy: "Kovárna", stable: "Stáj", workshop: "Dílna",
+    crypt: "Krypta", slaughterhouse: "Jatka", ziggurat: "Zikkurat", portal: "Pekelná brána"
   };
 
   const TREES = ["Dub", "Smrk", "Vrba", "Podzimní dub", "Modrý smrk", "Kvetoucí dub", "Bříza", "Rozkvetlá třešeň"];
@@ -271,7 +271,7 @@
 
     for (const [type, label] of Object.entries(CRITTERS)) {
       add({ id: `critter:${type}`, cat: "critters", label, kind: "critter", value: type, modes: POINT_MODES, defaultMode: "point", size: ["Poloměr štětce", 6, 200, 30],
-        icon: () => { const s = PK.critters.icon(type); return s ? render(s.w, s.h, g => g.drawImage(s.r, 0, 0)) : swatch([0x555, 0x777, 0x999], 3); },
+        icon: () => { const s = PK.critters.icon(type); return s ? render(s.w, s.h, g => g.drawImage(s.r, 0, 0, s.w, s.h)) : swatch([0x555, 0x777, 0x999], 3); },
         hint: MAPS.WATER_CRITTERS.includes(type) ? "Žije na vodě: umísti na hladinu." : "Zvíře se pase a utíká před jednotkami. Na hru nemá vliv." });
     }
 
@@ -310,8 +310,9 @@
     out.height = c.height;
     out.getContext("2d").drawImage(c, 0, 0);
     const fit = Math.min((BOX - 4) * (window.devicePixelRatio || 1) / c.width, (BOX - 4) * (window.devicePixelRatio || 1) / c.height);
-    const k = fit >= 1 ? Math.floor(fit) : fit;
     const dpr = window.devicePixelRatio || 1;
+    // malé sprity (zvířata, květiny) nezvětšovat víc než ostatní, ať nejsou z hrubých kostek
+    const k = fit >= 1 ? Math.min(Math.floor(fit), Math.max(1, Math.round(dpr * 2))) : fit;
     out.style.width = `${(c.width * k) / dpr}px`;
     out.style.height = `${(c.height * k) / dpr}px`;
     out.className = "ico";
