@@ -618,9 +618,10 @@
     const branches = [[33, 50, 18, 36, 4, 1.5], [38, 50, 56, 36, 4, 1.5], [35, 48, 36, 18, 4, 2]];
     const strands = [];
     const R = rng(seed + 5);
-    for (let x = 6; x <= 66; x += 3 + Math.floor(R() * 2)) {
+    // převislé větvičky: kratší a řidší, plné barvy (dlouhé tečkované proužky dělaly v lese pruhovaný šum)
+    for (let x = 6; x <= 66; x += 4 + Math.floor(R() * 2)) {
       const edge = Math.abs(x - 36) / 30;
-      strands.push({ x, len: 8 + Math.floor((1 - edge * 0.55) * 26 * (0.45 + R() * 0.55)), ph: R() * 6, k: R() });
+      strands.push({ x, len: 6 + Math.floor((1 - edge * 0.55) * 14 * (0.45 + R() * 0.55)), ph: R() * 6, k: R() });
     }
 
     const res = clumpCrown(2, lobes, { x: 36, y: 30, rx: 30, ry: 22 }, branches, seed, {
@@ -639,10 +640,10 @@
             const x = s.x + Math.round(Math.sin(i * 0.22 + s.ph) * 0.8);
             const y = y0 - 2 + i;
             const tip = i > s.len - 3;
-            let c = (i + s.x) % 3 === 0 ? (lit ? G[4] : G[3]) : lit ? G[3] : G[2];
+            let c = lit ? G[3] : G[2];
             if (tip) c = lit ? G[5] : G[4];
             P.set(x, y, c);
-            if (i % 3 === 1 && i > 2) P.set(x + (lit ? -1 : 1), y + 1, lit ? G[4] : G[2]);
+
           }
         }
       }

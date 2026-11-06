@@ -404,7 +404,7 @@
         const ash = lf < 0.5;
         let col;
         let tone;
-        F.tone[i] = 2.55 + (m - 0.5) * 3.4 + (m2 - 0.5) * 1.1;
+        F.tone[i] = 2.55 + (m - 0.5) * 3.4 + (m2 - 0.5) * 0.55; // méně drobných skvrn, větší klidné plochy
         F.lush[i] = lf;
         // teplota trávy: velké skvrny zlaté louky a chladného stínu, k tomu jemný přechod
         // od slunného levého horního rohu k chladnějšímu pravému dolnímu
@@ -1011,7 +1011,12 @@
     BI.fineBegin(b, F, { bank: Z_BANK, grass: Z_GRASS });
     // sdílený stav bodu pro biomy (bez alokací v hlavní smyčce)
     const o = { F, b, fx: 0, fy: 0, X: 0, Y: 0, ai: 0, na: 0, nb: 0, tone: 0, lush: 1, z: 0, kind: 0, okind: -1, k2: 0, m: 0, bil };
-    const push = (k, x, y, a) => deco.push(k, x, y, a);
+    // stébla a jehličí jen řídce: hustá drobná razítka dělala z trávy zrnitý šum (vzor Kingdom: klidná plocha)
+    const KDB = BI.KD.BLADES, KDN = BI.KD.NEEDLE;
+    const push = (k, x, y, a) => {
+      if ((k === KDB || k === KDN) && hash(x, y, 901) < 0.55) return;
+      deco.push(k, x, y, a);
+    };
 
     for (let fy = 0; fy < FH; fy++) {
       if ((fy & 7) === 7) yield 0.75 * fy / FH;
@@ -1033,16 +1038,18 @@
         const lush = bil(F.lush, fx) + (nb - 0.5) * 0.16;
         const ash = lush < 0.5;
         const t0 = bil(F.tone, fx);
-        const relief = (na - 0.5) * 0.8 + (na - na1) * 1.9 + (nb - 0.5) * 0.5;
+        // reliéf trávy: drobný šum z rozdílu sousedních bodů dělal zrnitou plochu plnou světlých teček,
+        // teď jemnější, ať tráva působí hladce a plošky tónů jsou souvislé (vzor Kingdom)
+        const relief = (na - 0.5) * 0.65 + (na - na1) * 0.75 + (nb - 0.5) * 0.4;
         let col;
         let z = Z_GRASS;
         let tone;
 
         if (!ash) {
           tone = t0 + relief;
-          const k = clamp(dither(tone, fx, fy, 0.5), 1, 5);
+          const k = clamp(dither(tone, fx, fy, 0.32), 1, 5);
           // u popela je tráva vyprahlá
-          const hv = clamp(dither(bil(F.hue, fx) + 2, fx, fy, 0.5), 0, 4);
+          const hv = clamp(dither(bil(F.hue, fx) + 2, fx, fy, 0.3), 0, 4);
           col = lush < 0.62 ? DRY[k] : GH[hv][k];
           // krajinná oblast (biomes.js): podklad, skvrny, lesní půda, zkažená zem
           o.fx = fx; o.fy = fy; o.X = X; o.Y = Y; o.ai = ai; o.na = na; o.nb = nb; o.tone = tone; o.lush = lush; o.z = z;
@@ -1327,11 +1334,11 @@
           if (!ash && BI.deco(o, h, push)) {
             // drobnosti obstarala krajinná oblast
           } else if (!ash) {
-            const dens = 0.035 + clamp(tone - 2, 0, 3) * 0.012;
+            const dens = 0.016 + clamp(tone - 2, 0, 3) * 0.006; // řidší stébla, plocha trávy má být klidná
             const fl = bil(F.flw, fx);
-            if (fl > 0.6 && h > 0.982 - (fl - 0.6) * 0.08) deco.push(3, fx, fy, 1 + ((hash((fx / 40) | 0, (fy / 40) | 0, 14) * 4) | 0));
+            if (fl > 0.68 && h > 0.989 - (fl - 0.68) * 0.06) deco.push(3, fx, fy, 1 + ((hash((fx / 40) | 0, (fy / 40) | 0, 14) * 4) | 0));
             else if (h < dens) deco.push(0, fx, fy, tone);
-            else if (h > 0.9988) deco.push(3, fx, fy, 0);
+            else if (h > 0.9997) deco.push(3, fx, fy, 0); // osamělé kvítky jen výjimečně, květy patří do paloučků
             else if (h > 0.9978) deco.push(1, fx, fy, 0);
           } else if (h > 0.9985) deco.push(4, fx, fy, 0);
           else if (h < 0.006) deco.push(5, fx, fy, tone);
@@ -1367,7 +1374,7 @@
           setIf(bx + 1, y + 1, G[Math.max(0, tn - 2)]);
           for (let s = 0; s < hgt; s++) {
             const px = bx + (s === hgt - 1 ? lean : 0);
-            setIf(px, y - s, s === hgt - 1 ? G[Math.min(6, tn + 2)] : s === 0 ? G[Math.max(1, tn - 1)] : G[Math.min(5, tn + 1)]);
+            setIf(px, y - s, s === hgt - 1 ? G[Math.min(6, tn + 1)] : s === 0 ? G[Math.max(1, tn - 1)] : G[Math.min(5, tn + 1)]);
           }
         }
       } else if (kind === 1) {
@@ -1609,7 +1616,8 @@
     // v zimě a v přebarvené krajině (podzim, bažina…) všude trsy krajiny, rákos zůstává
     const winter = (PK.winter && PK.winter.on) || themed;
     // sady trsů podle krajiny (v zimě všude ojíněná tráva, rákos zůstává)
-    const sets = BI.tuftKinds.map((rp, k) => (k === 0 || winter ? (k === BI.REED ? BI.reedFrames() : base) : k === BI.REED ? BI.reedFrames() : tuftSet(rp)));
+    // jedna sada trsů pro celou mapu (jen rákos má vlastní): různobarevné trsy podle oblastí působily neuspořádaně
+    const sets = BI.tuftKinds.map((rp, k) => (k === BI.REED ? BI.reedFrames() : base));
 
     const R = rng(311);
     const list = [];

@@ -238,7 +238,7 @@
       mountains: opts.mountains || [], walls: opts.walls || [],
       ash: { circles: ashCircles }, cracks,
       doodads: { landmarks, scatter },
-      tufts: { x: 12, y: 22, w: W - 24, h: H - 35, n: Math.round(240 * area * 1.4), tries: Math.round(900 * area * 1.4) },
+      tufts: { x: 12, y: 22, w: W - 24, h: H - 35, n: Math.round(240 * area * 1.0), tries: Math.round(900 * area * 1.4) },
       mist, seed, mirror, theme,
       // oblasti jiné krajiny: [krajina, x, y, poloměr] v art px
       biomes: (opts.biomes || []).filter(b => THEMES.includes(b[0]))

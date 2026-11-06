@@ -457,7 +457,7 @@
         return o.na - 0.5 + (o.nb - 0.5) * 0.4 < -0.05 ? mix(c, C.shade, 0.35) : o.na > 0.68 ? mix(c, C.a[3], 0.3) : c;
       }
     }
-    return rp[clamp(dither(tt, o.fx, o.fy, 0.5), 1, 5)];
+    return rp[clamp(dither(tt, o.fx, o.fy, 0.32), 1, 5)];
   }
 
   function fine(o) {
@@ -486,11 +486,11 @@
       if (bl > bayer(o.fx, o.fy)) {
         o.kind = -2;
         // vnější pás: vadnoucí tráva, blíž k popelu mrtvá šedofialová se žilkami
-        if (l0 > 0.76) return R.wither[clamp(dither(t - 0.2 + (hash(o.fx, o.fy >> 2, 130) - 0.5) * 1.2, o.fx, o.fy, 0.5), 1, 5)];
+        if (l0 > 0.76) return R.wither[clamp(dither(t - 0.2 + (hash(o.fx, o.fy >> 2, 130) - 0.5) * 0.5, o.fx, o.fy, 0.35), 1, 5)];
         const vein = Math.abs(fbm(o.X / 7, o.Y / 7, 131, 3) - 0.5);
         if (vein < 0.012 && l0 < 0.72) return l0 < 0.58 && o.nb > 0.5 ? C.m[2] : C.m[1];
         if (vein < 0.024 && l0 < 0.72) return R.blight[1];
-        return R.blight[clamp(dither(t - 0.5 + (hash(o.fx, o.fy >> 2, 132) - 0.5) * 1.1, o.fx, o.fy, 0.5), 1, 5)];
+        return R.blight[clamp(dither(t - 0.5 + (hash(o.fx, o.fy >> 2, 132) - 0.5) * 0.5, o.fx, o.fy, 0.35), 1, 5)];
       }
     }
 
@@ -539,7 +539,7 @@
         return o.nb > 0.6 ? mix(c, C.shade, 0.3) : c;
       }
       if (needles) {
-        const tt = 3 + (o.na - 0.5) * 1.8 + (hash(o.fx + (o.fy >> 1), o.fy, 136) - 0.5) * 1.6;
+        const tt = 3 + (o.na - 0.5) * 1.8 + (hash(o.fx + (o.fy >> 1), o.fy, 136) - 0.5) * 0.6; // jehličí bez pruhů
         return mix(R.needles[clamp(dither(tt, o.fx, o.fy, 0.4), 1, 5)], G[2], 0.3);
       }
       // mech: shluky osvětlené zleva shora
@@ -621,13 +621,14 @@
     switch (kd) {
       case K.FLOWERS: {
         const fl = fbm(o.X / 11, o.Y / 11, 151, 2);
-        if (h > 0.985 - fl * 0.035) push(KD.FLOWER, fx, fy, 1 + ((hash((fx / 30) | 0, (fy / 30) | 0, 152) * 4) | 0));
+        if (h > 0.991 - fl * 0.025) push(KD.FLOWER, fx, fy, 1 + ((hash((fx / 30) | 0, (fy / 30) | 0, 152) * 4) | 0));
         else if (h < 0.04) push(KD.GRASS, fx, fy, o.tone);
         return true;
       }
       case K.CLOVER:
-        if (h > 0.996) push(KD.CLOVER, fx, fy, 1); // kvetoucí jetel
-        else if (h > 0.972) push(KD.CLOVER, fx, fy, 0);
+        // jetel jen v řídkých trsech: hustý jetel dělal ze zelené plochy světlé tečkování
+        if (h > 0.998) push(KD.CLOVER, fx, fy, 1); // kvetoucí jetel
+        else if (h > 0.992 && o.na > 0.5) push(KD.CLOVER, fx, fy, 0);
         else if (h < 0.03) push(KD.BLADES, fx, fy, RI.clover * 10 + tone);
         return true;
       case K.STEPPE:
@@ -635,7 +636,7 @@
         else if (h < 0.05) push(KD.BLADES, fx, fy, RI.steppe * 10 + tone);
         return true;
       case K.AUTUMN:
-        if (h > 0.982) push(KD.LEAF, fx, fy, 0);
+        if (h > 0.99) push(KD.LEAF, fx, fy, 0); // spadané listí řidčeji, jen akcent
         else if (h < 0.03) push(KD.BLADES, fx, fy, RI.autumn * 10 + tone);
         return true;
       case K.HEATH:
@@ -675,7 +676,7 @@
           setIf(bx + 1, y + 1, rp[Math.max(0, tn - 2)]);
           for (let s = 0; s < hgt; s++) {
             const px = bx + (s === hgt - 1 ? lean : 0);
-            setIf(px, y - s, s === hgt - 1 ? rp[Math.min(6, tn + 2)] : s === 0 ? rp[Math.max(1, tn - 1)] : rp[Math.min(5, tn + 1)]);
+            setIf(px, y - s, s === hgt - 1 ? rp[Math.min(6, tn + 1)] : s === 0 ? rp[Math.max(1, tn - 1)] : rp[Math.min(5, tn + 1)]);
           }
         }
         return;
