@@ -20,9 +20,12 @@ const FIRE_FLIGHT = 0.3;
 const MAX_IDS = 40;
 
 // Pořadí určuje číslo typu ve snímku: nové typy jen na konec.
-const UNIT_TYPES = ["worker", "soldier", "archer", "hero", ...R.UNDEAD.units, "monk", "knight", "catapult"];
+const UNIT_TYPES = [
+  "worker", "soldier", "archer", "hero", "ghoul", "skeleton", "abomination", "banshee", "lich", "monk", "knight", "catapult",
+  "spearman", "crossbow", "scout", "hound", "necromancer", "plague"
+];
 const BUILDING_TYPES = ["hall", "citadel", "barracks", "tower", "hut", "smithy", ...R.UNDEAD.buildings, "stable", "workshop"];
-const HUMAN_UNITS = ["worker", "soldier", "archer", "hero", "monk", "knight", "catapult"];
+const HUMAN_UNITS = ["worker", "soldier", "archer", "hero", "monk", "knight", "catapult", "spearman", "crossbow", "scout"];
 const HUMAN_BUILDS = ["tower", "barracks", "hut", "smithy", "stable", "workshop"]; // co staví dělník
 const RESEARCH_KINDS = Object.keys(R.UPGRADES);
 const ORDER_CODES = { move: 1, attack: 2, gather: 3, deliver: 4, build: 5, amove: 6, repair: 7 };
@@ -33,8 +36,10 @@ const EDGE_STOP = 10; // jak blízko k okraji budovy dojde dělník nebo voják 
 const H = R.HERO;
 const HERO_TYPES = new Set(Object.values(H.types)); // typy jednotek, které jsou hrdinou své frakce
 const FROST_ATTACK = H.abilities.lich[2].attack; // o kolik déle se nabíjí útok zmrazené jednotky
-// stav jednotky ve snímku (bitová maska): pokřik, štít, zpomalení, aura licha, vyvolaná, výpad
-const ST = { cry: 1, guard: 2, slow: 4, aura: 8, summoned: 16, dash: 32 };
+// stav jednotky ve snímku (bitová maska): pokřik, štít, zpomalení, aura licha, vyvolaná, výpad,
+// hodnost veterána 0..3 ve dvou bitech (vet = 64 * hodnost)
+const ST = { cry: 1, guard: 2, slow: 4, aura: 8, summoned: 16, dash: 32, vet: 64 };
+const VET = R.VETERAN;
 
 const alive = entity => !!entity && entity.hp > 0;
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -303,8 +308,10 @@ class Match {
       dmgT: 0, dmgK: 0, guardT: 0, guardK: 0, slowT: 0, slowK: 0, // pokřik, štítová zeď, mráz
       order: null, harvestTimer: 0, repairTimer: 0, carry: null, working: false, building: false, repairing: false,
       path: null, pathGoal: -1, pathCd: 0, px: 0, py: 0,
-      level: 1, xp: 0, facing: this.slotOf(team).facing
+      level: 1, xp: 0, facing: this.slotOf(team).facing,
+      kills: 0, rank: 0
     };
+    if (type === "necromancer") unit.raiseT = R.NECRO.every * 0.5;
     if (HERO_TYPES.has(type)) {
       unit.hero = true;
       unit.maxMana = H.mana.base;
@@ -329,7 +336,7 @@ class Match {
   boost(unit, kind, n) {
     if (!n) return;
     if (kind === "weapon" && R.MELEE.includes(unit.type)) unit.damage += R.WEAPON_PER_LEVEL * n;
-    if (kind === "archery" && unit.type === "archer") {
+    if (kind === "archery" && R.ARCHERY.units.includes(unit.type)) {
       unit.damage += R.ARCHERY.damage * n;
       unit.range += R.ARCHERY.range * n;
     }
@@ -435,6 +442,10 @@ class Match {
 
     if (!source) {
       return this.note(team, type === "worker" ? "Potřebuješ gminu." : at === "stable" ? "Potřebuješ stáj." : at === "workshop" ? "Potřebuješ dílnu." : "Potřebuješ kasárna.");
+    }
+    const need = R.UNIT_NEEDS[type];
+    if (need && !this.buildings.some(b => b.type === need && done(b))) {
+      return this.note(team, need === "smithy" ? "Potřebuješ kovárnu." : "Chybí ti budova.");
     }
 
     const mine = this.units.filter(u => u.team === team && alive(u));
@@ -999,7 +1010,7 @@ class Match {
     if (attacker && attacker.dmgT > 0) amount = Math.round(amount * (1 + attacker.dmgK));
     if (target.guardT > 0) amount = Math.max(1, Math.round(amount * (1 - target.guardK)));
 
-    if (target.kind === "unit" && R.MELEE.includes(target.type)) {
+    if (target.kind === "unit" && R.MELEE.includes(target.type) && !opts.pierce) {
       const armor = this.upgrades[target.team].armor;
       if (armor) amount = Math.max(1, Math.round(amount * (1 - R.ARMOR_PER_LEVEL * armor)));
     }
@@ -1010,7 +1021,7 @@ class Match {
 
     const event = { e: "hit", a: attacker.id, t: target.id, n: amount, k: killed ? 1 : 0 };
     if (opts.silent) event.s = 1;
-    if (opts.charge) event.c = 1;
+    if (opts.charge || opts.bonus) event.c = 1;
     if (opts.delay) event.d = opts.delay;
     this.events.push(event);
 
@@ -1030,7 +1041,32 @@ class Match {
       }
 
       this.awardExperience(attacker, target);
+      if (target.kind === "unit") this.promote(attacker);
+      if (target.type === "plague") this.burst(target);
     }
+  }
+
+  // Veterán: jednotka (ne hrdina, ne budova) za zabité nepřátele povýší, každá hodnost přidá zdraví.
+  promote(unit) {
+    if (!unit || unit.kind !== "unit" || unit.hero || !alive(unit)) return;
+    unit.kills = (unit.kills || 0) + 1;
+    const rank = VET.kills.filter(n => unit.kills >= n).length;
+    if (rank <= unit.rank) return;
+    const base = R.UNITS[unit.type].hp;
+    while (unit.rank < rank) {
+      unit.rank++;
+      const add = Math.round(base * VET.hp);
+      unit.maxHp += add;
+      unit.hp += add;
+    }
+    this.events.push({ e: "vet", id: unit.id, n: unit.rank });
+  }
+
+  // Morovák praskne: oblak moru po chvíli zasáhne nepřátele kolem místa smrti.
+  burst(unit) {
+    const P = R.PLAGUE;
+    this.blasts.push({ t: P.delay, by: unit, team: unit.team, x: unit.x, y: unit.y, unitR: P.radius, buildingR: P.radius + 20, amount: P.damage, buildingAmount: Math.round(P.damage * P.building) });
+    this.events.push({ e: "plague", x: round1(unit.x), y: round1(unit.y) });
   }
 
   strike(unit, target) {
@@ -1039,14 +1075,26 @@ class Match {
 
     if (unit.type === "catapult") return this.hurl(unit, target);
 
+    // hodnost veterána přidá poškození
+    const vet = 1 + VET.damage * (unit.rank || 0);
+
+    // kopiník proti jezdcům a zrůdám, zvěd proti slabým v týlu, kušiník prorazí zbroj
+    if (unit.type === "spearman" || unit.type === "scout") {
+      const B = unit.type === "spearman" ? R.SPEAR : R.SCOUT;
+      if (target.kind === "unit" && B.vs.includes(target.type)) return this.damage(unit, target, Math.round(unit.damage * B.bonus * vet), { bonus: true });
+    }
+    if (unit.type === "crossbow") {
+      return this.damage(unit, target, Math.round(unit.damage * vet * (target.kind === "building" ? R.CROSSBOW.building : 1)), { pierce: true });
+    }
+
     // rytíř po rozjezdu udeří naplno (nápor), pak se musí znovu rozjet
     if (unit.type === "knight") {
       const charged = unit.charge >= R.KNIGHT.charge;
       unit.charge = 0;
-      if (charged) return this.damage(unit, target, unit.damage + R.KNIGHT.bonus, { charge: true });
+      if (charged) return this.damage(unit, target, Math.round((unit.damage + R.KNIGHT.bonus) * vet), { charge: true });
     }
 
-    this.damage(unit, target, unit.damage);
+    this.damage(unit, target, Math.round(unit.damage * vet));
   }
 
   // Kámen z katapultu letí CATAPULT.flight s (jako ohnivá koule se počítá až při dopadu, viz land):
@@ -1376,6 +1424,8 @@ class Match {
         continue;
       }
 
+      if (unit.type === "necromancer") this.raiseDead(unit, dt);
+
       const ox = unit.x;
       const oy = unit.y;
       this.act(unit, dt);
@@ -1391,6 +1441,34 @@ class Match {
     this.resources = this.resources.filter(r => r.type === "gold" || r.amount > 0);
 
     this.updateOutcome();
+  }
+
+  // Nekromant: když jsou nepřátelé blízko, jednou za čas vyvolá ze země kostlivce (nejvýš NECRO.max najednou).
+  raiseDead(unit, dt) {
+    const N = R.NECRO;
+    if ((unit.raiseT -= dt) > 0) return;
+    if (!this.nearestEnemy(unit, N.radius)) {
+      unit.raiseT = 1;
+      return;
+    }
+    const mine = this.units.filter(u => u.raisedBy === unit.id && alive(u)).length;
+    if (mine >= N.max) {
+      unit.raiseT = 2;
+      return;
+    }
+    unit.raiseT = N.every;
+    const a = unit.facing < 0 ? Math.PI : 0;
+    let x = clamp(unit.x + Math.cos(a) * 26, 12, this.LW - 12);
+    let y = clamp(unit.y + 8, 38, this.LH - 14);
+    if (this.nav.isBlocked(x, y)) {
+      x = unit.x;
+      y = unit.y;
+    }
+    const s = this.createUnit("skeleton", unit.team, x, y);
+    s.summoned = N.life;
+    s.raisedBy = unit.id;
+    s.facing = unit.facing;
+    this.events.push({ e: "raise", a: unit.id, ids: [s.id] });
   }
 
   // Mnich nebojuje: drží se u svých a léčí. Útočný rozkaz pro něj znamená jít za cílem na dohled.
@@ -1736,7 +1814,7 @@ class Match {
         u.xp,
         u.order ? ORDER_CODES[u.order.type] : 0,
         (u.dmgT > 0 ? ST.cry : 0) | (u.guardT > 0 ? ST.guard : 0) | (u.slowT > 0 ? ST.slow : 0) |
-          (u.auraT > 0 ? ST.aura : 0) | (u.summoned != null ? ST.summoned : 0) | (u.dash ? ST.dash : 0),
+          (u.auraT > 0 ? ST.aura : 0) | (u.summoned != null ? ST.summoned : 0) | (u.dash ? ST.dash : 0) | (ST.vet * (u.rank || 0)),
         u.hero ? Math.floor(u.mana) : 0,
         u.working ? 1 : u.building ? 2 : u.repairing ? 3 : 0,
         u.damage

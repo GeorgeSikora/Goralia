@@ -43,6 +43,9 @@
     monk: "Mnich",
     knight: "Rytíř",
     catapult: "Katapult",
+    spearman: "Kopiník",
+    crossbow: "Kušiník",
+    scout: "Zvěd",
     stable: "Stáj",
     workshop: "Dílna",
     citadel: "Rudá pevnost",
@@ -52,6 +55,9 @@
     abomination: "Zrůda",
     banshee: "Přízrak",
     lich: "Pekelný lich",
+    hound: "Pekelný pes",
+    necromancer: "Nekromant",
+    plague: "Morovák",
     necropolis: "Nekropole",
     crypt: "Krypta",
     slaughterhouse: "Jatka",
@@ -492,7 +498,7 @@
   const ABILITIES = new Set(Object.values(R.HERO.abilities).flat().map(a => a.id));
 
   // Typ, který se právě ovládá (nabídka tlačítek); Tab přepíná mezi typy ve výběru.
-  const FOCUS_ORDER = ["hero", "lich", "worker", "knight", "soldier", "archer", "monk", "catapult", "hall", "citadel", "barracks", "stable", "workshop", "tower", "hut", "smithy"];
+  const FOCUS_ORDER = ["hero", "lich", "worker", "knight", "scout", "soldier", "spearman", "archer", "crossbow", "monk", "catapult", "hall", "citadel", "barracks", "stable", "workshop", "tower", "hut", "smithy"];
 
   function selectionTypes() {
     const present = new Set(selected.map(e => e.type));
@@ -2057,19 +2063,23 @@
 
       const title = document.createElement("span");
       title.className = "map-name";
-      title.textContent = m.name;
+      title.textContent = MAPS.localized(m, "name", PK.i18n && PK.i18n.lang);
       const tag = document.createElement("span");
       tag.className = "map-tag";
+      const theme = MAPS.themeOf(m);
+      // krajina jako samostatné textové uzly, ať se štítek i krajina přeloží každý zvlášť
       tag.textContent = m.tag;
+      if (theme !== "meadow") tag.append(" · ", document.createTextNode(MAPS.THEME_NAMES[theme].toLowerCase()));
 
-      item.append(title, tag);
+      item.classList.add("has-thumb");
+      item.append(mapThumb(m), title, tag);
       item.addEventListener("click", () => selectMap(m.id));
       return item;
     }));
 
-    lobbyEl.name.textContent = map.name;
-    lobbyEl.desc.textContent = map === STUB_MAP ? "Na serveru zatím nejsou žádné mapy. Vytvoř je v editoru." : map.description;
-    lobbyEl.meta.textContent = `Hráči: ${map.coop ? `${map.humans} + nemrtví (AI)` : map.players} · Velikost: ${sizeLabel(map)} (${map.size[0] * 2}×${map.size[1] * 2}) · Zlaté doly: ${map.gold.length}`;
+    lobbyEl.name.textContent = MAPS.localized(map, "name", PK.i18n && PK.i18n.lang);
+    lobbyEl.desc.textContent = map === STUB_MAP ? "Na serveru zatím nejsou žádné mapy. Vytvoř je v editoru." : MAPS.localized(map, "description", PK.i18n && PK.i18n.lang);
+    lobbyEl.meta.textContent = `Hráči: ${map.coop ? `${map.humans} + nemrtví (AI)` : map.players} · Velikost: ${sizeLabel(map)} (${map.size[0] * 2}×${map.size[1] * 2}) · Zlaté doly: ${map.gold.length} · Krajina: ${MAPS.THEME_NAMES[MAPS.themeOf(map)].toLowerCase()}`;
 
     lobbyEl.slots.replaceChildren(...lobby.slots.map((slot, i) => {
       const team = R.TEAMS[i];
@@ -2132,6 +2142,95 @@
     drawPreview();
   }
 
+  /* Miniatura mapy v seznamu: malá pixelová mapka (krajina, voda, hory, lesy, doly a základny v barvách týmů).
+   * Kreslí se z receptu mapy bez pečení terénu, takže je hotová hned i pro desítky map. */
+  const thumbs = new Map();
+  const THUMB = { w: 38, h: 24 };
+  const THEME_GROUND = {
+    meadow: [0x32693f, 0x4a8548], autumn: [0x6e5a2a, 0x96502c], winter: [0xb2c8d0, 0xd6e4e8],
+    swamp: [0x2b4a36, 0x34684a], highland: [0x3d613f, 0x5a3f5c], wastes: [0x3b4536, 0x47403f]
+  };
+
+  function mapThumb(map) {
+    const cv = document.createElement("canvas");
+    cv.className = "map-thumb";
+    cv.setAttribute("aria-hidden", "true");
+    const cached = thumbs.get(map.id);
+    if (cached && cached.ver === map) {
+      cv.width = cached.c.width;
+      cv.height = cached.c.height;
+      cv.getContext("2d").drawImage(cached.c, 0, 0);
+      cv.style.width = `${cv.width * 2}px`;
+      return cv;
+    }
+    const [w, h] = map.size;
+    const s = Math.min(THUMB.w / w, THUMB.h / h);
+    cv.width = Math.max(4, Math.round(w * s));
+    cv.height = Math.max(4, Math.round(h * s));
+    cv.style.width = `${cv.width * 2}px`; // celé násobky, ať jsou pixely ostré
+    // kreslí se až po vložení do seznamu, po jedné mapě, ať se lobby otevře hned
+    setTimeout(() => {
+      const c = drawThumb(map, cv.width, cv.height);
+      thumbs.set(map.id, { c, ver: map });
+      cv.getContext("2d").drawImage(c, 0, 0);
+    }, 0);
+    return cv;
+  }
+
+  function drawThumb(map, tw, th) {
+    const rec = map.terrain;
+    const [w, h] = map.size;
+    const sx = w / tw;
+    const sy = h / th;
+    const cv = document.createElement("canvas");
+    cv.width = tw;
+    cv.height = th;
+    const c = cv.getContext("2d");
+    const img = c.createImageData(tw, th);
+    const main = MAPS.themeOf(map);
+    const rgb = v => [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+
+    for (let y = 0; y < th; y++) {
+      for (let x = 0; x < tw; x++) {
+        const ax = (x + 0.5) * sx;
+        const ay = (y + 0.5) * sy;
+        let theme = main;
+        if (PK.krajiny && rec.biomes && rec.biomes.length) {
+          const [t, k] = PK.krajiny.regionAt(rec, ax, ay);
+          if (t && k > 0.5) theme = t;
+        }
+        const g = THEME_GROUND[theme] || THEME_GROUND.meadow;
+        let col = PK.fbm(ax / 60, ay / 60, 7, 2) > 0.55 ? g[1] : g[0];
+        if (rec.ash.circles.some(([cx, cy, r]) => Math.hypot(ax - cx, ay - cy) < r * 0.8)) col = 0x34303c;
+        if (MAPS.isRock(rec, ax, ay)) col = theme === "winter" ? 0xe8e6e8 : 0x767892;
+        if (rec.rivers.some(r => r.pts && MAPS.isWater({ rivers: [r], roads: [] }, ax, ay))) col = theme === "winter" ? 0x9fd0e0 : theme === "swamp" ? 0x2f6a6a : 0x3f7fd0;
+        const [r, gg, b] = rgb(col);
+        const i = (y * tw + x) * 4;
+        img.data[i] = r; img.data[i + 1] = gg; img.data[i + 2] = b; img.data[i + 3] = 255;
+      }
+    }
+    c.putImageData(img, 0, 0);
+
+    // cesty jako tenké světlé linky
+    c.strokeStyle = "rgba(224,198,142,0.55)";
+    c.lineWidth = 1;
+    for (const r of rec.roads) {
+      c.beginPath();
+      r.pts.forEach(([x, y], i) => (i ? c.lineTo(x / sx, y / sy) : c.moveTo(x / sx, y / sy)));
+      c.stroke();
+    }
+    // lesy: tmavé tečky, doly zlaté, základny v barvách týmů
+    const dot = (x, y, color, size = 1) => {
+      c.fillStyle = color;
+      c.fillRect(Math.floor(x / 2 / sx - (size - 1) / 2), Math.floor(y / 2 / sy - (size - 1) / 2), size, size);
+    };
+    const forest = main === "autumn" ? "#4a2a24" : main === "winter" ? "#1f3a4d" : "#1b3836";
+    map.trees.forEach(([x, y], i) => { if (i % 2 === 0) dot(x, y, forest); });
+    for (const [x, y] of map.gold) dot(x, y, "#ffd36b");
+    map.slots.forEach((slot, i) => dot(slot.hq.x, slot.hq.y, map.coop && map.coop.ai === i ? "#d65a3c" : PK.css(PK.TEAM[R.TEAMS[i]].ui), 3));
+    return cv;
+  }
+
   // Náhled = zmenšený terén mapy se značkami startovních pozic. Terén se peče jednou na mapu.
   const bigMap = map => map.size[0] * map.size[1] > 4e6;
 
@@ -2143,7 +2242,7 @@
     cv.width = Math.max(1, Math.round(w * s));
     cv.height = Math.max(1, Math.round(h * s));
     const c = cv.getContext("2d");
-    c.fillStyle = "#2f5d34";
+    c.fillStyle = PK.css((THEME_GROUND[MAPS.themeOf(map)] || THEME_GROUND.meadow)[0]);
     c.fillRect(0, 0, cv.width, cv.height);
     c.lineCap = "round";
     c.lineJoin = "round";
@@ -2246,7 +2345,8 @@
 
     if (PK.loader && PK.loader.busy) return;
     lastOffline = { mapId: c.mapId, slots: c.slots.map(s => ({ ...s })) };
-    if (PK.winter) PK.winter.set(PK.winter.season()); // hra proti AI: zima podle kalendáře / volby
+    // hra proti AI: zima podle kalendáře / volby, zimní mapa je zasněžená vždy
+    if (PK.winter) PK.winter.set(PK.winter.season() || MAPS.isWinterMap(next));
     // barvy navíc už pro přípravu spritů (načítací obrazovka), aby se nepekly až ve hře
     applyLooks(roster.map(p => ({ ...p, team: R.TEAMS[p.slot], me: p.slot === 0 })), true);
     prepareMatch(next, roster.map(p => p.slot), () => beginMatch({ mode: "ai", map: next, slot: 0, players: roster }));
@@ -2338,7 +2438,8 @@
         }
 
         hitVisuals(attacker, target, e.n, { silent: !!e.s, delay: e.d || 0 }, !!e.k);
-        if (e.c) fx.text(attacker.x, attacker.y - 50, "NÁPOR!", 0xffd27a);
+        if (e.c && attacker.type === "knight") fx.text(attacker.x, attacker.y - 50, "NÁPOR!", 0xffd27a);
+        else if (e.c) fx.later(e.d || 0, () => fx.bonus(target.x, target.y, target.x < attacker.x ? -1 : 1));
         break;
       }
 
@@ -2460,6 +2561,45 @@
         const mine = e.t === mySlot;
         announce(mine ? `Nemrtví táhnou na tvou základnu! (vlna ${e.n})` : `Nemrtví táhnou na ${target ? target.name : "spojence"} (vlna ${e.n}).`);
         audio.play("horn");
+        break;
+      }
+
+      // jednotka povýšila na veterána
+      case "vet": {
+        const u = unitMap.get(e.id);
+        if (!u) return;
+        u.vetT = 1.2;
+        fx.levelUp(u.x, u.y + 8);
+        fx.text(u.x, u.y - 48, e.n >= 3 ? "ELITA!" : "VETERÁN!", 0xffe08a);
+        if (u.team === me) audio.play("levelUp", { x: u.x, vol: 0.5 });
+        break;
+      }
+
+      // nekromant vyvolal kostlivce
+      case "raise": {
+        const nec = unitMap.get(e.a);
+        if (nec) {
+          nec.castT = 0.5;
+          fx.castGlow(nec.x, nec.y, 0x5ff0c0);
+        }
+        for (const id of e.ids || []) {
+          const s = unitMap.get(id);
+          if (!s) continue;
+          s.riseT = 0.9;
+          fx.summon(s.x, s.y);
+        }
+        if (nec) audio.play("summon", { x: nec.x, vol: 0.6 });
+        break;
+      }
+
+      // morovák praskl: zelený oblak moru
+      case "plague": {
+        fx.summon(e.x, e.y);
+        fx.castGlow(e.x, e.y, 0x5ff0c0);
+        fx.later(R.PLAGUE.delay, () => {
+          fx.plague(e.x, e.y, R.PLAGUE.radius);
+          audio.play("explosion", { x: e.x, vol: 0.6 });
+        });
         break;
       }
 
@@ -2680,6 +2820,7 @@
 
       if (u.building) {
         u.workT = 0.2;
+        u.workKind = "build";
         u.fxT -= dt;
 
         if (u.fxT <= 0) {
@@ -2705,6 +2846,7 @@
           const resource = nearestResource(u);
 
           if (resource) {
+            u.workKind = resource.type;
             resource.shake = 0.22;
             if (resource.type === "wood") fx.chop(resource.x, resource.y + 14);
             else fx.mine(resource.x, resource.y + 12);
@@ -3166,9 +3308,51 @@
     openOfflineLobby();
   });
 
+  // Zkouška mapy z editoru (?test=editor): neuložená mapa leží v localStorage, hraje se hned proti AI.
+  // Hráč je na základně zvolené v editoru (test.slot), ostatní obsadí AI; mapa se nikam neukládá.
+  if (new URLSearchParams(location.search).get("test") === "editor") {
+    mapsReady.then(() => {
+      let test = null;
+      try { test = JSON.parse(localStorage.getItem("goralia-editor-test") || "null"); } catch (e) { test = null; }
+      const raw = test && test.doc;
+      const { doc } = raw ? MAPS.normalizeDoc({ ...raw, id: "zkouska-z-editoru", name: raw.name || "Zkouška" }) : { doc: null };
+      if (!doc) return;
+      const next = MAPS.compileDoc(doc);
+      next.name = `${doc.name} (zkouška)`;
+      MAPS.register(next);
+      if (PK.world) PK.world.forget(next.id);
+      const me = Number.isInteger(test.slot) && test.slot >= 0 && test.slot < next.slots.length && !(next.coop && next.coop.ai === test.slot) ? test.slot : 0;
+      // vlastní základna je vždy slot 0 hry, takže hráčova základna se přesune na začátek
+      if (me) {
+        const order = [me, ...next.slots.map((_, i) => i).filter(i => i !== me)];
+        next.slots = order.map(i => next.slots[i]);
+        if (next.coop) next.coop = { ...next.coop, ai: order.indexOf(next.coop.ai) };
+      }
+      lastOffline = { mapId: next.id, slots: next.slots.map((_, i) => ({ kind: i === 0 ? "human" : test.empty ? "closed" : "ai", name: i === 0 ? "Ty" : "" })) };
+      if (test.empty && lastOffline.slots.length > 1) lastOffline.slots[1].kind = "ai"; // aspoň jeden soupeř
+      let tries = 0;
+      const go = () => {
+        if (started) return;
+        if ((PK.loader && PK.loader.busy) && tries++ < 600) return setTimeout(go, 100);
+        startOffline(lastOffline);
+      };
+      go();
+    });
+  }
+
   /* ======================= hit visuals ======================= */
-  const RANGED = new Set(["archer", "tower", "skeleton", "banshee", "lich", "ziggurat", "necropolis"]);
-  const BOLTS = new Set(["tower", "banshee", "lich", "ziggurat", "necropolis"]);
+  const RANGED = new Set(["archer", "crossbow", "tower", "skeleton", "banshee", "lich", "necromancer", "ziggurat", "necropolis"]);
+  const BOLTS = new Set(["tower", "banshee", "lich", "necromancer", "ziggurat", "necropolis"]);
+  // z čeho je cíl zásahu (fx.hit): krev, jiskry ze zbroje, kosti, ektoplazma, sliz, kámen, dřevo, žhavé střepy
+  const HIT_MAT = { skeleton: "bone", lich: "bone", banshee: "ghost", ghoul: "rot", abomination: "rot", knight: "steel", hero: "steel", soldier: "steel", spearman: "steel", crossbow: "steel", catapult: "wood", hound: "ember", plague: "rot", necromancer: "bone" };
+  function hitMaterial(t) {
+    if (t.kind === "building") {
+      const spr = PK.buildings.get(t.type, t.team);
+      return spr.hell ? "ember" : t.type === "stable" || t.type === "workshop" || t.type === "hut" ? "wood" : "stone";
+    }
+    return HIT_MAT[t.type] || "flesh";
+  }
+
   // Čísla zásahů počítá simulace; tady jsou jen efekty a zvuky (volá je událost "hit").
   function hitVisuals(attacker, target, amount, opts, killed) {
     let wait = opts.delay || 0;
@@ -3179,8 +3363,9 @@
     const friendlyFire = target.team === me;
 
     const impact = () => {
-      if (!opts.silent) fx.hit(tx, ty, amount >= 20);
+      if (!opts.silent) fx.hit(tx, ty, amount >= 20, hitMaterial(target), dirTo);
       if (target.kind === "unit" || target.hp > 0) target.flashT = 0.12;
+      if (target.kind === "unit") target.hurtT = 0.24;
       fx.text(tx, ty - (target.kind === "building" ? 56 : 28), Math.round(amount), friendlyFire ? 0xff8f7a : 0xfff0c4);
       if (!opts.silent) audio.play(target.kind === "building" || attacker.type === "hero" || attacker.type === "abomination" ? "hitHeavy" : "hit", { x: tx });
     };
@@ -3206,7 +3391,7 @@
       if (target.kind === "unit") {
         fx.later(wait, () => audio.play("death", { x: tx }));
         fx.corpse({
-          type: target.type, team: target.team, flip: target.facing < 0,
+          type: target.type, team: target.team, flip: target.facing < 0, v: variantOf(target),
           x: target.x, y: target.y, dir: dirTo, wait
         });
       } else {
@@ -3339,6 +3524,8 @@
       heroVisuals(u, dt);
       u.flashT = Math.max(0, u.flashT - dt);
       u.workT = Math.max(0, u.workT - dt);
+      if (u.hurtT > 0) u.hurtT = Math.max(0, u.hurtT - dt);
+      if (u.vetT > 0) u.vetT = Math.max(0, u.vetT - dt);
 
       const moved = Math.hypot(u.x - u.lx, u.y - u.ly);
 
@@ -3376,6 +3563,7 @@
     }
 
     emitAmbient(dt);
+    if (PK.critters) PK.critters.update(dt, units);
     fx.update(dt);
   }
 
@@ -3401,6 +3589,12 @@
           const [sx, sy] = spr.smoke[Math.floor(Math.random() * spr.smoke.length)];
           fx.smoke(ox + sx, oy + sy, b.type === "citadel" || !!spr.hell);
         }
+      }
+
+      // kovárna: z výhně občas odletí sprška jisker (rána kladivem)
+      if (b.type === "smithy" && spr.glows.length && Math.random() < dt * 0.8 && fx.anvil) {
+        const L = spr.glows[0];
+        fx.anvil(ox + L.x + 3, oy + L.y - 1);
       }
 
       if (spr.flames && spr.flames.length && Math.random() < dt * 9) {
@@ -3440,29 +3634,77 @@
     return c;
   }
 
-  const HB_TOP = { worker: 25, soldier: 28, archer: 29, hero: 33, raider: 29, ghoul: 24, skeleton: 27, abomination: 30, banshee: 30, lich: 31, monk: 28, knight: 32, catapult: 24 };
-  const BIG = { hero: 16, abomination: 19, lich: 17, knight: 24, catapult: 26 };
+  const HB_TOP = {
+    worker: 25, soldier: 28, archer: 29, hero: 33, raider: 29, ghoul: 24, skeleton: 27, abomination: 30, banshee: 30, lich: 31, monk: 28, knight: 32, catapult: 24,
+    spearman: 31, crossbow: 29, scout: 31, hound: 19, necromancer: 30, plague: 26
+  };
+  const BIG = { hero: 16, abomination: 19, lich: 17, knight: 24, catapult: 26, scout: 24, hound: 20, plague: 17 };
+
+  // Varianta vzhledu jednotky (pleť, vlasy, helma, znak...) podle id: stejná u všech hráčů, sousedi se liší.
+  const variantOf = u => (Math.imul(u.id, 2654435761) >>> 16) % U.variants(u.type);
+  // Posun fáze chůze a přešlapování podle id, aby skupina nešla krok za krokem jako jeden.
+  const phaseOf = u => ((Math.imul(u.id, 40503) >>> 8) & 1023) / 1024;
+  const slotOfTeam = team => R.TEAMS.indexOf(team);
 
   function unitAnim(u) {
     // snímky rovnoměrně přes průběh akce (animace mají mezisnímky, viz units.js)
     const at = (anim, p) => [anim, Math.min(U.frameCount(anim) - 1, Math.floor(clamp(p, 0, 0.999) * U.frameCount(anim)))];
+    const ph = phaseOf(u);
+
+    // vítězové po konci zápasu slaví: výskok se zbraní nad hlavou, mezi skoky chvíli stojí
+    if (matchOver && endWinners && endWinners.includes(slotOfTeam(u.team)) && u.type !== "catapult") {
+      const t = (clock * 0.9 + ph * 3) % 2;
+      if (t < 1) return u.type === "worker" && u.carry ? ["idle_" + u.carry, 0] : at("cheer", t);
+    }
 
     // rytíř: výpad (rozběh a bodnutí), štítová zeď (štít vpřed), pokřik (meč nad hlavou = cast)
     if (u.type === "hero") {
       if (u.st & ST.dash) return at("lunge", Math.min(0.999, (u.dashT || 0) / 0.3));
       if (u.castT > 0) return at(u.castKind === "shieldwall" ? "guard" : "cast", 1 - u.castT / 0.5);
     }
-    if (u.castT > 0 && (u.type === "hero" || u.type === "lich")) return at("cast", 1 - u.castT / 0.5);
+    if (u.castT > 0 && (u.type === "hero" || u.type === "lich" || u.type === "necromancer")) return at("cast", 1 - u.castT / 0.5);
     if (u.atk > 0) return ["attack", U.attackFrame(1 - u.atk / 0.3)];
 
-    if (u.workT > 0) return ["attack", Math.floor(clock * 13 + u.id) % U.frameCount("attack")];
+    if (u.workT > 0) {
+      // dělník: krumpáč v dole, sekera u stromu, kladivo na stavbě a při opravě
+      const kind = u.workKind === "wood" ? "chop" : u.workKind === "build" ? "build" : "attack";
+      return [kind, Math.floor(clock * (kind === "build" ? 9 : 13) + u.id) % U.frameCount(kind)];
+    }
+    // zásah: krátké cuknutí (bílý záblesk kreslí drawUnit)
+    if (u.hurtT > 0 && !(u.st & ST.guard)) return at("hit", 1 - u.hurtT / 0.24);
     // dělník s nákladem má vlastní chůzi a postoj (pytel přes rameno, otep na rameni)
     const load = u.type === "worker" && u.carry ? "_" + u.carry : "";
-    // jeden cyklus chůze (dva kroky) na 22 logických jednotek dráhy = délka kroku spritu
-    if (u.moveT > 0) return ["walk" + load, Math.floor(u.wd / 22 * U.frameCount("walk")) % U.frameCount("walk")];
+    // jeden cyklus chůze (dva kroky) na 22 logických jednotek dráhy = délka kroku spritu; každá jednotka začíná jinde
+    if (u.moveT > 0) return ["walk" + load, Math.floor((u.wd / 22 + ph) * U.frameCount("walk")) % U.frameCount("walk")];
     // rytíř se zvednutým štítem drží kryt, dokud štítová zeď trvá
     if (u.type === "hero" && u.st & ST.guard) return ["guard", U.frameCount("guard") - 1];
+    // občas přešlápne a pohne zbraní (každá jednotka jindy, zhruba jednou za 7-11 s)
+    if (!load) {
+      const period = 7 + ph * 4;
+      const t = (clock + ph * 13) % period;
+      if (t < 1.1) return at("fidget", t / 1.1);
+    }
     return ["idle" + load, Math.floor(clock * 1.4 + u.id * 0.37) & 1];
+  }
+
+  /* Odznak veterána nad hlavou: 1 až 3 zlaté krokve v jemné mřížce (1 jemný bod = 0,5 art px),
+   * tmavý obrys, při povýšení krátce zablikají. */
+  function drawChevrons(x, y, rank, u) {
+    const f = 0.5;
+    const blink = u.vetT > 0 && Math.floor(clock * 12) & 1;
+    for (let r = 0; r < rank; r++) {
+      const cy = y - r * 1.5;
+      for (let i = -3; i <= 3; i++) {
+        const py = cy - (3 - Math.abs(i)) * f;
+        g.fillStyle = "#15121f";
+        g.fillRect(x + i * f - f, py - f, 3 * f, 3 * f);
+      }
+      for (let i = -3; i <= 3; i++) {
+        const py = cy - (3 - Math.abs(i)) * f;
+        g.fillStyle = blink ? "#fff6cc" : i < 0 ? "#ffe08a" : "#e0902a";
+        g.fillRect(x + i * f, py, f, f);
+      }
+    }
   }
 
   function drawUnit(u) {
@@ -3475,7 +3717,7 @@
     if (!reflecting && !(u.riseT > 0.3)) g.drawImage(sh, footX - (sh.width >> 1), footY - (sh.height >> 1));
 
     const [anim, idx] = unitAnim(u);
-    const rec = U.frame(u.type, u.team, anim, idx);
+    const rec = U.frame(u.type, u.team, anim, idx, variantOf(u));
     const img = u.flashT > 0 ? U.flash(rec, flip) : flip ? rec.cf : rec.c;
     const ox = flip ? U.CELL - 1 - U.AX : U.AX;
 
@@ -3554,12 +3796,23 @@
       world.light(g, lx, ly, cast ? 24 : 15, 0xffbf45, cast ? 0.8 : flick, footY - ly);
     }
 
+    if (meta.glow) {
+      // nekromantova hůl: nazelenalý plamen duší
+      const gx = cellX(meta.glow[0]);
+      const gy = footY + meta.glow[1];
+      const flick = 0.45 + Math.sin(clock * (shading ? 2.5 : 8) + u.id) * (shading ? 0.03 : 0.08);
+      world.light(g, gx, gy, meta.glow[2] ? 20 : 11, 0x5ff0c0, meta.glow[2] ? 0.75 : flick, footY - gy);
+    }
+
     if (meta.halo) {
       // prsten na mnišské holi: jemná záře, při požehnání jasnější
       const hx = cellX(meta.halo[0]);
       const hy = footY + meta.halo[1];
       world.light(g, hx, hy, meta.halo[2] ? 16 : 8, 0xffe9a0, meta.halo[2] ? 0.7 : 0.3, footY - hy, false, 0.45);
     }
+
+    const rank = (u.st >> 6) & 3;
+    if (rank && !u.hero && !reflecting) drawChevrons(footX, footY - (HB_TOP[u.type] || 28) + 7, rank, u);
 
     if (u.hero && !reflecting) {
       const top = u.type === "lich" ? 44 : 41;
@@ -3568,10 +3821,23 @@
     }
   }
 
+  // Druh stromu zvolený v editoru map (třetí číslo u stromu), jinak -1 = podle krajiny.
+  let treeKinds = { map: null, at: null };
+  function treeKindAt(x, y) {
+    if (treeKinds.map !== map) {
+      treeKinds = { map, at: new Map() };
+      for (const t of map.trees || []) if (t.length > 2) treeKinds.at.set(`${t[0]},${t[1]}`, t[2]);
+    }
+    const k = treeKinds.at.size ? treeKinds.at.get(`${x},${y}`) : undefined;
+    return k == null || !PK.props.trees[k] ? -1 : k;
+  }
+
   function drawTree(r) {
     const footX = Math.round(r.x / 2);
     const footY = Math.round(r.y / 2) + 15;
-    const variant = PK.props.treeKind(hash3(r.x, r.y, 5));
+    // druh stromu podle krajiny mapy (podzimní duby, smrky na vysočině, vrby v bažině…)
+    const kind = treeKindAt(r.x, r.y);
+    const variant = kind >= 0 ? kind : PK.krajiny ? PK.krajiny.treeKind(hash3(r.x, r.y, 5), map.terrain, r.x / 2, r.y / 2) : PK.props.treeKind(hash3(r.x, r.y, 5));
     const t = PK.props.trees[variant];
     const stage = r.amount > 66 ? 0 : r.amount > 33 ? 1 : 2;
     const sway = Math.sin(clock * 1.3 + r.x * 0.05) > 0.35 ? 1 : 0;
@@ -3584,7 +3850,7 @@
     g.drawImage(t.crown[stage], footX - t.ax + sway + shake, footY - t.ay);
 
     // lantern-fruit twinkle
-    if (stage === 0) {
+    if (stage === 0 && t.fruit.length) {
       const k = Math.floor(clock * 1.6 + r.x) % t.fruit.length;
       const [fx0, fy0] = t.fruit[k];
       const bright = Math.floor(clock * 6 + r.y) & 1;
@@ -3681,6 +3947,19 @@
       // blueprint: průhledná modrá předloha celé budovy, hotová část roste od země nahoru
       const top = Math.round(y0 + spr.h * (1 - prog));
 
+      // staveniště: vyměřený základ z kolíků a provázku, vedle hromádka materiálu
+      if (!reflecting && PK.buildings.sitePile) {
+        const fw = spr.w * 0.42;
+        g.fillStyle = spr.hell ? "rgba(255,143,74,0.55)" : "rgba(247,241,223,0.5)";
+        for (let x = -fw; x <= fw; x += 0.5) {
+          if ((Math.round(x * 2) & 3) === 3) continue;
+          g.fillRect(Math.round((footX + x) * 2) / 2, footY - 1, 0.5, 0.5);
+          g.fillRect(Math.round((footX + x * 0.9) * 2) / 2, footY - 7, 0.5, 0.5);
+        }
+        g.fillStyle = spr.hell ? "#a8323a" : "#946b45";
+        for (const [px, py] of [[-fw, -1], [fw, -1], [-fw * 0.9, -7], [fw * 0.9, -7]]) g.fillRect(Math.round((footX + px) * 2) / 2, footY + py - 1, 0.5, 1.5);
+      }
+
       g.globalAlpha = 0.5;
       g.drawImage(blueprint(spr), x0, y0);
       g.globalAlpha = 1;
@@ -3719,10 +3998,19 @@
         }
       }
 
+      // hromádka materiálu u pravého rohu před stavbou, ubývá, jak stavba roste
+      if (!reflecting && PK.buildings.sitePile && prog < 0.85) {
+        const pile = PK.buildings.sitePile(!!spr.hell);
+        g.drawImage(pile.c, x0 + spr.w - 8, footY - pile.h + 3);
+      }
+
       return;
     }
 
     g.drawImage(spr.c, x0, y0);
+    // poškození: praskliny a saze pod 2/3 zdraví, díry a ohořelé trhliny pod 1/3
+    const hpFrac = b.hp / b.maxHp;
+    if (hpFrac < 0.66 && PK.buildings.damage) g.drawImage(PK.buildings.damage(spr, hpFrac < 0.33 ? 2 : 1), x0, y0);
     if (shading) PK.shaders.sheen(x0, y0, x0 + spr.w, y0 + spr.h, 1);
 
     if (b.flashT > 0) {
@@ -3765,11 +4053,17 @@
     const s = d.spr;
     const sh = world.shadow("ellipse", Math.max(8, s.w - 4), 4);
 
-    if (!reflecting) {
+    // ploché kulisy (květy, lekníny, kosti) stín nevrhají
+    if (!reflecting && !s.flat) {
       g.drawImage(sh, d.x - (sh.width >> 1) + 2, d.y - (sh.height >> 1));
     }
 
     g.drawImage(s.c, d.x - s.ax, d.y - s.ay);
+    // větrný mlýn (decor.js): lopatky se pomalu točí, každý mlýn jinou rychlostí
+    if (s.blades) {
+      const f = Math.floor(clock * (3 + d.ph * 0.3) + d.ph * 4) % s.blades.length;
+      g.drawImage(s.blades[f], d.x - s.ax + s.mill[0] - s.bladeR, d.y - s.ay + s.mill[1] - s.bladeR);
+    }
     if (shading && d.name.startsWith("crystal")) PK.shaders.sheen(d.x - s.ax, d.y - s.ay, d.x - s.ax + s.w, d.y - s.ay + s.h, 0);
 
     if (s.flame) flameAt(d.x - s.ax + s.flame.x, d.y - s.ay + s.flame.y + 1, d.x, 1);
@@ -3801,6 +4095,8 @@
       S.occluder(o.x / 2, o.y / 2 + 9, 11, 16);
     } else if (it.k === 5) {
       S.occluder(o.x / 2, o.y / 2 + 2, 3, 5);
+    } else if (it.k === 6) {
+      return; // zvířátka stín světel nevrhají
     } else {
       const s = o.spr;
       if (!s.glow && s.h > 8) S.occluder(o.x, o.y - 1, Math.max(2, s.w * 0.3), s.h * 0.8);
@@ -4276,6 +4572,7 @@
     if (it.k === 0) return [Math.round(o.x / 2), Math.round(o.y / 2) + 15, 10];
     if (it.k === 1) return [Math.round(o.x / 2), Math.round(o.y / 2) + 13, 14];
     if (it.k === 5) return [Math.round(o.x / 2), Math.round(o.y / 2) + 3, 5];
+    if (it.k === 6) return [o.x, o.y, 4];
     return [o.x, o.y, o.spr.w / 2];
   }
 
@@ -4316,6 +4613,7 @@
       else if (it.k === 2) drawDoodad(it.o);
       else if (it.k === 3) drawBuilding(it.o);
       else if (it.k === 5) { if (PK.winter) PK.winter.drawGift(g, it.o, clock, reflecting); }
+      else if (it.k === 6) PK.critters.draw(g, it.o, clock, reflecting);
       else drawUnit(it.o);
       rg.restore();
     }
@@ -4382,6 +4680,7 @@
     for (const gf of gifts) if (visible(gf.x / 2, gf.y / 2)) list.push({ y: gf.y / 2 + 3, k: 5, o: gf });
     for (const b of buildings) if (visible(b.x / 2, b.y / 2)) list.push({ y: b.y / 2 + 19.5, k: 3, o: b });
     for (const u of units) if (visible(u.x / 2, u.y / 2)) list.push({ y: u.y / 2 + 6, k: 4, o: u });
+    if (PK.critters) PK.critters.collect(list, visible); // zvířátka (critters.js), k = 6
     list.sort((a, b) => a.y - b.y);
     if (shading) for (const it of list) addOccluder(it);
     if (shading) drawReflections();
@@ -4392,10 +4691,12 @@
       else if (it.k === 2) drawDoodad(it.o);
       else if (it.k === 3) drawBuilding(it.o);
       else if (it.k === 5) { if (PK.winter) PK.winter.drawGift(g, it.o, clock, reflecting); }
+      else if (it.k === 6) PK.critters.draw(g, it.o, clock, reflecting);
       else drawUnit(it.o);
     }
 
     fx.drawAir(g, T);
+    if (PK.critters) PK.critters.drawAir(g, T, visible);
     drawLights(false);
     g.restore();
 
@@ -4413,6 +4714,7 @@
     g.translate(-cam.x, -cam.y);
 
     fx.drawAmbient(g, T);
+    if (PK.buildings.drawNight) PK.buildings.drawNight(g, T, buildings, visible); // okna v noci
     if (PK.halloween && PK.halloween.draw) PK.halloween.draw(g, T, world, visible);
     if (PK.winter && PK.winter.on) PK.winter.draw(g, T, world, visible, { units, buildings, gifts, cam, zoom, vw, vh });
     if (shading) PK.shaders.end();
@@ -4496,6 +4798,9 @@
       workshop: { afford: afford("workshop"), enabled: hasWorker && ready("barracks"), active: placement === "workshop" },
       monk: { afford: afford("monk"), enabled: barracks },
       knight: { afford: afford("knight"), enabled: ready("stable") },
+      scout: { afford: afford("scout"), enabled: ready("stable") },
+      spearman: { afford: afford("spearman"), enabled: barracks },
+      crossbow: { afford: afford("crossbow"), enabled: barracks && ready("smithy") },
       catapult: { afford: afford("catapult"), enabled: ready("workshop") },
       ...research,
       ...abilityButtons(hero),
