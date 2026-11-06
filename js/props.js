@@ -440,7 +440,11 @@
   }
 
   /* Malý lucernový plod: 2x2 jemné px (= 1 art px pro třpyt), stopka nad ním. */
+  // plody jen na zelených listnáčích (dub, vrba): na jehličnanech, břízách a podzimních
+  // korunách dělaly z lesa oranžový šum (vzor Kingdom: klidné koruny, jeden akcent tu a tam)
+  let fruitOk = true;
   function fruitAt(P, x, y) {
+    if (!fruitOk) return;
     P.set(x, y - 1, C.w[1]);
     P.set(x, y, C.a[4]);
     P.set(x + 1, y, C.a[2]);
@@ -465,7 +469,7 @@
     const lower = list.filter(c => c.y > gl.y - gl.ry * 0.2);
     const R = rng(seed + 99);
     const fruitClumps = [];
-    for (let i = 0; i < 6 && lower.length; i++) {
+    for (let i = 0; i < 3 && lower.length; i++) {
       const c = lower[Math.floor(R() * lower.length)];
       if (fruitClumps.includes(c)) continue;
       fruitClumps.push(c);
@@ -614,9 +618,10 @@
     const branches = [[33, 50, 18, 36, 4, 1.5], [38, 50, 56, 36, 4, 1.5], [35, 48, 36, 18, 4, 2]];
     const strands = [];
     const R = rng(seed + 5);
-    for (let x = 6; x <= 66; x += 3 + Math.floor(R() * 2)) {
+    // převislé větvičky: kratší a řidší, plné barvy (dlouhé tečkované proužky dělaly v lese pruhovaný šum)
+    for (let x = 6; x <= 66; x += 4 + Math.floor(R() * 2)) {
       const edge = Math.abs(x - 36) / 30;
-      strands.push({ x, len: 8 + Math.floor((1 - edge * 0.55) * 26 * (0.45 + R() * 0.55)), ph: R() * 6, k: R() });
+      strands.push({ x, len: 6 + Math.floor((1 - edge * 0.55) * 14 * (0.45 + R() * 0.55)), ph: R() * 6, k: R() });
     }
 
     const res = clumpCrown(2, lobes, { x: 36, y: 30, rx: 30, ry: 22 }, branches, seed, {
@@ -635,10 +640,10 @@
             const x = s.x + Math.round(Math.sin(i * 0.22 + s.ph) * 0.8);
             const y = y0 - 2 + i;
             const tip = i > s.len - 3;
-            let c = (i + s.x) % 3 === 0 ? (lit ? G[4] : G[3]) : lit ? G[3] : G[2];
+            let c = lit ? G[3] : G[2];
             if (tip) c = lit ? G[5] : G[4];
             P.set(x, y, c);
-            if (i % 3 === 1 && i > 2) P.set(x + (lit ? -1 : 1), y + 1, lit ? G[4] : G[2]);
+
           }
         }
       }
@@ -654,9 +659,72 @@
 
   function treeVariant(kind) {
     const seed = 40 + (kind % 3) * 11 + (kind >= 3 ? 5 : 0);
+    fruitOk = kind === 0 || kind === 2;
     const t = kind === 0 ? oak(seed) : kind === 1 ? pine(seed) : kind === 2 ? willow(seed)
-      : kind === 3 ? oak(seed, AUTUMN) : kind === 4 ? pine(seed, BLUE_PINE) : oak(seed, SPRING);
-    return { trunk: t.trunk, crown: t.crown, fruit: t.fruit, w: TW, h: TH, ax: 18, ay: 44 };
+      : kind === 3 ? oak(seed, AUTUMN) : kind === 4 ? pine(seed, BLUE_PINE) : kind === 5 ? oak(seed, SPRING)
+      : kind === 6 ? birch(seed + 7) : blossom(seed + 3);
+    const fruit = fruitOk ? t.fruit : [];
+    fruitOk = true;
+    return { trunk: t.trunk, crown: t.crown, fruit, w: TW, h: TH, ax: 18, ay: 44 };
+  }
+
+
+  /* ---------- bříza: bílý kmen s černými čočkami, řídká světlá koruna ---------- */
+  const BIRCHB = [mix(C.s[2], C.shade, 0.3), C.s[3], C.s[4], mix(C.s[5], C.bone[0], 0.4), mix(C.white, C.bone[0], 0.3), C.white];
+  const BIRCHL = GX.map((c, i) => mix(c, [C.g[0], C.g[1], C.g[2], C.g[3], C.g[4], C.g[5], C.g[6], mix(C.g[6], C.a[4], 0.4)][i], 0.35)).map((c, i) => (i > 3 ? mix(c, C.a[3], 0.12) : c));
+
+  function birch(seed) {
+    const w = TW * HD;
+    const h = TH * HD;
+    const trunk = new Pix(w, h);
+    const cx = 36;
+    for (const [x1, y1] of [[29, 91], [44, 91]]) limb(trunk, cx + (x1 < cx ? -1 : 1), 85, x1, y1, 3.5, 1.2, BIRCHB, { seed, base: 3.4, grain: false });
+    const lean = y => Math.sin(y * 0.05 + 1) * 1.6;
+    barkTrunk(trunk, 40, 89, y => {
+      const hw = 2.7 + (y > 82 ? (y - 82) * 0.3 : 0);
+      return [cx + lean(y) - hw, cx + lean(y) + hw];
+    }, seed, { ramp: BIRCHB, base: 5.2 });
+    // černé čočky a pruhy kůry, u paty tmavá rozpraskaná borka
+    const R = rng(seed + 3);
+    for (let y = 42; y < 88; y += 2 + Math.floor(R() * 3)) {
+      const xc = Math.round(cx + lean(y) - 2 + R() * 3);
+      const len = 1 + Math.floor(R() * 3);
+      for (let i = 0; i < len; i++) if (trunk.get(xc + i, y) >= 0) trunk.set(xc + i, y, i === 0 ? C.ink : C.shade);
+    }
+    for (let y = 82; y < 90; y++) {
+      for (let x = 30; x < 43; x++) {
+        if (trunk.get(x, y) < 0) continue;
+        if (hash(x, y, seed) < 0.25 + (y - 82) * 0.08) trunk.set(x, y, hash(x, y, seed + 1) > 0.5 ? C.w[1] : C.b[2]);
+      }
+    }
+    trunk.outline(C.ink, 0.7);
+
+    const lobes = [[36, 40, 14, 9], [24, 32, 10, 9], [48, 30, 10, 9], [36, 22, 14, 10], [34, 9, 9, 8]];
+    const branches = [[36, 52, 24, 34, 3, 1], [37, 48, 48, 30, 3, 1], [36, 46, 35, 12, 3, 1.2]];
+    const res = clumpCrown(6, lobes, { x: 36, y: 28, rx: 24, ry: 24 }, branches, seed, {
+      ramp: BIRCHL, rmin: 4, rmax: 7, base: 2.6,
+      after(P, cut) {
+        // visící větvičky (převislé konce břízy)
+        for (let x = 14; x < 60; x += 5) {
+          if (hash(x, 3, seed) < cut) continue;
+          let y0 = -1;
+          for (let y = h - 1; y > 10; y--) if (P.get(x, y) >= 0) { y0 = y; break; }
+          if (y0 < 0) continue;
+          const len = 3 + Math.floor(hash(x, 2, seed) * 5);
+          for (let i = 1; i <= len; i++) P.set(x + (i > len - 2 ? 1 : 0), y0 + i, i % 2 ? BIRCHL[4] : BIRCHL[5]);
+        }
+      }
+    });
+    // větve přes kmen kreslí clumpCrown dřevem; břízu přebarvíme na bílou
+    return { trunk: PK.fine(trunk), ...res };
+  }
+
+  /* ---------- kvetoucí třešeň: růžové shluky, bílé okvětí ---------- */
+  const BLOSSOM = [mix(C.cap[0], G[0], 0.55), mix(C.cap[0], G[1], 0.35), mix(C.cap[0], C.cap[1], 0.3), mix(C.cap[1], C.bone[1], 0.25), mix(C.cap[1], C.cap[2], 0.45), mix(C.cap[2], C.white, 0.3), mix(C.cap[2], C.white, 0.55), mix(C.white, C.cap[2], 0.2)];
+
+  function blossom(seed) {
+    const t = oak(seed, BLOSSOM);
+    return t;
   }
 
   /* ---------- zlatý důl (plný a vytěžený) ---------- */
@@ -1533,14 +1601,14 @@
 
   function init() {
     if (trees.length) return;
-    for (let k = 0; k < 6; k++) trees.push(treeVariant(k));
+    for (let k = 0; k < 8; k++) trees.push(treeVariant(k));
     makeDoodads();
   }
 
   init();
 
   // výběr obměny stromu podle náhodného čísla 0..1: většina zelených, občas podzimní nebo jarní koruna
-  const treeKind = h => (h < 0.27 ? 0 : h < 0.52 ? 1 : h < 0.72 ? 2 : h < 0.82 ? 4 : h < 0.92 ? 5 : 3);
+  const treeKind = h => (h < 0.24 ? 0 : h < 0.46 ? 1 : h < 0.62 ? 2 : h < 0.72 ? 4 : h < 0.8 ? 5 : h < 0.9 ? 6 : h < 0.97 ? 3 : 7);
 
   PK.props = {
     trees,
@@ -1548,6 +1616,8 @@
     mine: mine(),
     mineEmpty: mine(true),
     doodads: out,
-    flame: flameFrames
+    flame: flameFrames,
+    // kreslicí pomůcky pro další sady kulis (decor.js)
+    kit: { rock, blocks, planks, limb, barkTrunk, grass, shroom, stack, layer, relight, paintStack, crownClumps, clumpFill, clumpBox, inPoly, boxOf, sprite, pick, mk, ART, GX, SX, WX, HX, BX, BONE, GOLD, PINE, BIRCHL, BLOSSOM }
   };
 })();

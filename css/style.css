@@ -878,9 +878,18 @@ a.btn { display: block; text-align: center; text-decoration: none; }
   display: grid;
   place-items: center;
   padding: 16px;
+  transition: opacity 0.3s ease-out;
+}
+
+/* pozadí zvlášť: při odchodu do menu zmizí samo, logo zůstane vidět */
+.loading::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
   background:
     radial-gradient(ellipse at 50% 30%, #2b2447 0%, #17132c 52%, #0b0914 100%);
-  transition: opacity 0.3s ease-out;
+  transition: opacity 0.55s ease-in-out 0.12s;
 }
 
 .loading[hidden] { display: none; }
@@ -888,19 +897,57 @@ a.btn { display: block; text-align: center; text-decoration: none; }
 
 .ld-box {
   width: min(420px, 100%);
+  transform: translateY(var(--ld-dy, 0px)); /* logo na místě loga v menu (PK.alignLoader v index.html) */
   display: flex;
   flex-direction: column;
   align-items: center;
 }
 
+/* logo je vidět hned a nehýbe se; obsah pod ním najede postupně */
 .ld-logo {
+  width: auto;
   height: 148px;
   image-rendering: pixelated;
-  opacity: 0;
-  transition: opacity 0.25s;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.55)); /* jako #logo v menu */
+  transform-origin: 0 0;
 }
 
-.ld-logo.ready { opacity: 1; }
+.ld-road, .ld-row, .ld-tip { animation: ld-in 0.5s ease-out both; }
+.ld-road { animation-delay: 0.1s; }
+.ld-row { animation-delay: 0.2s; }
+.ld-tip { animation-delay: 0.3s; }
+
+@keyframes ld-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* odchod do menu: pruh a texty zmizí, pozadí se rozplyne do scény a logo dojede na své místo v menu */
+.loading.leaving { pointer-events: none; }
+.loading.leaving::before { opacity: 0; }
+.loading.leaving .ld-road,
+.loading.leaving .ld-row,
+.loading.leaving .ld-tip { animation: ld-out 0.25s ease-out both; }
+
+@keyframes ld-out { to { opacity: 0; } }
+.loading.leaving .ld-logo { transition: transform 0.6s cubic-bezier(0.45, 0, 0.2, 1); }
+
+/* vlajky jazyka v menu kreslí až game.js: místo pro ně je od začátku, ať se menu (a logo
+ * načítací obrazovky srovnané s logem v menu) během načítání neposune */
+#m-lang:empty { min-height: 47px; }
+
+/* dokud běží načítání, menu pod ním čeká bez loga a obsahu (rámeček panelu je vidět) */
+body.booting #logo { visibility: hidden; }
+/* (html body … .panel: silnější než #panel-main:not([hidden]) .btn.big s animací rise) */
+html body.booting #menu .tagline,
+html body.booting #menu .panel .page > *,
+html body.booting #menu .footer { opacity: 0; animation: none; }
+
+/* po načtení obsah menu najede shora dolů (zpoždění --d nastaví loader.js); stejná animace
+ * rise jako tlačítka menu, aby se po odebrání třídy intro znovu nespustila */
+html body #menu.intro .tagline,
+html body #menu.intro .panel .page > *,
+html body #menu.intro .footer { animation: rise 0.45s ease-out var(--d, 0s) both; }
 
 .ld-road {
   position: relative;
@@ -988,10 +1035,12 @@ a.btn { display: block; text-align: center; text-decoration: none; }
 
 @media (prefers-reduced-motion: reduce) {
   .ld-fill::after { animation: none; display: none; }
+  .ld-road, .ld-row, .ld-tip,
+  html body #menu.intro .tagline, html body #menu.intro .panel .page > *, html body #menu.intro .footer { animation: none; }
 }
 
 @media (max-height: 420px) {
-  .ld-logo { height: 96px; }
+  /* logo zůstává stejně velké jako v menu, jen pruh je blíž */
   .ld-road { margin-top: 80px; }
 }
 
@@ -1045,3 +1094,7 @@ a.btn { display: block; text-align: center; text-decoration: none; }
 
 /* volba jazyka pod tlačítky hlavního menu: vlajky se jmény jazyků (css/flags.css) */
 .lang-pick { display: flex; justify-content: center; margin: 14px auto 0; }
+
+/* miniatura mapy v seznamu (game.js mapThumb): pixelová mapka vlevo, název a popisek vpravo */
+.map-item.has-thumb { grid-template-columns: auto 1fr; column-gap: 10px; align-items: center; }
+.map-item.has-thumb .map-thumb { grid-row: span 2; height: auto; justify-self: center; image-rendering: pixelated; box-shadow: 0 0 0 1px var(--ink), 0 0 0 2px #5a4a3a; background: #15121f; }

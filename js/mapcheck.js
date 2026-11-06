@@ -40,6 +40,21 @@
 
     for (const [x, y] of [...map.gold, ...map.trees]) if (!inside(x, y, 12)) add("Některé doly nebo stromy leží mimo mapu.");
 
+    // budovy a jednotky z editoru: správná frakce, budovy se nepřekrývají a nestojí na surovinách
+    const resources = [...map.gold.map(([x, y]) => ({ type: "gold", x, y, amount: 1 })), ...map.trees.map(([x, y]) => ({ type: "wood", x, y, amount: 1 }))];
+    const placed = [];
+    map.slots.forEach((slot, i) => {
+      const undead = !!map.coop && map.coop.ai === i;
+      const own = undead ? MAPS.PLACE_BUILDINGS.undead : MAPS.PLACE_BUILDINGS.human;
+      const ownUnits = undead ? MAPS.PLACE_UNITS.undead : MAPS.PLACE_UNITS.human;
+      for (const b of slot.buildings) if (!own.includes(b.type)) add(`Základna ${team(i)} má budovu jiné frakce (${b.type}).`);
+      for (const u of slot.units) if (!ownUnits.includes(u.type)) add(`Základna ${team(i)} má jednotku jiné frakce (${u.type}).`);
+      for (const b of [{ ...slot.hq, type: undead ? "necropolis" : slot.hq.type }, ...slot.buildings]) {
+        if (!R.footFree(b.type, b.x, b.y, placed, resources)) add(`Budovy základny ${team(i)} se překrývají nebo stojí na dole či stromu.`);
+        placed.push({ ...b, hp: 1 });
+      }
+    });
+
     map.gold.forEach(([x, y], i) => {
       map.gold.forEach(([x2, y2], j) => {
         if (j > i && Math.hypot(x - x2, y - y2) <= 60) add("Některé doly jsou moc blízko u sebe.");
