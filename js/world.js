@@ -282,6 +282,39 @@
 
     yield 0;
 
+    // skutečná vzdálenost od břehu uvnitř vody (zkosená vzdálenostní transformace). Jezera jsou
+    // poskládaná z mnoha rovnoběžných tahů, takže vzdálenost k nejbližšímu tahu by v nich dělala
+    // pravidelné pruhy hloubky; u jedné řeky vyjde stejně jako hw - d.
+    const shore = new Float32Array(W * H);
+    {
+      const R2 = Math.SQRT2;
+      for (let i = 0; i < W * H; i++) shore[i] = rd[i] < 0 ? 1e6 : 0;
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const i = y * W + x;
+        if (!shore[i]) continue;
+        let v = shore[i];
+        if (x > 0) v = Math.min(v, shore[i - 1] + 1);
+        if (y > 0) {
+          v = Math.min(v, shore[i - W] + 1);
+          if (x > 0) v = Math.min(v, shore[i - W - 1] + R2);
+          if (x < W - 1) v = Math.min(v, shore[i - W + 1] + R2);
+        }
+        shore[i] = v;
+      }
+      for (let y = H - 1; y >= 0; y--) for (let x = W - 1; x >= 0; x--) {
+        const i = y * W + x;
+        if (!shore[i]) continue;
+        let v = shore[i];
+        if (x < W - 1) v = Math.min(v, shore[i + 1] + 1);
+        if (y < H - 1) {
+          v = Math.min(v, shore[i + W] + 1);
+          if (x < W - 1) v = Math.min(v, shore[i + W + 1] + R2);
+          if (x > 0) v = Math.min(v, shore[i + W - 1] + R2);
+        }
+        shore[i] = v;
+      }
+    }
+
     // hory a hradby: nejbližší střed hřebene a jeho šířka, resp. maska korunou zdi
     const mrd = new Float32Array(W * H).fill(1e6);
     const mhw = new Float32Array(W * H);
@@ -434,7 +467,7 @@
         let bdx = 1e6;
 
         if (rd[i] < 1e5) {
-          const sd = rd[i] + (vnoise(y / 7, x / 9, 6) - 0.5) * 2.4;
+          const sd = (rd[i] < 0 ? 0.5 - shore[i] : rd[i]) + (vnoise(y / 7, x / 9, 6) - 0.5) * 2.4;
           F.riv[i] = sd;
           bdx = sd + rhw[i];
           hw = rhw[i];
@@ -1529,12 +1562,14 @@
               const ux = F.rfx[ai] || 0.0001, uy = F.rfy[ai] || 1;
               const along = X * ux + Y * uy;
               const across = -X * uy + Y * ux;
-              const calm = hw > 9 ? 0.06 : 0;
-              const ph = along * (TAU / 7) + across * 0.35 + vnoise(X / 6, Y / 6, 3) * 4 - f * (Math.PI / 2);
+              const wide = hw > 9; // jezero / široká řeka: klidná hladina
+              const ph = along * (TAU / 7) + across * 0.35 + vnoise(X / 6, Y / 6, 3) * (wide ? 7 : 4) - f * (Math.PI / 2);
               const wv = Math.sin(ph);
               const brk = NA[((fy & 255) << 8) + ((fx + f * 3) & 255)];
-              if (wv > 0.86 + calm && e > 0.1 && brk > 0.42) k = Math.min(4, k + 1);
-              else if (wv < -0.93 && brk > 0.5) k = Math.max(0, k - 1);
+              // na klidné hladině jen ojedinělé krátké vlnky v ostrůvcích, žádné pravidelné pruhy
+              const spot = wide ? vnoise(X / 10 + f * 0.6, Y / 7, 5) : 1;
+              if (wv > (wide ? 0.9 : 0.86) && e > 0.1 && brk > 0.42 && spot > 0.55) k = Math.min(4, k + 1);
+              else if (!wide && wv < -0.93 && brk > 0.5) k = Math.max(0, k - 1);
               c = V[k];
               // mělké dno: písek a oblázky prosvítají
               if (ds < 1.7 && ds > 0.45 && hash(fx >> 1, fy >> 1, 76) > 0.72) c = mix(c, hash(fx >> 1, fy >> 1, 77) > 0.5 ? D[4] : D[2], 0.3);
@@ -1548,7 +1583,7 @@
               // stín mostu (dopadá doprava dolů)
               if (F.nd[ai] < 1.6 && bil(F.nd, Math.max(0, fx - 3)) < 1.05 && rec.roads[F.roadId[ai]] && rec.roads[F.roadId[ai]].main) c = mix(c, C.shade, 0.5);
               // záblesky na hřebenech
-              if (hash(fx + f * 7, fy, 71) > 0.9965) c = C.white;
+              if (hash(fx + f * 7, fy, 71) > (hw > 9 ? 0.9993 : 0.9965)) c = C.white;
               // lekníny v klidné vodě u břehu (nehýbou se)
               if (ds > 1.3 && ds < 3.2 && hw >= 6) {
                 const gx = (fx / 12) | 0, gy = (fy / 10) | 0;
