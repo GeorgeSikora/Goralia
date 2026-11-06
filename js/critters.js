@@ -316,7 +316,22 @@
       }
       return null;
     };
+    // výchozí vlastnosti podle druhu (pohlaví kachny, paroží srnce, barva motýla, kruh vrány…)
+    const placed = (type, x, y) => {
+      if (type === "duck") return add("duck", [x, y], { male: R() < 0.5 });
+      if (type === "deer") return add("deer", [x, y], { buck: R() < 0.4 });
+      if (type === "butterfly") return add("butterfly", [x, y], { kind: Math.floor(R() * BUTTER.length), z: 6 + R() * 6 });
+      if (type === "crow") return add("crow", [x, y], { r: 22 + R() * 18, sp: 0.35 + R() * 0.25, z: 40 + R() * 16 });
+      if (type === "bee") { for (let j = 0; j < 5; j++) add("bee", [x, y - 6], { ph: j * 1.3 }); return; }
+      if (type === "fish") return add("fish", [x, y], { t: R() * 8 });
+      if (type === "sparrow") { for (let j = 0; j < 3; j++) add("sparrow", [x + (R() - 0.5) * 12, y + (R() - 0.5) * 6], { flock: 100 + Math.round(x) }); return; }
+      return add(type, [x, y]);
+    };
     const add = (type, p, o = {}) => p && state.list.push({ type, x: p[0], y: p[1], hx: p[0], hy: p[1], t: R() * 4, ph: R() * 6.28, face: R() < 0.5 ? 1 : -1, st: "idle", z: 0, ...o });
+
+    // zvířata z editoru map: stojí přesně tam, kam je autor dal
+    for (const [type, x, y] of w.critterSpots || []) placed(type, x, y);
+    if (w.wild === false) return;
 
     for (let i = 0; i < n(5); i++) add("rabbit", find(grass));
     // hejnka vrabců (3-5 ptáčků u sebe)
@@ -602,5 +617,22 @@
     }
   }
 
-  PK.critters = { update, collect, draw, drawAir, reset: () => { state.for = null; }, get list() { return state.list; }, rows, deerSprite };
+  // Ikona zvířete pro paletu editoru map: { r: plátno s jemným dvojčetem, w, h } (art px).
+  const ICON_ROWS = {
+    bee: [["..ww..", ".wwww.", "kykyke", ".kyky.", "..k..."], { w: 0xf7f1df, k: C.ink, y: 0xffbf45, e: C.ink }],
+    fish: [[".....bb.", "..bbbbcb", "bbbbbbbe", "..cccbb.", ".....cc."], { b: 0x9aa4b8, c: 0x6a7490, e: C.ink }]
+  };
+  function icon(type) {
+    if (type === "rabbit") return rows("rabbit|sit", RABBIT.sit, FUR);
+    if (type === "sparrow") return rows("sp|stand", SPARROW.stand, BIRD);
+    if (type === "crow") return rows("crow|mid", CROW.mid, CROWC);
+    if (type === "butterfly") return rows("bf|0|open", WINGS.open, BUTTER[0], 0.55);
+    if (type === "frog") return rows("frog|sit", FROG.sit, FROGC);
+    if (type === "duck") return rows("duck|1|swim", DUCK.swim, DUCKC);
+    if (type === "deer") return deerSprite(0, false, true);
+    const ir = ICON_ROWS[type];
+    return ir ? rows(`icon|${type}`, ir[0], ir[1]) : null;
+  }
+
+  PK.critters = { update, collect, draw, drawAir, icon, reset: () => { state.for = null; }, get list() { return state.list; }, rows, deerSprite };
 })();

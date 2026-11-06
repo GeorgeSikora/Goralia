@@ -255,8 +255,25 @@
   const DOC = {
     FORMAT: "goralia-map", VERSION: 1,
     MIN_W: 320, MAX_W: 5000, MIN_H: 200, MAX_H: 5000,
-    MAX_BASES: 16, MAX_TREES: 3000, MAX_BIOMES: 60, MAX_ASH: 60, MAX_GOLD: 60, MAX_WATER: 300, MAX_ROADS: 80, MAX_MOUNTAINS: 300, MAX_WALLS: 300, MAX_PTS: 600, MAX_TOTAL_PTS: 20000
+    MAX_BASES: 16, MAX_TREES: 3000, MAX_BIOMES: 60, MAX_ASH: 60, MAX_GOLD: 60, MAX_WATER: 300, MAX_ROADS: 80, MAX_MOUNTAINS: 300, MAX_WALLS: 300, MAX_PTS: 600, MAX_TOTAL_PTS: 20000,
+    // obsah z editoru navíc: kulisy, zvířata, druhy půdy, jednotky a budovy na startu
+    MAX_PROPS: 2500, MAX_CRITTERS: 300, MAX_GROUND: 400, MAX_UNITS: 400, MAX_BUILDINGS: 160, TREE_KINDS: 8
   };
+
+  // Co smí editor umístit (sdílí server i klient). Jména kulis jsou klíče PK.props.doodads,
+  // zvířata typy z critters.js, jednotky a budovy typy z rules.js.
+  const CRITTERS = ["rabbit", "sparrow", "deer", "duck", "frog", "butterfly", "crow", "bee", "fish"];
+  const WATER_CRITTERS = ["duck", "fish"];
+  const GROUND_KINDS = 13; // biomes.js K: louka … vyprahlá zem
+  const PLACE_BUILDINGS = {
+    human: ["barracks", "tower", "hut", "smithy", "stable", "workshop"],
+    undead: ["crypt", "slaughterhouse", "ziggurat", "portal"]
+  };
+  const PLACE_UNITS = {
+    human: ["worker", "soldier", "archer", "spearman", "crossbow", "monk", "knight", "scout", "catapult", "hero"],
+    undead: ["ghoul", "skeleton", "hound", "banshee", "necromancer", "plague", "abomination", "lich"]
+  };
+  const LANGS = ["en", "szl"]; // překlady názvu a popisu mapy (čeština je výchozí)
 
   const isNum = v => typeof v === "number" && Number.isFinite(v);
   const cleanText = (v, max) => (typeof v === "string" ? v.replace(/[\u0000-\u001f<>]/g, "").trim().slice(0, max) : "");
@@ -340,6 +357,53 @@
     // symetrická mapa: výzdoba se zrcadlí, aby žádná strana neměla jiný terén
     if (raw.mirror && typeof raw.mirror === "object" && (raw.mirror.x || raw.mirror.y)) doc.mirror = { x: !!raw.mirror.x, y: !!raw.mirror.y };
 
+    // Obsah z editoru: kulisy [jméno, x, y], zvířata [typ, x, y], stromy mohou mít třetí číslo = druh stromu,
+    // půda [druh, x, y, poloměr] (art px), jednotky a budovy [typ, základna, x, y]. Všechno v logických px kromě půdy.
+    const name24 = v => typeof v === "string" && /^[a-zA-Z][a-zA-Z0-9]{0,23}$/.test(v);
+    const props = take(raw.props, DOC.MAX_PROPS, "Kulisy").filter(p => Array.isArray(p) && name24(p[0]) && point([p[1], p[2]], LW, LH))
+      .map(p => [p[0], Math.round(p[1]), Math.round(p[2])]);
+    if (props.length) doc.props = props;
+    const critters = take(raw.critters, DOC.MAX_CRITTERS, "Zvířata").filter(p => Array.isArray(p) && CRITTERS.includes(p[0]) && point([p[1], p[2]], LW, LH))
+      .map(p => [p[0], Math.round(p[1]), Math.round(p[2])]);
+    if (critters.length) doc.critters = critters;
+    const ground = take(raw.ground, DOC.MAX_GROUND, "Půda").filter(c => Array.isArray(c) && Number.isInteger(c[0]) && c[0] >= 0 && c[0] < GROUND_KINDS && circle(c, 1))
+      .map(c => [c[0], Math.round(c[1]), Math.round(c[2]), Math.round(c[3])]);
+    if (ground.length) doc.ground = ground;
+    raw.trees && Array.isArray(raw.trees) && raw.trees.slice(0, DOC.MAX_TREES).forEach(t => {
+      if (!Array.isArray(t) || !Number.isInteger(t[2]) || t[2] < 0 || t[2] >= DOC.TREE_KINDS) return;
+      const own = trees.find(q => q[0] === Math.round(t[0]) && q[1] === Math.round(t[1]) && q.length === 2);
+      if (own) own.push(t[2]);
+    });
+    const onBase = (list, max, what, ok) => take(list, max, what)
+      .filter(u => Array.isArray(u) && ok(u[0]) && Number.isInteger(u[1]) && u[1] >= 0 && u[1] < bases.length && point([u[2], u[3]], LW, LH))
+      .map(u => [u[0], u[1], Math.round(u[2]), Math.round(u[3])]);
+    const units = onBase(raw.units, DOC.MAX_UNITS, "Jednotky", t => PLACE_UNITS.human.includes(t) || PLACE_UNITS.undead.includes(t));
+    if (units.length) doc.units = units;
+    const blds = onBase(raw.buildings, DOC.MAX_BUILDINGS, "Budovy", t => PLACE_BUILDINGS.human.includes(t) || PLACE_BUILDINGS.undead.includes(t));
+    if (blds.length) doc.buildings = blds;
+    // názvy a popisy v dalších jazycích
+    if (raw.i18n && typeof raw.i18n === "object") {
+      const tr = {};
+      for (const lang of LANGS) {
+        const o = raw.i18n[lang];
+        if (!o || typeof o !== "object") continue;
+        const n = cleanText(o.name, 32);
+        const d = cleanText(o.description, 400);
+        if (n || d) tr[lang] = { ...(n ? { name: n } : {}), ...(d ? { description: d } : {}) };
+      }
+      if (Object.keys(tr).length) doc.i18n = tr;
+    }
+    // jezera z editoru drží skupinu tahů vody pohromadě (g = číslo jezera)
+    if (Array.isArray(raw.water)) {
+      let k = 0;
+      raw.water.slice(0, DOC.MAX_WATER).forEach(s => {
+        if (!s || !isNum(s.hw) || !Array.isArray(s.pts) || s.pts.length < 2 || !s.pts.slice(0, DOC.MAX_PTS).every(p => point(p, w, h, 60))) return;
+        if (Number.isInteger(s.g) && s.g > 0 && water[k]) water[k].g = s.g;
+        k++;
+      });
+    }
+    if (raw.wild === false) doc.wild = false; // bez náhodných zvířat, jen ta umístěná
+
     // Kooperace: hráči v jednom týmu proti AI nemrtvým, kteří obsadí základnu s indexem coop.ai.
     if (raw.coop && typeof raw.coop === "object" && Number.isInteger(raw.coop.ai) && raw.coop.ai >= 0 && raw.coop.ai < bases.length && bases.length >= 2) {
       doc.coop = { ai: raw.coop.ai, faction: "undead" };
@@ -398,6 +462,15 @@
       theme: d.theme, biomes: d.biomes, ash: d.ash, mirror: d.mirror || null
     });
 
+    // obsah z editoru: kulisy jako pevně umístěné (landmarks), zvířata a druhy půdy do receptu terénu
+    for (const [name, x, y] of d.props || []) terrain.doodads.landmarks.push([name, x / 2, y / 2, true, 4]);
+    terrain.critters = (d.critters || []).map(([type, x, y]) => [type, x / 2, y / 2]);
+    terrain.wild = d.wild !== false;
+    terrain.ground = d.ground || [];
+    // jednotky a budovy na startu patří základně (slotu); prázdný slot je ve hře nedostane
+    for (const [type, b, x, y] of d.buildings || []) if (slots[b]) slots[b].buildings.push({ type, x, y });
+    for (const [type, b, x, y] of d.units || []) if (slots[b]) slots[b].units.push({ type, x, y });
+
     const count = coop ? `${humans === 1 ? "1 hráč" : humans < 5 ? `${humans} hráči` : `${humans} hráčů`} proti nemrtvým` : n === 2 ? "1v1" : n < 5 ? `${n} hráči` : `${n} hráčů`;
 
     return {
@@ -406,8 +479,15 @@
       theme: terrain.theme,
       description: d.description,
       slots, gold: d.gold, trees: d.trees, terrain, custom: true,
+      ...(d.i18n ? { i18n: d.i18n } : {}),
       ...(coop ? { coop } : {})
     };
+  }
+
+  // Název nebo popis mapy v jazyce hráče (z editoru), jinak česky.
+  function localized(map, key, lang) {
+    const tr = map && map.i18n && lang && map.i18n[lang];
+    return (tr && tr[key]) || (map && map[key]) || "";
   }
 
   // Mapa se stejným id přepíše dřívější; seznam drží pořadí, v jakém mapy přibyly.
@@ -433,6 +513,7 @@
     get: id => byId.get(id) || null,
     THEMES, THEME_NAMES, themeOf, isWinterMap,
     isWater, isRock, WALL_PAD, wallR, WALL_FACE, waterNear,
+    CRITTERS, WATER_CRITTERS, GROUND_KINDS, PLACE_BUILDINGS, PLACE_UNITS, LANGS, localized,
     DOC, normalizeDoc, compileDoc, zonesFor, baseAt, baseMinesFor, register, unregister,
     // první dostupná mapa (mapy se načítají ze serveru, napevno žádná není)
     get DEFAULT() { return list.length ? list[0].id : ""; }

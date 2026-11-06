@@ -2063,7 +2063,7 @@
 
       const title = document.createElement("span");
       title.className = "map-name";
-      title.textContent = m.name;
+      title.textContent = MAPS.localized(m, "name", PK.i18n && PK.i18n.lang);
       const tag = document.createElement("span");
       tag.className = "map-tag";
       const theme = MAPS.themeOf(m);
@@ -2077,8 +2077,8 @@
       return item;
     }));
 
-    lobbyEl.name.textContent = map.name;
-    lobbyEl.desc.textContent = map === STUB_MAP ? "Na serveru zatím nejsou žádné mapy. Vytvoř je v editoru." : map.description;
+    lobbyEl.name.textContent = MAPS.localized(map, "name", PK.i18n && PK.i18n.lang);
+    lobbyEl.desc.textContent = map === STUB_MAP ? "Na serveru zatím nejsou žádné mapy. Vytvoř je v editoru." : MAPS.localized(map, "description", PK.i18n && PK.i18n.lang);
     lobbyEl.meta.textContent = `Hráči: ${map.coop ? `${map.humans} + nemrtví (AI)` : map.players} · Velikost: ${sizeLabel(map)} (${map.size[0] * 2}×${map.size[1] * 2}) · Zlaté doly: ${map.gold.length} · Krajina: ${MAPS.THEME_NAMES[MAPS.themeOf(map)].toLowerCase()}`;
 
     lobbyEl.slots.replaceChildren(...lobby.slots.map((slot, i) => {
@@ -3308,6 +3308,38 @@
     openOfflineLobby();
   });
 
+  // Zkouška mapy z editoru (?test=editor): neuložená mapa leží v localStorage, hraje se hned proti AI.
+  // Hráč je na základně zvolené v editoru (test.slot), ostatní obsadí AI; mapa se nikam neukládá.
+  if (new URLSearchParams(location.search).get("test") === "editor") {
+    mapsReady.then(() => {
+      let test = null;
+      try { test = JSON.parse(localStorage.getItem("goralia-editor-test") || "null"); } catch (e) { test = null; }
+      const raw = test && test.doc;
+      const { doc } = raw ? MAPS.normalizeDoc({ ...raw, id: "zkouska-z-editoru", name: raw.name || "Zkouška" }) : { doc: null };
+      if (!doc) return;
+      const next = MAPS.compileDoc(doc);
+      next.name = `${doc.name} (zkouška)`;
+      MAPS.register(next);
+      if (PK.world) PK.world.forget(next.id);
+      const me = Number.isInteger(test.slot) && test.slot >= 0 && test.slot < next.slots.length && !(next.coop && next.coop.ai === test.slot) ? test.slot : 0;
+      // vlastní základna je vždy slot 0 hry, takže hráčova základna se přesune na začátek
+      if (me) {
+        const order = [me, ...next.slots.map((_, i) => i).filter(i => i !== me)];
+        next.slots = order.map(i => next.slots[i]);
+        if (next.coop) next.coop = { ...next.coop, ai: order.indexOf(next.coop.ai) };
+      }
+      lastOffline = { mapId: next.id, slots: next.slots.map((_, i) => ({ kind: i === 0 ? "human" : test.empty ? "closed" : "ai", name: i === 0 ? "Ty" : "" })) };
+      if (test.empty && lastOffline.slots.length > 1) lastOffline.slots[1].kind = "ai"; // aspoň jeden soupeř
+      let tries = 0;
+      const go = () => {
+        if (started) return;
+        if ((PK.loader && PK.loader.busy) && tries++ < 600) return setTimeout(go, 100);
+        startOffline(lastOffline);
+      };
+      go();
+    });
+  }
+
   /* ======================= hit visuals ======================= */
   const RANGED = new Set(["archer", "crossbow", "tower", "skeleton", "banshee", "lich", "necromancer", "ziggurat", "necropolis"]);
   const BOLTS = new Set(["tower", "banshee", "lich", "necromancer", "ziggurat", "necropolis"]);
@@ -3789,11 +3821,23 @@
     }
   }
 
+  // Druh stromu zvolený v editoru map (třetí číslo u stromu), jinak -1 = podle krajiny.
+  let treeKinds = { map: null, at: null };
+  function treeKindAt(x, y) {
+    if (treeKinds.map !== map) {
+      treeKinds = { map, at: new Map() };
+      for (const t of map.trees || []) if (t.length > 2) treeKinds.at.set(`${t[0]},${t[1]}`, t[2]);
+    }
+    const k = treeKinds.at.size ? treeKinds.at.get(`${x},${y}`) : undefined;
+    return k == null || !PK.props.trees[k] ? -1 : k;
+  }
+
   function drawTree(r) {
     const footX = Math.round(r.x / 2);
     const footY = Math.round(r.y / 2) + 15;
     // druh stromu podle krajiny mapy (podzimní duby, smrky na vysočině, vrby v bažině…)
-    const variant = PK.krajiny ? PK.krajiny.treeKind(hash3(r.x, r.y, 5), map.terrain, r.x / 2, r.y / 2) : PK.props.treeKind(hash3(r.x, r.y, 5));
+    const kind = treeKindAt(r.x, r.y);
+    const variant = kind >= 0 ? kind : PK.krajiny ? PK.krajiny.treeKind(hash3(r.x, r.y, 5), map.terrain, r.x / 2, r.y / 2) : PK.props.treeKind(hash3(r.x, r.y, 5));
     const t = PK.props.trees[variant];
     const stage = r.amount > 66 ? 0 : r.amount > 33 ? 1 : 2;
     const sway = Math.sin(clock * 1.3 + r.x * 0.05) > 0.35 ? 1 : 0;

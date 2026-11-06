@@ -130,6 +130,22 @@
     return K.MEADOW;
   }
 
+  // Kruhy půdy z editoru: uvnitř kruhu je jeho druh, u okraje se přechod spočítá stejně jako mezi buňkami
+  // (_m = vzdálenost k hranici, _k2 = druh za ní), takže okraj kruhu má rozdithrovaný přechod a skvrny.
+  function groundAt(list, x, y) {
+    for (const [k, cx, cy, r] of list) {
+      const dx = x - cx, dy = y - cy;
+      if (Math.abs(dx) > r + CS || Math.abs(dy) > r + CS) continue;
+      const d = r - Math.hypot(dx, dy);
+      if (d > 0) {
+        if (k !== _k1) { _k2 = _k1; _m = Math.min(d, CS); _k1 = k; }
+        else if (_k2 !== k) _m = Math.max(_m, Math.min(d, CS));
+      } else if (k !== _k1 && -d < _m) {
+        _k2 = k; _m = -d;
+      }
+    }
+  }
+
   // nejbližší buňka a vzdálenost k nejbližší buňce jiného druhu (výsledek v _k1, _k2, _m)
   let _k1 = 0, _k2 = 0, _m = 0;
   function cellAt(x, y) {
@@ -205,6 +221,8 @@
       }
     }
 
+    // druhy půdy namalované v editoru map: kruhy [druh, x, y, poloměr] přebijí buňky (pozdější kruh vyhrává)
+    const GR = rec.ground && rec.ground.length ? rec.ground.filter(c => c[0] >= 0 && c[0] < NK) : null;
     const bio = new Uint8Array(N);
     const bk2 = new Uint8Array(N);
     const bm = new Float32Array(N);
@@ -218,6 +236,7 @@
         const ux = (fbm(x / 48, y / 48, seed + 5, 3) - 0.5) * 2 * WARP + (fbm(x / 19, y / 19, seed + 9, 2) - 0.5) * 22 + (vnoise(x / 7, y / 7, seed + 7) - 0.5) * 6;
         const uy = (fbm(x / 48, y / 48, seed + 6, 3) - 0.5) * 2 * WARP + (fbm(x / 19, y / 19, seed + 10, 2) - 0.5) * 22 + (vnoise(x / 7, y / 7, seed + 8) - 0.5) * 6;
         cellAt(x + 0.5 + ux, y + 0.5 + uy);
+        if (GR) groundAt(GR, x + 0.5 + ux * 0.5, y + 0.5 + uy * 0.5);
         const def = DEF[_k1];
         let o1 = -1, o2 = -1; // mimo skvrny hluboko pod nulou, ať interpolace na hranici oblasti nic nevytvoří
         if (def.ov) {

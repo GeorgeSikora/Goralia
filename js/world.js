@@ -2011,6 +2011,9 @@
     world.water = b.water || [];
     world.tuftFrames = buildTufts(b);
     placeDoodads(layoutOf(map));
+    // zvířata umístěná v editoru (critters.js je přidá k náhodným, nebo místo nich, když mapa má wild: false)
+    world.critterSpots = rec.critters || [];
+    world.wild = rec.wild !== false;
     if (!world.clouds) world.clouds = buildClouds();
     if (!world.mist) world.mist = buildMist();
     if (!world.warmth) world.warmth = buildWarmth();
