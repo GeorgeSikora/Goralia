@@ -260,9 +260,12 @@
             const t = clamp(((x - ax) * dx + (y - ay) * dy) / len2, 0, 1);
             const d = Math.hypot(x - (ax + dx * t), y - (ay + dy * t));
 
-            if (d < rd[y * W + x]) {
+            // nejbližší podle vzdálenosti od břehu (ne od osy): potok ústící do jezera
+            // tak nevytvoří u ústí ostrůvek, voda je čisté sjednocení všech tahů
+            const hw = river.hw + 1.3 * Math.sin((x + y) * 0.09);
+            if (d - hw < rd[y * W + x] - rhw[y * W + x]) {
               rd[y * W + x] = d;
-              rhw[y * W + x] = river.hw + 1.3 * Math.sin((x + y) * 0.09);
+              rhw[y * W + x] = hw;
             }
           }
         }
@@ -703,7 +706,9 @@
       }
     }
 
-    if (PK.winter && PK.winter.on) {
+    // krajina mapy (biomes.js): podzim, bažina, vysočina, pustina a jejich oblasti
+    if (PK.biomes) PK.biomes.paint(T, zone, b, { water: Z_WATER, frame: Z_FRAME, rock: Z_ROCK, wall: Z_WALL }, 1);
+    if (PK.winter && (PK.winter.on || PK.maps.isWinterMap(b.map))) {
       PK.winter.snowTerrain(T, zone, b, { grass: Z_GRASS, path: Z_PATH, plaza: Z_PLAZA, terrace: Z_TERRACE, bank: Z_BANK, rock: Z_ROCK, wall: Z_WALL, frame: Z_FRAME }, 1);
     }
     const canvas = T.toCanvas();
@@ -1352,7 +1357,8 @@
     }
 
     // zima (winter.js): sníh na trávě, ušlapané cesty, poprašek na kamenech
-    if (PK.winter && PK.winter.on) {
+    if (PK.biomes) PK.biomes.paint(P, zF, b, { water: Z_WATER, frame: Z_FRAME, rock: Z_ROCK, wall: Z_WALL }, 2);
+    if (PK.winter && (PK.winter.on || PK.maps.isWinterMap(b.map))) {
       PK.winter.snowTerrain(P, zF, b, { grass: Z_GRASS, path: Z_PATH, plaza: Z_PLAZA, terrace: Z_TERRACE, bank: Z_BANK, rock: Z_ROCK, wall: Z_WALL, frame: Z_FRAME });
     }
 
@@ -1426,7 +1432,8 @@
   /* ---------- grass tufts that sway ---------- */
   function buildTufts() {
     const frames = [];
-    const G = PK.winter && PK.winter.on ? PK.winter.TUFT : C.g; // v zimě suchá ojíněná tráva
+    // v zimě suchá ojíněná tráva, jinak barvy krajiny mapy (biomes.js)
+    const G = PK.winter && PK.winter.on ? PK.winter.TUFT : PK.biomes ? PK.biomes.tuftRamp(rec) : C.g;
 
     // trs 7x6 art px v jemné mřížce: sedm stébel různé výšky, ohýbají se od paty ke špičce
     const blades = [[6, 10, 3], [8, 8, 4], [4, 8, 3], [10, 6, 3], [2, 5, 2], [7, 5, 2], [12, 4, 2]];
@@ -1460,6 +1467,7 @@
       const y = tf.y + Math.floor(R() * tf.h);
       if (zone[y * W + x] !== Z_GRASS || world.ashMap[y * W + x]) continue;
       if (world.toneMap[y * W + x] < 2) continue;
+      if (PK.biomes && !PK.biomes.tuftOk(rec, x, y)) continue;
       list.push({ x, y, ph: R() * 6.28 });
     }
 
@@ -1854,10 +1862,12 @@
 
   /* ---------- forest beyond the map border ---------- */
   let forestPattern = null;
+  let forestTheme = "";
 
   // Les za okrajem mapy: vzorek se peče rovnou v jemné hustotě (podrost ze shluků listí,
   // jemná dvojčata stromů) a kreslí se se zmenšením 0.5, takže 1 bod vzorku = 1 jemný px.
-  function buildForest() {
+  function buildForest(theme) {
+    const G = PK.biomes ? PK.biomes.grassRamp(theme) : C.g;
     const TW = 192;
     const TH = 144;
     const FW = TW * 2;
@@ -1899,7 +1909,7 @@
 
     const R = rng(4242);
     const spots = [];
-    for (let i = 0; i < 26; i++) spots.push([R() * TW, R() * TH, PK.props.treeKind(R())]);
+    for (let i = 0; i < 26; i++) spots.push([R() * TW, R() * TH, PK.biomes ? PK.biomes.treeKind(R(), { theme }, 0, 0) : PK.props.treeKind(R())]);
     spots.sort((a, b) => a[1] - b[1]);
 
     // stromy přesahující okraj dlaždice se kreslí i na protější straně, aby na sebe navazovaly
@@ -1926,7 +1936,8 @@
   }
 
   function drawForest(g, v) {
-    if (!forestPattern) forestPattern = buildForest();
+    const theme = rec && rec.theme && rec.theme !== "winter" ? rec.theme : "meadow";
+    if (!forestPattern || forestTheme !== theme) { forestPattern = buildForest(theme); forestTheme = theme; }
     g.fillStyle = forestPattern;
     const x1 = v.x + v.w;
     const y1 = v.y + v.h;

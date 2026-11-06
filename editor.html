@@ -110,6 +110,15 @@
         <label>Zrno terénu
           <span class="row"><input id="p-seed" type="number" min="0" max="999999"><button id="p-dice" type="button">Náhodné</button></span></label>
         <label class="check"><input id="p-auto" type="checkbox"> Cesty ze základen do středu</label>
+        <label>Krajina
+          <select id="p-theme">
+            <option value="meadow">Louka</option>
+            <option value="autumn">Podzim</option>
+            <option value="winter">Zima</option>
+            <option value="swamp">Bažina</option>
+            <option value="highland">Vysočina</option>
+            <option value="wastes">Pustina</option>
+          </select></label>
       </div>
       <p id="p-error" class="error"></p>
       <menu>
@@ -132,6 +141,7 @@
   <script src="js/i18n.js"></script>
   <script src="js/lang/en.js"></script>
   <script src="js/lang/szl.js"></script>
+  <script src="js/lang/mapy.js"></script>
   <script src="js/flags.js"></script>
   <script>PK.i18n.bindPicker(document.getElementById("e-lang"));</script>
   <script src="js/pixel.js"></script>
@@ -142,6 +152,7 @@
   <script src="js/maps.js"></script>
   <script src="js/nav.js"></script>
   <script src="js/mapcheck.js"></script>
+  <script src="js/biomes.js"></script>
   <script src="js/world.js"></script>
   <script src="js/editor.js"></script>
 </body>

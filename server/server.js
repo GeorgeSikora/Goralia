@@ -579,7 +579,8 @@ function startMatch(room) {
     return null;
   });
 
-  room.match = new Match(room.map, players, { winter: winterNow() });
+  // zimní mapa (krajina "winter") má sníh a dárky vždy, jinak rozhoduje kalendář nebo /zima
+  room.match = new Match(room.map, players, { winter: winterNow() || MAPS.isWinterMap(room.map) });
   room.started = Date.now();
   room.cmds = {};
   room.out = {};

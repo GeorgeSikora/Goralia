@@ -141,9 +141,31 @@
     return [a, [p1[0] + nx, p1[1] + ny], [p2[0] - nx, p2[1] - ny], c];
   }
 
+  /* ---------- krajiny (biomy) ----------
+   * Vzhled mapy: louka (výchozí), podzim, zima, bažina, vysočina a pustina nemrtvých.
+   * Barvy terénu přebarvuje js/biomes.js; tady jen to, co sdílí server i klient (výzdoba, mlha, zima).
+   * Ve hře se dají krajiny i míchat: mapa má hlavní krajinu a k ní kruhové oblasti jiných krajin. */
+  const THEMES = ["meadow", "autumn", "winter", "swamp", "highland", "wastes"];
+  const THEME_NAMES = { meadow: "Louka", autumn: "Podzim", winter: "Zima", swamp: "Bažina", highland: "Vysočina", wastes: "Pustina" };
+
+  // Kolik které výzdoby přidat nebo ubrat podle hlavní krajiny (násobek běžného počtu).
+  const THEME_SCATTER = {
+    autumn: { shroomRed: 2.4, shroomGlow: 0.6, fern: 1.4, stump: 3, stoneB: 1.2 },
+    winter: { fern: 0.15, shroomRed: 0.2, shroomGlow: 0.3, stoneA: 1.8, stoneB: 1.6, crystalCyan: 1.6 },
+    swamp: { fern: 2.6, shroomGlow: 2.4, shroomRed: 1.2, stump: 3, deadTree: 1.6, stoneA: 0.5 },
+    highland: { stoneA: 3, stoneB: 2.6, monolith: 2.2, fern: 0.7, columnFallen: 2, crystalViolet: 1.5 },
+    wastes: { deadTree: 2.6, ribs: 4, skullStake: 2.4, monolith: 1.6, fern: 0.3, shroomRed: 0.3, shroomGlow: 1.5 }
+  };
+  const THEME_MIST = { swamp: 3, autumn: 1.6, wastes: 1.5, highland: 1.3 };
+
+  const themeOf = map => (map && map.terrain && map.terrain.theme) || "meadow";
+  // Zimní mapa má zimu (sníh, dárky) bez ohledu na kalendář.
+  const isWinterMap = map => themeOf(map) === "winter";
+
   // Terén pro mapy bez ručně kreslených cest: plácky u základen, cesty do středu, popel kolem rudé pevnosti.
   function autoTerrain(seed, W, H, slots, rivers, extraAsh, opts = {}) {
     const r = mulberry(seed);
+    const theme = THEMES.includes(opts.theme) ? opts.theme : "meadow";
     const center = [W / 2, H / 2];
     const area = Math.min(30, W * H / (480 * 240)); // obří mapy mají dekorace řidší, aby se nezahltilo vykreslování
     const plazas = [];
@@ -183,30 +205,33 @@
     }
 
     roads.push(...(opts.roads || []));
+    // spálená zem nakreslená v mapě (pustiny), stejná jako kolem pekelné pevnosti
+    for (const c of opts.ash || []) ashCircles.push([c[0], c[1], c[2]]);
 
     const cracks = ashCircles.map(([x, y, rad]) => ({
       x: x - rad * 0.8, y: y - rad * 0.8, w: rad * 1.6, h: rad * 1.6, n: Math.round(Math.PI * rad * rad * 0.0027)
     }));
 
     const n = k => Math.max(1, Math.round(k * area));
+    const boost = THEME_SCATTER[theme] || {};
     const scatter = [
-      ["crystalCyan", n(3), 14, W - 14, 40, H - 20, 14, 0],
-      ["crystalViolet", n(3), 14, W - 14, 40, H - 20, 14, 0],
-      ["monolith", n(4), 14, W - 14, 40, H - 20, 7, 0],
-      ["shroomGlow", n(9), 14, W - 14, 30, H - 12, 7, 0],
-      ["shroomRed", n(7), 14, W - 14, 30, H - 12, 6, 0],
-      ["stoneA", n(5), 14, W - 14, 30, H - 12, 8, 0],
-      ["stoneB", n(9), 14, W - 14, 30, H - 12, 5],
-      ["fern", n(16), 14, W - 14, 30, H - 12, 6, 0],
-      ["stump", n(2), 14, W - 14, 40, H - 20, 6, 0],
-      ["columnFallen", n(1), 14, W - 14, 40, H - 20, 9, 0],
-      ["deadTree", n(7), 14, W - 14, 26, H - 14, 11, 1],
-      ["ribs", n(1), 14, W - 14, 26, H - 14, 11, 1],
-      ["skullStake", n(4), 14, W - 14, 26, H - 14, 5, 1]
+      ["crystalCyan", n(3 * (boost.crystalCyan ?? 1)), 14, W - 14, 40, H - 20, 14, 0],
+      ["crystalViolet", n(3 * (boost.crystalViolet ?? 1)), 14, W - 14, 40, H - 20, 14, 0],
+      ["monolith", n(4 * (boost.monolith ?? 1)), 14, W - 14, 40, H - 20, 7, 0],
+      ["shroomGlow", n(9 * (boost.shroomGlow ?? 1)), 14, W - 14, 30, H - 12, 7, 0],
+      ["shroomRed", n(7 * (boost.shroomRed ?? 1)), 14, W - 14, 30, H - 12, 6, 0],
+      ["stoneA", n(5 * (boost.stoneA ?? 1)), 14, W - 14, 30, H - 12, 8, 0],
+      ["stoneB", n(9 * (boost.stoneB ?? 1)), 14, W - 14, 30, H - 12, 5],
+      ["fern", n(16 * (boost.fern ?? 1)), 14, W - 14, 30, H - 12, 6, 0],
+      ["stump", n(2 * (boost.stump ?? 1)), 14, W - 14, 40, H - 20, 6, 0],
+      ["columnFallen", n(1 * (boost.columnFallen ?? 1)), 14, W - 14, 40, H - 20, 9, 0],
+      ["deadTree", n(7 * (boost.deadTree ?? 1)), 14, W - 14, 26, H - 14, 11, 1],
+      ["ribs", n(1 * (boost.ribs ?? 1)), 14, W - 14, 26, H - 14, 11, 1],
+      ["skullStake", n(4 * (boost.skullStake ?? 1)), 14, W - 14, 26, H - 14, 5, 1]
     ];
 
     const mist = [];
-    for (let i = 0; i < Math.max(4, Math.round(4 * area)); i++) mist.push([r() * W, 20 + r() * (H - 60), 3 + r() * 4]);
+    for (let i = 0; i < Math.max(4, Math.round(4 * area * (THEME_MIST[theme] || 1))); i++) mist.push([r() * W, 20 + r() * (H - 60), 3 + r() * 4]);
 
     return {
       rivers, roads, plazas, terraces, pave, paveX: [],
@@ -214,7 +239,9 @@
       ash: { circles: ashCircles }, cracks,
       doodads: { landmarks, scatter },
       tufts: { x: 12, y: 22, w: W - 24, h: H - 35, n: Math.round(240 * area * 1.4), tries: Math.round(900 * area * 1.4) },
-      mist, seed, mirror
+      mist, seed, mirror, theme,
+      // oblasti jiné krajiny: [krajina, x, y, poloměr] v art px
+      biomes: (opts.biomes || []).filter(b => THEMES.includes(b[0]))
     };
   }
 
@@ -228,7 +255,7 @@
   const DOC = {
     FORMAT: "goralia-map", VERSION: 1,
     MIN_W: 320, MAX_W: 5000, MIN_H: 200, MAX_H: 5000,
-    MAX_BASES: 16, MAX_TREES: 3000, MAX_GOLD: 60, MAX_WATER: 300, MAX_ROADS: 80, MAX_MOUNTAINS: 300, MAX_WALLS: 300, MAX_PTS: 600, MAX_TOTAL_PTS: 20000
+    MAX_BASES: 16, MAX_TREES: 3000, MAX_BIOMES: 60, MAX_ASH: 60, MAX_GOLD: 60, MAX_WATER: 300, MAX_ROADS: 80, MAX_MOUNTAINS: 300, MAX_WALLS: 300, MAX_PTS: 600, MAX_TOTAL_PTS: 20000
   };
 
   const isNum = v => typeof v === "number" && Number.isFinite(v);
@@ -301,6 +328,18 @@
       bases, gold, trees, water, roads, mountains, walls
     };
 
+    // Krajina (vzhled): hlavní + oblasti jiných krajin a spálená zem; vše v art px.
+    if (THEMES.includes(raw.theme) && raw.theme !== "meadow") doc.theme = raw.theme;
+    const circle = (c, extra) => Array.isArray(c) && isNum(c[extra]) && isNum(c[extra + 1]) && isNum(c[extra + 2]) &&
+      point([c[extra], c[extra + 1]], w, h, 60) && c[extra + 2] >= 8 && c[extra + 2] <= 1200;
+    const biomes = take(raw.biomes, DOC.MAX_BIOMES, "Krajiny").filter(c => circle(c, 1) && THEMES.includes(c[0]))
+      .map(c => [c[0], Math.round(c[1]), Math.round(c[2]), Math.round(c[3])]);
+    if (biomes.length) doc.biomes = biomes;
+    const ash = take(raw.ash, DOC.MAX_ASH, "Popel").filter(c => circle(c, 0)).map(c => [Math.round(c[0]), Math.round(c[1]), Math.round(c[2])]);
+    if (ash.length) doc.ash = ash;
+    // symetrická mapa: výzdoba se zrcadlí, aby žádná strana neměla jiný terén
+    if (raw.mirror && typeof raw.mirror === "object" && (raw.mirror.x || raw.mirror.y)) doc.mirror = { x: !!raw.mirror.x, y: !!raw.mirror.y };
+
     // Kooperace: hráči v jednom týmu proti AI nemrtvým, kteří obsadí základnu s indexem coop.ai.
     if (raw.coop && typeof raw.coop === "object" && Number.isInteger(raw.coop.ai) && raw.coop.ai >= 0 && raw.coop.ai < bases.length && bases.length >= 2) {
       doc.coop = { ai: raw.coop.ai, faction: "undead" };
@@ -355,7 +394,8 @@
     const humans = coop ? n - 1 : n;
     const terrain = autoTerrain(d.seed, w, h, slots, d.water.map(s => ({ pts: s.pts, hw: s.hw })), [], {
       straight: true, autoRoads: d.autoRoads, roads: d.roads.map(s => ({ w: s.w, main: s.main, pts: s.pts })),
-      mountains: d.mountains.map(s => ({ pts: s.pts, hw: s.hw })), walls: d.walls.map(s => ({ pts: s.pts, hw: s.hw }))
+      mountains: d.mountains.map(s => ({ pts: s.pts, hw: s.hw })), walls: d.walls.map(s => ({ pts: s.pts, hw: s.hw })),
+      theme: d.theme, biomes: d.biomes, ash: d.ash, mirror: d.mirror || null
     });
 
     const count = coop ? `${humans === 1 ? "1 hráč" : humans < 5 ? `${humans} hráči` : `${humans} hráčů`} proti nemrtvým` : n === 2 ? "1v1" : n < 5 ? `${n} hráči` : `${n} hráčů`;
@@ -363,6 +403,7 @@
     return {
       id: d.id, name: d.name, players: n, humans, size: [w, h],
       tag: `${count}${w > 480 || h > 240 ? " · velká" : ""}`,
+      theme: terrain.theme,
       description: d.description,
       slots, gold: d.gold, trees: d.trees, terrain, custom: true,
       ...(coop ? { coop } : {})
@@ -390,6 +431,7 @@
   return {
     list,
     get: id => byId.get(id) || null,
+    THEMES, THEME_NAMES, themeOf, isWinterMap,
     isWater, isRock, WALL_PAD, wallR, WALL_FACE, waterNear,
     DOC, normalizeDoc, compileDoc, zonesFor, baseAt, baseMinesFor, register, unregister,
     // první dostupná mapa (mapy se načítají ze serveru, napevno žádná není)

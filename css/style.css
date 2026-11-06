@@ -1044,3 +1044,7 @@ a.btn { display: block; text-align: center; text-decoration: none; }
 
 /* volba jazyka pod tlačítky hlavního menu: vlajky se jmény jazyků (css/flags.css) */
 .lang-pick { display: flex; justify-content: center; margin: 14px auto 0; }
+
+/* miniatura mapy v seznamu (game.js mapThumb): pixelová mapka vlevo, název a popisek vpravo */
+.map-item.has-thumb { grid-template-columns: auto 1fr; column-gap: 10px; align-items: center; }
+.map-item.has-thumb .map-thumb { grid-row: span 2; height: auto; justify-self: center; image-rendering: pixelated; box-shadow: 0 0 0 1px var(--ink), 0 0 0 2px #5a4a3a; background: #15121f; }

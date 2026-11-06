@@ -217,6 +217,13 @@
     changed(false);
   }
 
+  // Krajina mapy (biomes.js); louka je výchozí a do souboru se nepíše.
+  function setTheme(d, theme) {
+    if (theme && theme !== "meadow" && MAPS.THEMES.includes(theme)) d.theme = theme;
+    else delete d.theme;
+    scene = null;
+  }
+
   function applySize(w, h) {
     if (w === W() && h === H()) return;
 
@@ -226,6 +233,8 @@
     doc.gold = doc.gold.filter(keep);
     doc.bases = doc.bases.filter(keep);
     for (const s of allStrokes()) s.pts = s.pts.map(([x, y]) => [clamp(x, 0, w), clamp(y, 0, h)]);
+    if (doc.biomes) doc.biomes = doc.biomes.filter(c => c[1] <= w && c[2] <= h);
+    if (doc.ash) doc.ash = doc.ash.filter(c => c[0] <= w && c[1] <= h);
     scene = null;
   }
 
@@ -971,7 +980,7 @@
       for (const d of PK.world.doodads) bg.drawImage(d.spr.c, d.x - d.spr.ax, d.y - d.spr.ay);
 
       for (const [x, y] of [...map.trees].sort((a, b) => a[1] - b[1])) {
-        const t = PK.props.trees[PK.props.treeKind(((x * 7 + y) % 97) / 97)];
+        const t = PK.props.trees[PK.biomes ? PK.biomes.treeKind(((x * 7 + y) % 97) / 97, doc, x / 2, y / 2) : PK.props.treeKind(((x * 7 + y) % 97) / 97)];
         bg.drawImage(t.trunk, x / 2 - t.ax, y / 2 + 15 - t.ay);
         bg.drawImage(t.crown[0], x / 2 - t.ax, y / 2 + 15 - t.ay);
       }
@@ -1227,6 +1236,7 @@
     $("p-h").value = d.size[1] * 2;
     $("p-seed").value = d.seed;
     $("p-auto").checked = d.autoRoads !== false;
+    $("p-theme").value = d.theme || "meadow";
     $("p-error").textContent = "";
     propsIdTouched = mode === "props" ? !!d.id : false;
     if (copy) propsIdTouched = true;
@@ -1265,6 +1275,7 @@
       next.description = $("p-desc").value;
       next.seed = clamp(Math.round(Number($("p-seed").value)) || 1, 0, 999999);
       next.autoRoads = $("p-auto").checked;
+      setTheme(next, $("p-theme").value);
       $("d-props").close();
       replaceDoc(next, "");
       return;
@@ -1276,6 +1287,7 @@
       doc.description = $("p-desc").value;
       doc.seed = clamp(Math.round(Number($("p-seed").value)) || 0, 0, 999999);
       doc.autoRoads = $("p-auto").checked;
+      setTheme(doc, $("p-theme").value);
       applySize(w, h);
     });
 
