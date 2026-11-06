@@ -40,7 +40,7 @@
 
   const THEMES = {
     meadow: ["Louka", [0x32693f, 0x4a8548, 0x6ba459]],
-    autumn: ["Podzim", [0x6e3a26, 0x96502c, 0xbd6c34]],
+    autumn: ["Podzim", [0x5e5226, 0x7a6a30, 0xa0602e]],
     winter: ["Zima", [0x88a2b0, 0xb2c8d0, 0xf4f8f6]],
     swamp: ["Bažina", [0x26352c, 0x334530, 0x5e6e40]],
     highland: ["Vysočina", [0x3d613f, 0x7a5272, 0xa3b272]],

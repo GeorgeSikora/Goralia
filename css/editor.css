@@ -273,7 +273,10 @@ button.test.warn { border-color: #8a6a3c; }
 @media (max-width: 900px) {
   .drawer-btn { display: inline-block; }
   .bar { flex-wrap: wrap; gap: 4px; padding: 4px 6px; }
-  .bar h1, .lang, .title small { display: none; }
+  .bar h1, .title small, .bar .lang-flags, .perm { display: none !important; }
+  .menus { order: 1; }
+  .options { max-height: 36%; }
+  .toolbar { gap: 4px; }
   .title { max-width: 38vw; }
   .layout { grid-template-columns: minmax(0, 1fr); position: relative; }
   .tools, .info {

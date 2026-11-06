@@ -1165,7 +1165,7 @@
       drag.kind = "erase";
       eraseAt(p);
       touched();
-      changed();
+      changed(!!(drag && drag.remembered));
       return;
     }
 
@@ -1200,7 +1200,7 @@
       }
     }
     touched();
-    changed();
+    changed(!!(drag && drag.remembered));
   }
 
   function pointerMove(ev) {
@@ -1243,7 +1243,7 @@
       return;
     } else return;
     touched();
-    changed();
+    changed(!!(drag && drag.remembered));
   }
 
   function endDrag(ev) {
@@ -1255,7 +1255,7 @@
     else if (d.kind === "marquee") selectRect(d.start, d.last, ev && ev.shiftKey);
     touched();
     drag = null;
-    changed();
+    changed(!!d.remembered);
   }
 
   // Změna uvnitř táhnutí se do historie zapíše jednou, při první skutečné změně dokumentu.

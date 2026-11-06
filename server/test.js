@@ -1698,6 +1698,32 @@ function testMapDocs() {
   bad({ name: "  " }, "prázdný název");
   bad({ size: [10, 10] }, "malá mapa");
   bad({ size: [5001, 5000] }, "obrovská mapa");
+
+  // obsah z editoru: kulisy, zvířata, druhy půdy, druhy stromů, budovy a jednotky na startu, překlady
+  const rich = MAPS.normalizeDoc({
+    ...doc,
+    trees: [[100, 80, 3], [1100, 600, 99]],
+    props: [["windmill", 500, 120], ["../zle jmeno", 10, 10]],
+    critters: [["deer", 200, 100], ["drak", 50, 50]],
+    ground: [[2, 150, 150, 40]],
+    buildings: [["tower", 0, 320, 360], ["crypt", 1, 900, 400]],
+    units: [["knight", 0, 300, 420], ["crossbow", 1, 920, 420], ["drak", 0, 0, 0]],
+    wild: false,
+    i18n: { en: { name: "Test Arena" }, szl: { name: "Zkušebno arena" }, xx: { name: "?" } }
+  }).doc;
+  assert.deepStrictEqual(rich.props, [["windmill", 500, 120]], "kulisa se špatným jménem se zahodí");
+  assert.deepStrictEqual(rich.critters, [["deer", 200, 100]], "neznámé zvíře se zahodí");
+  assert.strictEqual(rich.trees[0][2], 3, "druh stromu zůstane");
+  assert.strictEqual(rich.units.length, 2, "neznámá jednotka se zahodí");
+  assert(!rich.i18n.xx, "jen známé jazyky");
+  const richMap = MAPS.compileDoc(rich);
+  assert.strictEqual(richMap.slots[0].units.filter(u => u.type === "knight").length, 1, "jednotka patří základně");
+  assert(richMap.slots[1].units.some(u => u.type === "crossbow"));
+  assert(richMap.slots[0].buildings.some(b => b.type === "tower"));
+  assert(CHECK.check(richMap).some(p => /nemrtv|frakc/i.test(p)), "krypta u lidské základny je chyba");
+  assert.strictEqual(richMap.terrain.wild, false);
+  assert.strictEqual(MAPS.localized(richMap, "name", "en"), "Test Arena");
+  assert.strictEqual(MAPS.localized(richMap, "name", "cs"), "Zkušební aréna");
   bad({ bases: [{ x: 100, y: 100 }] }, "jedna základna");
 
   // nesmysly uvnitř se ořížnou nebo zahodí
