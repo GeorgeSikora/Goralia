@@ -266,11 +266,11 @@
     const k = bd.bio[i];
     return (k === K.MARSH || k === K.MUD) && F.ov[i] > 0.03 && F.ov2[i] > 0;
   };
-  const wetAt = ai => { const k = b.bio[ai]; return k === K.MUD || k === K.MARSH; };
+  const wetAt = (bd, ai) => { const k = bd.bio[ai]; return k === K.MUD || k === K.MARSH; };
 
   // břeh řeky podle oblasti; rs = vzdálenost od hladiny (art px, 0..2.6)
-  function bank(ai, rs, fx, fy, na, nb) {
-    const k = b.bio[ai];
+  function bank(bd, ai, rs, fx, fy, na, nb) {
+    const k = bd.bio[ai];
     if (k === K.SAND || k === K.STEPPE || k === K.CRACKED) {
       if (rs < 0.4) return mix(R.sand[2], C.v[2], 0.3);
       if (rs < 0.7) return R.sand[2];
@@ -442,6 +442,8 @@
   }
 
   function fine(o) {
+    // stav bodu nese o (pečení více map se může prokládat po řádcích, sdílený stav modulu by se přepisoval)
+    F = o.F; b = o.b;
     const k = kindAt(o);
     o.kind = k;
     o.okind = -1;

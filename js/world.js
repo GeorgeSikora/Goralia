@@ -1008,7 +1008,7 @@
     const BI = PK.biomes;
     BI.fineBegin(b, F, { bank: Z_BANK, grass: Z_GRASS });
     // sdílený stav bodu pro biomy (bez alokací v hlavní smyčce)
-    const o = { fx: 0, fy: 0, X: 0, Y: 0, ai: 0, na: 0, nb: 0, tone: 0, lush: 1, z: 0, kind: 0, okind: -1, k2: 0, m: 0, bil };
+    const o = { F, b, fx: 0, fy: 0, X: 0, Y: 0, ai: 0, na: 0, nb: 0, tone: 0, lush: 1, z: 0, kind: 0, okind: -1, k2: 0, m: 0, bil };
     const push = (k, x, y, a) => deco.push(k, x, y, a);
 
     for (let fy = 0; fy < FH; fy++) {
@@ -1070,7 +1070,7 @@
             else if (rs < 0.8) col = D[1];
             else if (rs > 2.25) col = ash ? A[1] : G[1];
             // břeh podle krajiny: písčitý, oblázkový, bahnitý
-            if (!ash) { const bk = BI.bank(ai, rs, fx, fy, na, nb); if (bk >= 0) col = bk; }
+            if (!ash) { const bk = BI.bank(b, ai, rs, fx, fy, na, nb); if (bk >= 0) col = bk; }
           } else if (rs < 3.2 && z === Z_GRASS) {
             col = ash ? A[1] : G[clamp(dither(tone - 1, fx, fy), 1, 4)];
           }
@@ -1140,7 +1140,7 @@
                 // vozová cesta: pruh trávy uprostřed
                 col = G[clamp(dither(2.6 + (na - 0.5) * 2, fx, fy), 2, 4)];
                 if (hash(fx, fy, 16) > 0.9) deco.push(0, fx, fy, 3);
-              } else if (!ash && main && Math.abs(n - 0.46) < 0.07 && BI.wetAt(ai)) {
+              } else if (!ash && main && Math.abs(n - 0.46) < 0.07 && BI.wetAt(b, ai)) {
                 // louže ve vyjetých kolejích
                 const pv = vnoise(X / 6, Y / 6, 18);
                 if (pv > 0.62) col = pv > 0.66 ? (hash(fx, fy, 19) > 0.9 ? V[4] : mix(V[2], D[2], 0.25)) : D[1];
