@@ -185,6 +185,7 @@ body {
 .row input[type="range"] { flex: 0 0 150px; accent-color: var(--amber); }
 .row input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--amber); }
 .row output { flex: 0 0 48px; color: var(--amber); text-align: right; }
+.row .music-now { color: var(--amber); font-weight: normal; }
 
 .goal { margin: 0; color: var(--muted); text-align: center; }
 .goal b { color: #ffe9a8; }
