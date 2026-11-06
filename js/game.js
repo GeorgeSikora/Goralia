@@ -2060,16 +2060,20 @@
       title.textContent = m.name;
       const tag = document.createElement("span");
       tag.className = "map-tag";
+      const theme = MAPS.themeOf(m);
+      // krajina jako samostatné textové uzly, ať se štítek i krajina přeloží každý zvlášť
       tag.textContent = m.tag;
+      if (theme !== "meadow") tag.append(" · ", document.createTextNode(MAPS.THEME_NAMES[theme].toLowerCase()));
 
-      item.append(title, tag);
+      item.classList.add("has-thumb");
+      item.append(mapThumb(m), title, tag);
       item.addEventListener("click", () => selectMap(m.id));
       return item;
     }));
 
     lobbyEl.name.textContent = map.name;
     lobbyEl.desc.textContent = map === STUB_MAP ? "Na serveru zatím nejsou žádné mapy. Vytvoř je v editoru." : map.description;
-    lobbyEl.meta.textContent = `Hráči: ${map.coop ? `${map.humans} + nemrtví (AI)` : map.players} · Velikost: ${sizeLabel(map)} (${map.size[0] * 2}×${map.size[1] * 2}) · Zlaté doly: ${map.gold.length}`;
+    lobbyEl.meta.textContent = `Hráči: ${map.coop ? `${map.humans} + nemrtví (AI)` : map.players} · Velikost: ${sizeLabel(map)} (${map.size[0] * 2}×${map.size[1] * 2}) · Zlaté doly: ${map.gold.length} · Krajina: ${MAPS.THEME_NAMES[MAPS.themeOf(map)].toLowerCase()}`;
 
     lobbyEl.slots.replaceChildren(...lobby.slots.map((slot, i) => {
       const team = R.TEAMS[i];
@@ -2132,6 +2136,95 @@
     drawPreview();
   }
 
+  /* Miniatura mapy v seznamu: malá pixelová mapka (krajina, voda, hory, lesy, doly a základny v barvách týmů).
+   * Kreslí se z receptu mapy bez pečení terénu, takže je hotová hned i pro desítky map. */
+  const thumbs = new Map();
+  const THUMB = { w: 38, h: 24 };
+  const THEME_GROUND = {
+    meadow: [0x32693f, 0x4a8548], autumn: [0x6e5a2a, 0x96502c], winter: [0xb2c8d0, 0xd6e4e8],
+    swamp: [0x2b4a36, 0x34684a], highland: [0x3d613f, 0x5a3f5c], wastes: [0x3b4536, 0x47403f]
+  };
+
+  function mapThumb(map) {
+    const cv = document.createElement("canvas");
+    cv.className = "map-thumb";
+    cv.setAttribute("aria-hidden", "true");
+    const cached = thumbs.get(map.id);
+    if (cached && cached.ver === map) {
+      cv.width = cached.c.width;
+      cv.height = cached.c.height;
+      cv.getContext("2d").drawImage(cached.c, 0, 0);
+      cv.style.width = `${cv.width * 2}px`;
+      return cv;
+    }
+    const [w, h] = map.size;
+    const s = Math.min(THUMB.w / w, THUMB.h / h);
+    cv.width = Math.max(4, Math.round(w * s));
+    cv.height = Math.max(4, Math.round(h * s));
+    cv.style.width = `${cv.width * 2}px`; // celé násobky, ať jsou pixely ostré
+    // kreslí se až po vložení do seznamu, po jedné mapě, ať se lobby otevře hned
+    setTimeout(() => {
+      const c = drawThumb(map, cv.width, cv.height);
+      thumbs.set(map.id, { c, ver: map });
+      cv.getContext("2d").drawImage(c, 0, 0);
+    }, 0);
+    return cv;
+  }
+
+  function drawThumb(map, tw, th) {
+    const rec = map.terrain;
+    const [w, h] = map.size;
+    const sx = w / tw;
+    const sy = h / th;
+    const cv = document.createElement("canvas");
+    cv.width = tw;
+    cv.height = th;
+    const c = cv.getContext("2d");
+    const img = c.createImageData(tw, th);
+    const main = MAPS.themeOf(map);
+    const rgb = v => [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+
+    for (let y = 0; y < th; y++) {
+      for (let x = 0; x < tw; x++) {
+        const ax = (x + 0.5) * sx;
+        const ay = (y + 0.5) * sy;
+        let theme = main;
+        if (PK.krajiny && rec.biomes && rec.biomes.length) {
+          const [t, k] = PK.krajiny.regionAt(rec, ax, ay);
+          if (t && k > 0.5) theme = t;
+        }
+        const g = THEME_GROUND[theme] || THEME_GROUND.meadow;
+        let col = PK.fbm(ax / 60, ay / 60, 7, 2) > 0.55 ? g[1] : g[0];
+        if (rec.ash.circles.some(([cx, cy, r]) => Math.hypot(ax - cx, ay - cy) < r * 0.8)) col = 0x34303c;
+        if (MAPS.isRock(rec, ax, ay)) col = theme === "winter" ? 0xe8e6e8 : 0x767892;
+        if (rec.rivers.some(r => r.pts && MAPS.isWater({ rivers: [r], roads: [] }, ax, ay))) col = theme === "winter" ? 0x9fd0e0 : theme === "swamp" ? 0x2f6a6a : 0x3f7fd0;
+        const [r, gg, b] = rgb(col);
+        const i = (y * tw + x) * 4;
+        img.data[i] = r; img.data[i + 1] = gg; img.data[i + 2] = b; img.data[i + 3] = 255;
+      }
+    }
+    c.putImageData(img, 0, 0);
+
+    // cesty jako tenké světlé linky
+    c.strokeStyle = "rgba(224,198,142,0.55)";
+    c.lineWidth = 1;
+    for (const r of rec.roads) {
+      c.beginPath();
+      r.pts.forEach(([x, y], i) => (i ? c.lineTo(x / sx, y / sy) : c.moveTo(x / sx, y / sy)));
+      c.stroke();
+    }
+    // lesy: tmavé tečky, doly zlaté, základny v barvách týmů
+    const dot = (x, y, color, size = 1) => {
+      c.fillStyle = color;
+      c.fillRect(Math.floor(x / 2 / sx - (size - 1) / 2), Math.floor(y / 2 / sy - (size - 1) / 2), size, size);
+    };
+    const forest = main === "autumn" ? "#4a2a24" : main === "winter" ? "#1f3a4d" : "#1b3836";
+    map.trees.forEach(([x, y], i) => { if (i % 2 === 0) dot(x, y, forest); });
+    for (const [x, y] of map.gold) dot(x, y, "#ffd36b");
+    map.slots.forEach((slot, i) => dot(slot.hq.x, slot.hq.y, map.coop && map.coop.ai === i ? "#d65a3c" : PK.css(PK.TEAM[R.TEAMS[i]].ui), 3));
+    return cv;
+  }
+
   // Náhled = zmenšený terén mapy se značkami startovních pozic. Terén se peče jednou na mapu.
   const bigMap = map => map.size[0] * map.size[1] > 4e6;
 
@@ -2143,7 +2236,7 @@
     cv.width = Math.max(1, Math.round(w * s));
     cv.height = Math.max(1, Math.round(h * s));
     const c = cv.getContext("2d");
-    c.fillStyle = "#2f5d34";
+    c.fillStyle = PK.css((THEME_GROUND[MAPS.themeOf(map)] || THEME_GROUND.meadow)[0]);
     c.fillRect(0, 0, cv.width, cv.height);
     c.lineCap = "round";
     c.lineJoin = "round";
@@ -2246,7 +2339,8 @@
 
     if (PK.loader && PK.loader.busy) return;
     lastOffline = { mapId: c.mapId, slots: c.slots.map(s => ({ ...s })) };
-    if (PK.winter) PK.winter.set(PK.winter.season()); // hra proti AI: zima podle kalendáře / volby
+    // hra proti AI: zima podle kalendáře / volby, zimní mapa je zasněžená vždy
+    if (PK.winter) PK.winter.set(PK.winter.season() || MAPS.isWinterMap(next));
     // barvy navíc už pro přípravu spritů (načítací obrazovka), aby se nepekly až ve hře
     applyLooks(roster.map(p => ({ ...p, team: R.TEAMS[p.slot], me: p.slot === 0 })), true);
     prepareMatch(next, roster.map(p => p.slot), () => beginMatch({ mode: "ai", map: next, slot: 0, players: roster }));
@@ -3588,7 +3682,8 @@
   function drawTree(r) {
     const footX = Math.round(r.x / 2);
     const footY = Math.round(r.y / 2) + 15;
-    const variant = PK.props.treeKind(hash3(r.x, r.y, 5));
+    // druh stromu podle krajiny mapy (podzimní duby, smrky na vysočině, vrby v bažině…)
+    const variant = PK.krajiny ? PK.krajiny.treeKind(hash3(r.x, r.y, 5), map.terrain, r.x / 2, r.y / 2) : PK.props.treeKind(hash3(r.x, r.y, 5));
     const t = PK.props.trees[variant];
     const stage = r.amount > 66 ? 0 : r.amount > 33 ? 1 : 2;
     const sway = Math.sin(clock * 1.3 + r.x * 0.05) > 0.35 ? 1 : 0;

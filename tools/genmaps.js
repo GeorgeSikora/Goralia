@@ -61,6 +61,114 @@ class Draft {
     this.walls = [];
     this.trees = [];
     this.coop = null; // { ai: index základny nemrtvých }
+    this.theme = "meadow"; // krajina (js/krajiny.js)
+    this.biomes = []; // oblasti jiné krajiny [krajina, x, y, r] v art px
+    this.ash = []; // spálená zem [x, y, r] v art px
+    this.lakes = []; // jezera { cx, cy, rx, ry } v art px
+    this.sym = [p => p]; // symetrie mapy v logických souřadnicích (pro stromy a doly)
+    this.mirror = null; // { x, y }: zrcadlí se i výzdoba
+  }
+
+  // Zrcadlová symetrie podle svislé (x) a/nebo vodorovné (y) osy; stromy, doly a výzdoba se zrcadlí.
+  symmetric(x, y) {
+    const { LW, LH } = this;
+    this.sym = [p => p];
+    if (x) this.sym.push(([px, py]) => [LW - px, py]);
+    if (y) this.sym.push(([px, py]) => [px, LH - py]);
+    if (x && y) this.sym.push(([px, py]) => [LW - px, LH - py]);
+    this.mirror = { x: !!x, y: !!y };
+  }
+
+  // Otočná symetrie o 360/n stupňů kolem středu (mapa pro 3 nebo 6 hráčů); výzdoba se nezrcadlí.
+  rotational(n) {
+    const cx = this.LW / 2;
+    const cy = this.LH / 2;
+    this.sym = [];
+    for (let k = 0; k < n; k++) {
+      const a = (k * 2 * Math.PI) / n;
+      const c = Math.cos(a);
+      const sn = Math.sin(a);
+      this.sym.push(([x, y]) => [cx + (x - cx) * c - (y - cy) * sn, cy + (x - cx) * sn + (y - cy) * c]);
+    }
+    this.mirror = null;
+  }
+
+  // Obrazy bodu v art px podle symetrie mapy.
+  artImages(p) {
+    const out = [];
+    for (const [x, y] of this.sym.map(f => f([p[0] * 2, p[1] * 2]))) {
+      if (!out.some(q => Math.hypot(q[0] - x / 2, q[1] - y / 2) < 4)) out.push([r1(x / 2), r1(y / 2)]); // bod na ose jen jednou
+    }
+    return out;
+  }
+  // Obrazy celého tahu (řeka, cesta, hřeben) v art px.
+  strokeImages(pts) { return this.sym.map(f => pts.map(([x, y]) => f([x * 2, y * 2])).map(([x, y]) => [r1(x / 2), r1(y / 2)])); }
+
+  // Tahy přidané se všemi obrazy symetrie (zalomení se náhodně liší, proto se zalamuje jen jednou a pak zobrazí).
+  symRiver(pts, hw, amp = 4) { const w = this.wiggle(pts, amp, 45); for (const q of this.strokeImages(w)) this.water.push({ pts: q, hw }); }
+  symRoad(pts, w = 6, main = false, amp = 3) { const q0 = this.wiggle(pts, amp, 60); for (const q of this.strokeImages(q0)) this.roads.push({ pts: q, w, main }); }
+  symRidge(pts, hw, amp = 3) { const q0 = this.wiggle(pts, amp, 30); for (const q of this.strokeImages(q0)) this.mountains.push({ pts: q, hw }); }
+  symWall(pts, hw = 4) { for (const q of this.strokeImages(pts)) this.wall(q, hw); }
+  symLake(cx, cy, rx, ry, opts) { for (const [x, y] of this.artImages([cx, cy])) this.lake(x, y, rx, ry, opts); }
+  symMassif(cx, cy, radius, hw, arms = 3, rot = 0) {
+    const before = this.mountains.length;
+    this.massif(cx, cy, radius, hw, arms, rot);
+    const fresh = this.mountains.splice(before);
+    for (const m of fresh) for (const q of this.strokeImages(m.pts)) this.mountains.push({ pts: q, hw: m.hw });
+  }
+  symBiome(theme, x, y, r) { for (const [px, py] of this.artImages([x, y])) this.biomes.push([theme, Math.round(px), Math.round(py), r]); }
+  symAsh(x, y, r) { for (const [px, py] of this.artImages([x, y])) this.ash.push([Math.round(px), Math.round(py), r]); }
+  /* Doly navíc se všemi obrazy symetrie. Když místo není volné (voda, cesta, hora), hledá se nejbližší
+   * volné místo ve spirále, ale vždy pro všechny obrazy najednou, aby měl každý hráč stejné doly. */
+  symGold(list) {
+    const placed = () => [...this.allGold()];
+    for (const [x0, y0, amount] of list) {
+      let done = false;
+      for (let r = 0; r <= 160 && !done; r += 8) {
+        const steps = r ? Math.max(8, Math.round(r / 4)) : 1;
+        for (let k = 0; k < steps && !done; k++) {
+          const a = (k / steps) * Math.PI * 2;
+          const x = x0 + Math.cos(a) * r;
+          const y = y0 + Math.sin(a) * r;
+          const imgs = [];
+          for (const [px, py] of this.sym.map(f => f([x, y]))) {
+            if (!imgs.some(g => Math.hypot(g[0] - px, g[1] - py) < 30)) imgs.push([Math.round(px), Math.round(py)]);
+          }
+          if (imgs.some((p, i) => imgs.some((q, j) => j > i && Math.hypot(p[0] - q[0], p[1] - q[1]) < 75))) continue;
+          const gold = placed();
+          const ok = imgs.every(([px, py]) =>
+            px > 40 && py > 60 && px < this.LW - 40 && py < this.LH - 40 && this.free(px, py, 34) &&
+            gold.every(g => Math.hypot(g[0] - px, g[1] - py) > 75) &&
+            this.bases.every(b => Math.hypot(b.x - px, b.y - py) > 130));
+          if (!ok) continue;
+          for (const [px, py] of imgs) this.gold.push(amount ? [px, py, amount] : [px, py]);
+          done = true;
+        }
+      }
+      if (!done) console.log(`  ${this.id}: pro důl [${x0}, ${y0}] není symetrické volné místo`);
+    }
+  }
+
+  /* Jezero: elipsa vyplněná vodorovnými tahy (každý nejvýš hw 20) se zvlněným břehem.
+   * Potok, který končí uvnitř jezera, se s ním spojí čistě (voda je sjednocení tahů). */
+  lake(cx, cy, rx, ry, { wobble = 0.1 } = {}) {
+    // Středy řádků leží na elipse zmenšené o hw, takže obálka tahů (každý bod do vzdálenosti hw) je
+    // znovu elipsa rx × ry: hladký břeh bez rohů, hluboko uprostřed a mělko jen u břehu.
+    // Zvlnění břehu je plynulé (dvě sinusovky), ne náhodné po řádcích, aby nevznikaly zuby.
+    const ph1 = this.rnd() * 6.28;
+    const ph2 = this.rnd() * 6.28;
+    const hw = Math.max(3, Math.min(20, rx * 0.8, ry * 0.8));
+    const ix = rx - hw;
+    const iy = ry - hw;
+    const rows = Math.max(3, Math.ceil((2 * iy) / (hw * 0.5)) + 1);
+    for (let k = 0; k < rows; k++) {
+      const dy = rows === 1 ? 0 : -iy + (2 * iy * k) / (rows - 1);
+      const t = dy / Math.max(1, iy);
+      const half = Math.max(0.5, ix * Math.sqrt(Math.max(0, 1 - t * t)) * (1 + wobble * (Math.sin(t * 2.7 + ph1) * 0.7 + Math.sin(t * 5.3 + ph2) * 0.3)));
+      const ox = ix * wobble * 0.5 * Math.sin(t * 1.9 + ph2);
+      this.water.push({ pts: [[r1(cx - half + ox), r1(cy + dy)], [r1(cx + half + ox), r1(cy + dy)]], hw: r1(hw) });
+    }
+    this.lakes.push({ cx, cy, rx, ry });
   }
 
   // Základny lidí (pekelná pevnost nemrtvých netěží, nemá doly a nepotřebuje lesy).
@@ -93,6 +201,12 @@ class Draft {
   }
 
   river(pts, hw, amp = 4) { this.water.push({ pts: this.wiggle(pts, amp, 45), hw }); }
+  // Potok do jezera: poslední bod se posune hlouběji do jezera, aby ústí nemělo mezeru ani schod.
+  stream(pts, hw, lake, amp = 4) {
+    const q = pts.slice();
+    if (lake) q.push([lake.cx + (q[q.length - 1][0] - lake.cx) * 0.35, lake.cy + (q[q.length - 1][1] - lake.cy) * 0.35]);
+    this.river(q, hw, amp);
+  }
   road(pts, w = 6, main = false, amp = 3) { this.roads.push({ pts: this.wiggle(pts, amp, 60), w, main }); }
   wall(pts, hw = 4) { this.walls.push({ pts: pts.map(p => [r1(p[0]), r1(p[1])]), hw }); }
   ridge(pts, hw, amp = 3) { this.mountains.push({ pts: this.wiggle(pts, amp, 30), hw }); }
@@ -177,13 +291,65 @@ class Draft {
       if (ok(x, y)) out.push([x, y]);
     }
 
+    // kmen a pata stromu (kreslená o 15 art px níž) nesmí stát v řece ani na jejím břehu;
+    // jen dodatečný filtr, ať se ostatní stromy starých map nepohnou
+    this.trees = out.filter(([x, y]) => this.footDry(x, y));
+  }
+
+  footDry(x, y) {
+    const ax = x / 2;
+    return [y / 2, y / 2 + 8, y / 2 + 15].every(ay => this.water.every(r => distSeg(ax, ay, r.pts) >= r.hw + 2));
+  }
+
+  /* Stromy podle symetrie mapy: každý strom dostane všechny své obrazy, takže lesy jsou pro všechny
+   * hráče stejné. extraCenters = další středy lesů (logické souřadnice), např. lesní pásy. */
+  scatterTreesSym(count, { clusters = 0, extraCenters = [], spread = 130, home = true } = {}) {
+    const { LW, LH, rnd } = this;
+    const slots = this.bases.map(b => MAPS.baseAt(b.x, b.y, LW, LH, { x0: 0, y0: 0, x1: LW, y1: LH }));
+    const gold = this.allGold();
+    const out = [];
+    const ok = (x, y) =>
+      x >= 40 && x <= LW - 40 && y >= 90 && y <= LH - 50 &&
+      slots.every(s => Math.hypot(x - s.hq.x, y - s.hq.y) > 160 && Math.hypot(x - s.plot.x, y - s.plot.y) > 120) &&
+      gold.every(g => Math.hypot(x - g[0], y - g[1]) > 80) &&
+      (!this.hellBase || Math.hypot(x - this.hellBase.x, y - this.hellBase.y) > (this.hellR || 700)) &&
+      out.every(t => Math.hypot(x - t[0], y - t[1]) > 34) &&
+      // pata stromu je kreslená o 15 art px (30) níž než jeho bod: i ta musí stát na suchu
+      this.free(x, y, 12) && this.free(x, y + 30, 12);
+
+    const centers = [...extraCenters];
+    const nClusters = clusters || Math.max(6, Math.round(count / 9 / this.sym.length));
+    for (let i = 0; i < nClusters; i++) centers.push([60 + rnd() * (LW - 120), 100 + rnd() * (LH - 170)]);
+    if (home) {
+      for (const s of slots.filter((_, i) => !this.coop || i !== this.coop.ai)) {
+        const fx = s.facing;
+        const fy = s.plot.y > s.hq.y ? 1 : -1;
+        centers.push([s.hq.x - fx * 150, s.hq.y - fy * 160], [s.hq.x + fx * 20, s.hq.y - fy * 230]);
+      }
+    }
+
+    let guard = 0;
+    while (out.length < count && guard++ < count * 80) {
+      const [cx, cy] = centers[Math.floor(rnd() * centers.length)];
+      const a = rnd() * Math.PI * 2;
+      const d = 15 + rnd() * spread;
+      const imgs = this.sym.map(f => f([cx + Math.cos(a) * d, cy + Math.sin(a) * d])).map(([x, y]) => [Math.round(x), Math.round(y)]);
+      // obrazy nesmí ležet na sobě (strom na ose symetrie)
+      if (imgs.some((p, i) => imgs.some((q, j) => j > i && Math.hypot(p[0] - q[0], p[1] - q[1]) < 34))) continue;
+      if (!imgs.every(([x, y]) => ok(x, y))) continue;
+      out.push(...imgs);
+    }
+
     this.trees = out;
   }
 
   // Doly navíc (logické souřadnice); špatná místa se tiše přeskočí.
   extraGold(list) {
     for (const [x, y, amount] of list) {
-      if (!this.free(x, y, 22)) continue;
+      if (!this.free(x, y, 22)) {
+        if (process.env.VERBOSE) console.log(`  ${this.id}: důl [${x}, ${y}] nemá volné místo, vynechán`);
+        continue;
+      }
       this.gold.push(amount ? [x, y, amount] : [x, y]);
     }
   }
@@ -202,6 +368,10 @@ class Draft {
       gold: [...base, ...gold],
       trees: this.trees,
       water: this.water, roads: this.roads, mountains: this.mountains, walls: this.walls,
+      ...(this.theme !== "meadow" ? { theme: this.theme } : {}),
+      ...(this.biomes.length ? { biomes: this.biomes } : {}),
+      ...(this.ash.length ? { ash: this.ash } : {}),
+      ...(this.mirror && (this.mirror.x || this.mirror.y) ? { mirror: this.mirror } : {}),
       ...(this.coop ? { coop: { ai: this.coop.ai } } : {})
     };
   }
@@ -576,6 +746,9 @@ makers.push(() => {
   d.scatterTrees(380);
   return d;
 });
+
+// Nové krajiny (podzim, zima, bažina, vysočina, pustina, ostrovy, jezera, delta): tools/genmaps-krajiny.js
+require("./genmaps-krajiny.js")({ makers, Draft, grid, gridRoads, mirrorX, mirrorY });
 
 /* ---------- zápis a kontrola ---------- */
 fs.mkdirSync(OUT, { recursive: true });
