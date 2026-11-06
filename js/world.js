@@ -1621,11 +1621,13 @@
       if (zone[y * W + x] !== Z_GRASS || world.ashMap[y * W + x]) continue;
       if (world.toneMap[y * W + x] < 2) continue;
       if (PK.krajiny && !PK.krajiny.tuftOk(rec, x, y)) continue;
+      // na sněhu jsou suché trsy hodně kontrastní: jen asi polovina, ať pláň zůstane klidná
+      if (PK.winter && PK.winter.on && hash(x, y, 77) < 0.45) continue;
       list.push({ x, y, ph: R() * 6.28, k: BI.tuftKind(bd, y * W + x) });
     }
 
     // rákos na březích a u tůní: shluky po dvou až čtyřech, nikdy ve vodě
-    const reeds = Math.round(tf.n * 0.45);
+    const reeds = Math.round(tf.n * 0.25); // rákos jen v trsech u vody, ne souvislý pás
     let placed = 0;
     for (let k = 0; k < tf.tries * 3 && placed < reeds; k++) {
       const x = 6 + Math.floor(R() * (W - 12));

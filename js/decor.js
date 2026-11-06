@@ -1036,7 +1036,14 @@
       layout.buildings.some(b => Math.abs(x - b.x / 2) < 40 && y - (b.y / 2 + 19) > -60 && y - (b.y / 2 + 19) < 6) ||
       // ani za horou, hradbou nebo jinou vysokou kulisou (štíty hor sahají daleko nad svou patu)
       placed.some(d => d.spr.h > 24 && Math.abs(x - d.x) < d.spr.w * 0.6 + 6 && d.y > y - 4 && d.y - y < d.spr.h + 6);
-    const put = (name, x, y, r = 7) => grassy(x, y) && !hidden(x, y) && add(name, x, y, false, r);
+    // celá šířka kulisy musí stát na trávě: kmen ani vůz nesmí přečnívat do řeky nebo na cestu
+    const fits = (name, x, y) => {
+      const sp = D[name];
+      if (!sp || sp.w <= 8) return true;
+      const hw = sp.w / 2 - 2;
+      return grassy(x - hw, y) && grassy(x + hw, y) && grassy(x - hw, y - 3) && grassy(x + hw, y - 3);
+    };
+    const put = (name, x, y, r = 7) => grassy(x, y) && fits(name, x, y) && !hidden(x, y) && add(name, x, y, false, r);
 
     // drobná zeleň po celé mapě
     const spread = (names, count, r, ok = grassy) => {
@@ -1044,19 +1051,21 @@
         const x = 12 + R() * (W - 24);
         const y = 28 + R() * (H - 38);
         if (!ok(x, y) || hidden(x, y)) continue;
-        if (add(names[Math.floor(R() * names.length)], x, y, false, r)) k++;
+        const name = names[Math.floor(R() * names.length)];
+        if (ok === grassy && !fits(name, x, y)) continue;
+        if (add(name, x, y, false, r)) k++;
       }
     };
-    spread(["bushA", "bushA", "bushB", "bushFlower", "hedge"], n(9), 9);
-    spread(["bushDry"], n(2), 8);
+    spread(["bushA", "bushA", "bushB", "bushFlower", "hedge"], n(5), 9);
+    spread(["bushDry"], n(1), 8);
     // v zimě květiny nekvetou (sníh by je stejně zakryl)
     const winter = !!(PK.winter && PK.winter.on);
-    if (!winter) spread(["flowersYellow", "flowersBlue", "flowersRed", "flowersWhite", "lavender"], n(14), 6);
-    spread(["tallGrass"], n(10), 5);
-    spread(["saplingBirch", "saplingPine", "saplingOak"], n(4), 8);
-    spread(["pebbles", "rockPile", "rockSlab"], n(5), 7);
-    spread(["shroomBrown", "fairyRing"], n(3), 8);
-    spread(["logFallen", "stumpAxe", "boulderMoss"], n(3), 10);
+    if (!winter) spread(["flowersYellow", "flowersBlue", "flowersRed", "flowersWhite", "lavender"], n(7), 6);
+    spread(["tallGrass"], n(6), 5);
+    spread(["saplingBirch", "saplingPine", "saplingOak"], n(2), 8);
+    spread(["pebbles", "rockPile", "rockSlab"], n(3), 7);
+    spread(["shroomBrown", "fairyRing"], n(1), 8);
+    spread(["logFallen", "stumpAxe", "boulderMoss"], n(2), 10);
 
     // na popelu (území nemrtvých) kosti a holé keře
     spread(["bones", "antlers", "bushDry", "cairn"], n(4), 7, (x, y) => x > 10 && y > 26 && x < W - 10 && y < H - 8 && ash(x, y) && at(x, y) === Z.GRASS);
@@ -1069,14 +1078,14 @@
       }
       return false;
     };
-    spread(["reedsA", "reedsB"], n(4), 6, (x, y) => grassy(x, y) && nearWater(x, y));
+    spread(["reedsA", "reedsB"], n(2), 6, (x, y) => grassy(x, y) && nearWater(x, y));
     // rákosí přímo na břehu: najdi břeh, vystup k trávě a postav trs na rozhraní (paty ve vlhké hlíně)
     const clear = (x, y, r) => !layout.buildings.some(b => Math.hypot(x * 2 - b.x, (y * 2 - b.y - 20) * 1.1) < 80) &&
       !layout.resources.some(rs => Math.hypot(x * 2 - rs.x, y * 2 - (rs.y + 26)) < 40 + r);
     const reedSpots = [];
     const banks = [];
     for (let y = 30; y < H - 10; y += 2) for (let x = 12; x < W - 12; x += 3) if (zone[y * W + x] === Z.BANK) banks.push([x, y]);
-    for (let i = 0, k = 0; i < banks.length && i < 4000 && k < n(14); i++) {
+    for (let i = 0, k = 0; i < banks.length && i < 4000 && k < n(8); i++) {
       const [x, y] = banks[Math.floor(R() * banks.length)];
       // severní břeh: tráva nad břehem (pata na rozhraní), jižní břeh: tráva pod ním
       let gy = -1;
@@ -1103,17 +1112,24 @@
     }
 
     // zátiší: skupinka kulis kolem bodu (první musí projít, ostatní zkusí)
+    // zátiší drží odstup od sebe: dvě skupiny vedle sebe působí jako přeplácaná kulisa
+    const vigs = [];
     const vignette = (x, y, items) => {
       if (!grassy(x, y) || hidden(x, y)) return false;
+      if (vigs.some(([vx, vy]) => Math.hypot(vx - x, (vy - y) * 1.3) < 110)) return false;
+      if (!fits(items[0][0], x, y)) return false;
       if (!add(items[0][0], x, y, false, items[0][3] || 9)) return false;
+      vigs.push([x, y]);
       // ostatní kusy zátiší stojí těsně u sebe (malý poloměr), hlídají se jen budovy a suroviny
       for (const [name, dx, dy] of items.slice(1)) put(name, x + dx, y + dy, 3);
       return true;
     };
+    // volná zátiší (mlýn, zříceniny, tábor...) ne těsně za budovou, kde by se slila s její siluetou
+    const farFromBuildings = (x, y) => !layout.buildings.some(b => Math.hypot(x - b.x / 2, (y - b.y / 2) * 1.2) < 100);
     const tryAt = (count, fn, near) => {
       for (let i = 0, k = 0; i < count * 220 && k < count; i++) {
         const p = near ? near() : [16 + R() * (W - 32), 34 + R() * (H - 48)];
-        if (p && fn(p[0], p[1])) k++;
+        if (p && farFromBuildings(p[0], p[1]) && fn(p[0], p[1])) k++;
       }
     };
 
@@ -1135,13 +1151,13 @@
     // jeden mlýn na mapu (větší mapy dva) na volné louce
     tryAt(area > 1.6 ? 2 : 1, (x, y) => vignette(x, y, [["windmill", 0, 0, 13], ["haystack", 22, 4, 8], ["sacks", -18, 4, 6], ["fenceB", 30, 12, 9], ["beehives", -26, -2, 8]]));
     // zříceniny
-    tryAt(n(1.4), (x, y) => vignette(x, y, [["ruinWall", 0, 0, 12], ["ruinStub", 30, 6, 10], ["ruinArch", -34, -4, 14], ["rockPile", 14, 14, 7], ["statueBroken", -14, 16, 8], ["bushA", 40, -4, 7]]));
+    tryAt(n(0.8), (x, y) => vignette(x, y, [["ruinWall", 0, 0, 12], ["ruinStub", 30, 6, 10], ["ruinArch", -34, -4, 14], ["rockPile", 14, 14, 7], ["statueBroken", -14, 16, 8], ["bushA", 40, -4, 7]]));
     // hřbitůvek
-    tryAt(n(0.8), (x, y) => vignette(x, y, [["graveStone", 0, 0, 7], ["graveCross", 12, 2, 6], ["graveStone", 24, -1, 6], ["graveCross", 6, 12, 6], ["graveStone", 19, 12, 6], ["fenceB", -18, 6, 9], ["wayshrine", 36, 6, 7]]));
+    tryAt(n(0.5), (x, y) => vignette(x, y, [["graveStone", 0, 0, 7], ["graveCross", 12, 2, 6], ["graveStone", 24, -1, 6], ["graveCross", 6, 12, 6], ["graveStone", 19, 12, 6], ["fenceB", -18, 6, 9], ["wayshrine", 36, 6, 7]]));
     // staré bojiště
-    tryAt(n(0.8), (x, y) => vignette(x, y, [["swordGrave", 0, 0, 6], ["bones", 12, 4, 6], ["cartBroken", -22, 6, 12], ["swordGrave", 20, -6, 6], ["antlers", -8, 14, 6]]));
+    tryAt(n(0.5), (x, y) => vignette(x, y, [["swordGrave", 0, 0, 6], ["bones", 12, 4, 6], ["cartBroken", -22, 6, 12], ["swordGrave", 20, -6, 6], ["antlers", -8, 14, 6]]));
     // tábořiště a cvičiště
-    tryAt(n(0.6), (x, y) => vignette(x, y, [["tent", 0, 0, 12], ["tent", 30, 4, 12], ["woodpile", -22, 6, 8], ["dummy", 18, 18, 7], ["archeryTarget", 40, 18, 7]]));
+    tryAt(n(0.4), (x, y) => vignette(x, y, [["tent", 0, 0, 12], ["tent", 30, 4, 12], ["woodpile", -22, 6, 8], ["dummy", 18, 18, 7], ["archeryTarget", 40, 18, 7]]));
     // poutní kaplička u cesty
     tryAt(n(1), (x, y) => {
       for (const [dx, dy] of [[0, 8], [8, 6], [-8, 6], [0, 12]]) if (at(x + dx, y + dy) === Z.PATH) return vignette(x, y, [["wayshrine", 0, 0, 7], ["flowersWhite", 8, 3, 5], ["flowersRed", -8, 2, 5]]);

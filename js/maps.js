@@ -215,11 +215,11 @@
     const n = k => Math.max(1, Math.round(k * area));
     const boost = THEME_SCATTER[theme] || {};
     const scatter = [
-      ["crystalCyan", n(3 * (boost.crystalCyan ?? 1)), 14, W - 14, 40, H - 20, 14, 0],
-      ["crystalViolet", n(3 * (boost.crystalViolet ?? 1)), 14, W - 14, 40, H - 20, 14, 0],
-      ["monolith", n(4 * (boost.monolith ?? 1)), 14, W - 14, 40, H - 20, 7, 0],
-      ["shroomGlow", n(9 * (boost.shroomGlow ?? 1)), 14, W - 14, 30, H - 12, 7, 0],
-      ["shroomRed", n(7 * (boost.shroomRed ?? 1)), 14, W - 14, 30, H - 12, 6, 0],
+      ["crystalCyan", n(1.5 * (boost.crystalCyan ?? 1)), 14, W - 14, 40, H - 20, 14, 0],
+      ["crystalViolet", n(1.5 * (boost.crystalViolet ?? 1)), 14, W - 14, 40, H - 20, 14, 0],
+      ["monolith", n(2 * (boost.monolith ?? 1)), 14, W - 14, 40, H - 20, 7, 0],
+      ["shroomGlow", n(4 * (boost.shroomGlow ?? 1)), 14, W - 14, 30, H - 12, 7, 0],
+      ["shroomRed", n(4 * (boost.shroomRed ?? 1)), 14, W - 14, 30, H - 12, 6, 0],
       ["stoneA", n(5 * (boost.stoneA ?? 1)), 14, W - 14, 30, H - 12, 8, 0],
       ["stoneB", n(9 * (boost.stoneB ?? 1)), 14, W - 14, 30, H - 12, 5],
       ["fern", n(16 * (boost.fern ?? 1)), 14, W - 14, 30, H - 12, 6, 0],

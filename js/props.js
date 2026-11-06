@@ -440,7 +440,11 @@
   }
 
   /* Malý lucernový plod: 2x2 jemné px (= 1 art px pro třpyt), stopka nad ním. */
+  // plody jen na zelených listnáčích (dub, vrba): na jehličnanech, břízách a podzimních
+  // korunách dělaly z lesa oranžový šum (vzor Kingdom: klidné koruny, jeden akcent tu a tam)
+  let fruitOk = true;
   function fruitAt(P, x, y) {
+    if (!fruitOk) return;
     P.set(x, y - 1, C.w[1]);
     P.set(x, y, C.a[4]);
     P.set(x + 1, y, C.a[2]);
@@ -465,7 +469,7 @@
     const lower = list.filter(c => c.y > gl.y - gl.ry * 0.2);
     const R = rng(seed + 99);
     const fruitClumps = [];
-    for (let i = 0; i < 6 && lower.length; i++) {
+    for (let i = 0; i < 3 && lower.length; i++) {
       const c = lower[Math.floor(R() * lower.length)];
       if (fruitClumps.includes(c)) continue;
       fruitClumps.push(c);
@@ -654,10 +658,13 @@
 
   function treeVariant(kind) {
     const seed = 40 + (kind % 3) * 11 + (kind >= 3 ? 5 : 0);
+    fruitOk = kind === 0 || kind === 2;
     const t = kind === 0 ? oak(seed) : kind === 1 ? pine(seed) : kind === 2 ? willow(seed)
       : kind === 3 ? oak(seed, AUTUMN) : kind === 4 ? pine(seed, BLUE_PINE) : kind === 5 ? oak(seed, SPRING)
       : kind === 6 ? birch(seed + 7) : blossom(seed + 3);
-    return { trunk: t.trunk, crown: t.crown, fruit: t.fruit, w: TW, h: TH, ax: 18, ay: 44 };
+    const fruit = fruitOk ? t.fruit : [];
+    fruitOk = true;
+    return { trunk: t.trunk, crown: t.crown, fruit, w: TW, h: TH, ax: 18, ay: 44 };
   }
 
 

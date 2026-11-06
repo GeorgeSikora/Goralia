@@ -3850,7 +3850,7 @@
     g.drawImage(t.crown[stage], footX - t.ax + sway + shake, footY - t.ay);
 
     // lantern-fruit twinkle
-    if (stage === 0) {
+    if (stage === 0 && t.fruit.length) {
       const k = Math.floor(clock * 1.6 + r.x) % t.fruit.length;
       const [fx0, fy0] = t.fruit[k];
       const bright = Math.floor(clock * 6 + r.y) & 1;

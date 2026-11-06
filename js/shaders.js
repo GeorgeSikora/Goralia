@@ -223,7 +223,9 @@ void main() {
   float mx = max(src.r, max(src.g, src.b));
   float sat = (mx - min(src.r, min(src.g, src.b))) / max(mx, 1e-3);
   float lum = dot(src, vec3(0.3, 0.59, 0.11));
-  float e = smoothstep(0.6, 0.82, lum) * smoothstep(0.3, 0.5, sat);
+  // jen opravdu žhavé body (jádro plamene, okno, láva); zlaté lemy, žluté květy a světlá tráva
+  // dřív v noci svítily jako jiskry a dělaly šum (Kingdom: ve tmě září jen skutečné ohně)
+  float e = smoothstep(0.83, 0.93, lum) * smoothstep(0.35, 0.55, sat);
   L = mix(L, max(L, vec3(1.0)), e);
   vec3 lit = src * L;
 

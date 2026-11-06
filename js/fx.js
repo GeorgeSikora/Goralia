@@ -533,7 +533,7 @@
       }
     };
 
-    add("firefly", Math.round(18 * area), false, 0.2, 0.6);
+    add("firefly", Math.round(9 * area), false, 0.2, 0.6); // méně, ať jsou světlušky vzácný akcent, ne šum
     add("ash", Math.round(22 * area), true, 5, 12);
     add("leaf", Math.round(7 * area), false, 5, 10);
     add("seed", Math.round(9 * area), false, 3, 7); // chmýří pampelišek a pyl ve větru
@@ -546,6 +546,8 @@
     for (const a of state.ambient) {
       if (night && a.kind === "seed") continue;
       if (a.kind === "firefly") {
+        // světlušky svítí jen za soumraku a v noci; ve dne byly jen žluté tečky navíc
+        if (amb && !night) continue;
         const x = a.x + Math.sin(T * a.sp + a.ph) * 9 + Math.sin(T * a.sp * 2.3) * 3;
         const y = a.y + Math.cos(T * a.sp * 0.8 + a.ph) * 6;
         const tw = Math.sin(T * 2.2 + a.ph * 3);
