@@ -62,6 +62,7 @@
    * bar = šestnáctin v taktu, parts = části (mel + akord na takt), form = průchody:
    *   s = část, lead = sólový nástroj, lead2 = druhý hlas o tolik půltónů (a nástroj lead2i),
    *   acc = doprovody, drums = bicí, tr = transpozice celé hudby, oct = posun jen melodie, v = síla.
+ * gain skladby vyrovnává hlasitost (změřeno na ukázkách).
    * Výchozí hodnoty průchodu jsou přímo ve skladbě. */
   const TUNES = [
     /* ===== menu ===== */
@@ -209,7 +210,7 @@
       ]
     },
     {
-      id: "koza", name: "Koza na salaši", scenes: ["peace"], tempo: 116, bar: 12,
+      id: "koza", gain: 1.4, name: "Koza na salaši", scenes: ["peace"], tempo: 116, bar: 12,
       lead: "koza", acc: ["kozadrone"], drone: "G2", drums: "frame", wet: 0.24,
       parts: {
         A: {
@@ -259,7 +260,7 @@
 
     /* ===== noc ===== */
     {
-      id: "jezero", name: "Měsíční jezero", scenes: ["night"], tempo: 64, bar: 16,
+      id: "jezero", gain: 0.72, name: "Měsíční jezero", scenes: ["night"], tempo: 64, bar: 16,
       lead: "fujara", acc: ["harp"], wet: 0.46,
       parts: {
         A: {
@@ -282,7 +283,7 @@
       ]
     },
     {
-      id: "lucerny", name: "Lucerny", scenes: ["night", "undead"], tempo: 72, bar: 12,
+      id: "lucerny", gain: 1.2, name: "Lucerny", scenes: ["night", "undead"], tempo: 72, bar: 12,
       lead: "bells", acc: ["choirpad"], wet: 0.48,
       parts: {
         A: {
@@ -379,7 +380,7 @@
       ]
     },
     {
-      id: "roh", name: "Válečný roh", scenes: ["battle", "undead-battle"], tempo: 116, bar: 16,
+      id: "roh", gain: 0.9, name: "Válečný roh", scenes: ["battle", "undead-battle"], tempo: 116, bar: 16,
       lead: "horn", acc: ["ostinato", "pad"], drums: "war", wet: 0.28,
       parts: {
         A: {
@@ -451,7 +452,7 @@
       ]
     },
     {
-      id: "lich", name: "Lichův chorál", scenes: ["undead"], tempo: 84, bar: 12,
+      id: "lich", gain: 1.2, name: "Lichův chorál", scenes: ["undead"], tempo: 84, bar: 12,
       lead: "dulcimer", acc: ["waltz"], wet: 0.44,
       parts: {
         A: {
@@ -602,14 +603,14 @@
   }
 
   // vlastní sběrnice skladby (kvůli prolínání): přímý zvuk + poslání do dozvuku
-  function tuneBus(t, wetAmt, fadeIn) {
+  function tuneBus(t, wetAmt, fadeIn, gain = 1) {
     const ctx = M.ctx;
     const dry = ctx.createGain();
     const send = ctx.createGain();
     dry.connect(out);
     send.connect(wet);
     const g = [dry.gain, send.gain];
-    const lv = [1, wetAmt];
+    const lv = [gain, wetAmt * gain];
     g.forEach((p, i) => {
       if (fadeIn) {
         p.setValueAtTime(0.0001, t);
@@ -1183,7 +1184,7 @@
     scene = effective(want);
     tune = tune || pick(scene);
     lastId = tune.id;
-    play = { tune, step: 0, t, bus: tuneBus(t, tune.wet || 0.3, fadeIn) };
+    play = { tune, step: 0, t, bus: tuneBus(t, tune.wet || 0.3, fadeIn, tune.gain || 1) };
     beginStep(t);
     if (onTrack && !rendering) setTimeout(() => onTrack && onTrack(current()), Math.max(0, (t - M.ctx.currentTime) * 1000));
   }
