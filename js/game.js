@@ -2876,10 +2876,15 @@
     const k = rect.height / (view.h * 2);
     return { left: rect.left + 8, top: rect.top + 40 * k };
   };
-  // hudba: menu / klidná hra / boj (podle intenzity bitvy)
+  // hudba: menu / den / noc / boj (podle intenzity bitvy), na kooperačních mapách nemrtví,
+  // po konci zápasu znělka vítězství nebo porážky
   setInterval(() => {
-    const playing = started && !matchOver;
-    const sceneNow = !playing ? "menu" : battleLevel > 0.3 || musicHeat > 0 ? "battle" : "peace";
+    const undead = !!(map && map.coop);
+    const fight = battleLevel > 0.3 || musicHeat > 0;
+    let sceneNow = "menu";
+    if (started && matchOver) sceneNow = state === "win" ? "win" : state === "lose" ? "lose" : "menu";
+    else if (started && fight) sceneNow = undead ? "undead-battle" : "battle";
+    else if (started) sceneNow = undead ? "undead" : PK.shaders && PK.shaders.isNight && PK.shaders.isNight(elapsed) ? "night" : "peace";
     PK.music.setScene(sceneNow);
     musicHeat = battleLevel > 0.3 ? 20 : Math.max(0, musicHeat - 1);
   }, 1000);
@@ -3059,6 +3064,8 @@
     $("s-music").checked = PK.music.enabled;
     $("s-music-vol").value = Math.round(PK.music.level * 100);
     $("s-music-out").textContent = `${$("s-music-vol").value} %`;
+    const track = PK.music.current;
+    $("s-music-now").textContent = track && PK.music.enabled ? PK.t(track.name) : "–";
     $("s-voice").checked = PK.voice.enabled;
     $("s-vchat").checked = PK.vchat.enabled;
     $("s-vchat-label").textContent = PK.vchat.supported ? "Hlasový chat (online)" : "Hlasový chat (prohlížeč ho nepodporuje)";
@@ -3090,6 +3097,18 @@
   $("s-music").addEventListener("change", event => {
     audio.unlock();
     PK.music.setEnabled(event.target.checked);
+  });
+
+  // název právě hrající skladby a přeskočení na další
+  const musicNow = $("s-music-now");
+  PK.music.onTrack = track => { musicNow.textContent = track && PK.music.enabled ? PK.t(track.name) : "–"; };
+  $("s-music-next").addEventListener("click", () => {
+    audio.unlock();
+    if (!PK.music.enabled) {
+      PK.music.setEnabled(true);
+      $("s-music").checked = true;
+    }
+    PK.music.next();
   });
 
   $("s-music-vol").addEventListener("input", event => {

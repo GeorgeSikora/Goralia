@@ -82,6 +82,13 @@
   S.mood = t => mood(t);
   PK.shaders = S;
 
+  // Je v čase zápasu `time` (s) noc? Hudba podle toho hraje noční skladby (jen když je denní doba vidět).
+  S.isNight = function (time) {
+    if (!S.active || time == null) return false;
+    const p = S.phase != null ? S.phase : ((START_PHASE + time / CYCLE) % 1 + 1) % 1;
+    return p >= 0.52 && p < 0.87;
+  };
+
   // světla a překážky nasbírané během kreslení snímku
   const lights = [];
   const occ = [];
