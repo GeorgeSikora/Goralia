@@ -24,6 +24,7 @@ const { createHallOfFame } = require("./halloffame.js");
 const { createEvents } = require("./events.js");
 const { createChallenges } = require("./challenges.js");
 const { createTraffic } = require("./traffic.js");
+const { createTutorial } = require("./tutorial.js");
 const { createGeo } = require("./geoip.js");
 const { createMapConfig } = require("./mapconfig.js");
 const { createApi, SID } = require("./api.js");
@@ -72,6 +73,7 @@ const accounts = createAccounts(store, {
 const stats = createStats(store);
 const challenges = createChallenges(store, accounts);
 const hall = createHallOfFame(store, accounts, challenges);
+const tutorial = createTutorial(store, accounts, traffic.dayKey, challenges);
 const mapConfig = createMapConfig(store, MAPS);
 
 const MIME = {
@@ -205,7 +207,7 @@ const adminMaps = {
 
 const events = createEvents(store, accounts, { mapExists: id => MAPS.list.some(m => m.id === id) });
 
-const api = createApi({ accounts, stats, hall, events, challenges, store, live, traffic, adminMaps, isLocalRequest, publicUrl: PUBLIC_URL });
+const api = createApi({ accounts, stats, hall, events, challenges, store, live, traffic, tutorial, adminMaps, isLocalRequest, publicUrl: PUBLIC_URL });
 // Domény webu hry: odkaz z nich je přechod v rámci webu, ne zdroj návštěvy.
 const ownHosts = req => {
   const hosts = [String(req.headers.host || "")];

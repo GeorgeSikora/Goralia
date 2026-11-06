@@ -45,6 +45,8 @@
     { id: "title-lovec", kind: "title", rarity: "rare", name: "Lovec nemrtvých" },
     { id: "title-nezlomny", kind: "title", rarity: "rare", name: "Nezlomný" },
     { id: "title-postrach", kind: "title", rarity: "rare", name: "Postrach Morvana" },
+    // za dokončení tutoriálu pro nové hráče (server/tutorial.js), výzvy ho nelosují
+    { id: "title-novacek", kind: "title", rarity: "tutorial", name: "Nováček" },
     // rámečky avatara
     { id: "frame-drevo", kind: "frame", rarity: "common", name: "Dřevěný rámeček", style: "wood" },
     { id: "frame-zelezo", kind: "frame", rarity: "common", name: "Železný rámeček", style: "iron" },

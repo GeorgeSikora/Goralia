@@ -18,6 +18,8 @@ const { createStats, MIN_DURATION } = require("./stats.js");
 const { createOAuth } = require("./oauth.js");
 const { createHallOfFame, POINTS } = require("./halloffame.js");
 const { createEvents } = require("./events.js");
+const { createTutorial } = require("./tutorial.js");
+const { createChallenges } = require("./challenges.js");
 const { createAiGames, MIN_WIN } = require("./aigames.js");
 const { Match } = require("../js/sim.js");
 const MAPS = require("../js/maps.js");
@@ -913,7 +915,50 @@ async function testServerApi() {
   }
 }
 
+/* ---------- tutoriál: počty, trychtýř, titul Nováček ---------- */
+async function testTutorial() {
+  const store = createStore(tmp("goralia-tut-"));
+  const accounts = createAccounts(store, {});
+  const challenges = createChallenges(store, accounts);
+  const hall = createHallOfFame(store, accounts, challenges);
+  const tut = createTutorial(store, accounts, () => "2026-11-05", challenges);
+  const eva = (await accounts.register({ name: "Eva", email: "eva@example.com", password: "heslo-1234" }, "9.9.9.9")).user;
+
+  // anonymní prohlížeč: začne, dojde ke kroku 3 a přeskočí
+  tut.handle({ e: "start", first: true }, null);
+  for (let i = 0; i < 4; i++) tut.handle({ e: "step", step: i, first: true }, null);
+  tut.handle({ e: "skip", step: 3, first: true }, null);
+  // přihlášená Eva dohraje; druhé spuštění z nastavení se do "začalo" nepočítá
+  tut.handle({ e: "start", first: true }, eva);
+  const done = tut.handle({ e: "done", first: true }, eva);
+  tut.handle({ e: "start", first: true }, eva);
+  tut.handle({ e: "done", first: true }, eva);
+  assert.strictEqual(done.tutorialDone, true);
+  assert(eva.cosmetics.owned["title-novacek"], "titul Nováček mezi odměnami");
+  assert.strictEqual(done.look.title, "title-novacek", "titul se rovnou nasadí");
+  assert.strictEqual(Object.keys(eva.cosmetics.owned).length, 1, "titul jen jednou");
+  assert.strictEqual(tut.handle({ e: "nesmysl" }, null), null, "neznámé hlášení");
+  assert.strictEqual(tut.handle({ e: "claim" }, null), null, "titul bez účtu nejde");
+
+  const r = tut.report(7);
+  assert.strictEqual(r.started, 2, "začali dva hráči");
+  assert.strictEqual(r.finished, 1, "dokončila jedna");
+  assert.strictEqual(r.skipped, 1);
+  assert.strictEqual(r.skippedAt[3], 1);
+  assert.strictEqual(r.reached[3], 1);
+  assert.strictEqual(r.runs, 3);
+  assert.strictEqual(r.accounts.titled, 1);
+  assert.strictEqual(r.days[r.days.length - 1].started, 2);
+
+  // titul se ukáže v síni slávy i s nulovým skóre a jen jednou
+  // titul se ukáže v síni slávy i s nulovým skóre
+  const row = hall.ranking().find(p => p.name === "Eva");
+  assert(row && row.score === 0 && row.look.title === "title-novacek", "Nováček v síni slávy");
+  assert.strictEqual(accounts.selfView(eva).tutorialDone, true);
+}
+
 async function main() {
+  await testTutorial();
   await testAccounts();
   await testScoring();
   await testOAuth();

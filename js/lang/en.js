@@ -990,7 +990,41 @@ PK.i18n.add("en", {
   "Dvanáct pevností": "Twelve Fortresses",
   "Dvanáct opevněných království. Hradby mají brány jen na cestách, uprostřed stojí hory.": "Twelve fortified kingdoms. The walls have gates only on the roads; mountains stand in the middle.",
   "Údolí potoka": "Brook Valley",
-  "Klidné údolí rozdělené potokem. Dva brody, hory v rozích a dva doly u každé základny. Rychlý souboj dvou hráčů.": "A quiet valley split by a brook. Two fords, mountains in the corners and two mines at each base. A quick duel for two players."
+  "Klidné údolí rozdělené potokem. Dva brody, hory v rozích a dva doly u každé základny. Rychlý souboj dvou hráčů.": "A quiet valley split by a brook. Two fords, mountains in the corners and two mines at each base. A quick duel for two players.",
+
+  /* ---------- tutoriál pro nové hráče (js/tutorial.js) ---------- */
+  "Naučit se hrát": "Learn to play",
+  "Jsi tu poprvé? Za pár minut tě naučíme hrát.": "New here? We'll teach you to play in a few minutes.",
+  "Tutoriál": "Tutorial",
+  "Spustit znovu": "Play again",
+  "TUTORIÁL": "TUTORIAL",
+  "PŘESKOČIT": "SKIP",
+  "HOTOVO!": "DONE!",
+  "Nováček": "Rookie",
+  "Titul za dokončený tutoriál": "Title for finishing the tutorial",
+  "Vítej v Goralii! Klikni levým tlačítkem na dělníka u své gminy.": "Welcome to Goralia! Left-click a worker next to your town hall.",
+  "Vítej v Goralii! Klepni na dělníka u své gminy.": "Welcome to Goralia! Tap a worker next to your town hall.",
+  "Dělník těží dřevo. Klikni pravým tlačítkem na strom.": "Workers chop wood. Right-click a tree.",
+  "Dělník těží dřevo. Když je vybraný, klepni na strom.": "Workers chop wood. With the worker selected, tap a tree.",
+  "Teď zlato. Vyber dělníka a klikni pravým tlačítkem na zlatý důl.": "Now gold. Select a worker and right-click the gold mine.",
+  "Teď zlato. Vyber dělníka a klepni na zlatý důl.": "Now gold. Select a worker and tap the gold mine.",
+  "Buda zvedne limit jednotek o 5. Vyber dělníka, klikni na Budu vpravo dole a pak na volné místo.": "A hut raises your unit limit by 5. Select a worker, click Hut at the bottom right, then an empty spot.",
+  "Buda zvedne limit jednotek o 5. Vyber dělníka, klepni na Budu vpravo dole a pak dvakrát na volné místo.": "A hut raises your unit limit by 5. Select a worker, tap Hut at the bottom right, then tap an empty spot twice.",
+  "Kasárna cvičí vojáky. Postav je stejně jako budu.": "Barracks train soldiers. Build them the same way as the hut.",
+  "Vyber kasárna a vycvič tři vojáky.": "Select the barracks and train three soldiers.",
+  "Vyber gminu a vylepši Nástroje. Dělníci pak těží rychleji.": "Select the town hall and research Tools. Workers will then gather faster.",
+  "Nepřítel se probudil! Označ vojáky rámečkem a pravým tlačítkem je pošli na jeho strážní věž.": "The enemy is awake! Drag a box around your soldiers and right-click their watchtower.",
+  "Nepřítel se probudil! Dvakrát klepni na vojáka, tím vybereš všechny, a pak klepni na jeho strážní věž.": "The enemy is awake! Double-tap a soldier to select them all, then tap their watchtower.",
+  "Věž padla! Teď zboř nepřátelskou gminu a vyhraj.": "The tower fell! Now destroy the enemy town hall to win.",
+  "Tutoriál je hotový. Získáváš titul Nováček v síni slávy.": "Tutorial complete. You earned the Rookie title in the Hall of Fame.",
+  "Přihlas se a titul se ti připíše k účtu.": "Log in and the title will be added to your account.",
+  "Dělník nese náklad do gminy.": "The worker is carrying it to the town hall.",
+  "Stavba: {p} %": "Building: {p} %",
+  "Vojáci: {n}/3": "Soldiers: {n}/3",
+  "Výzkum běží. Mezitím můžeš cvičit další vojáky.": "Research is running. Meanwhile you can train more soldiers.",
+  "Nepřátelská gmina: {p} %": "Enemy town hall: {p} %",
+  "Tutoriál přeskočen. Spustíš ho znovu v Nastavení.": "Tutorial skipped. You can start it again in Settings.",
+  "Rozehraná hra skončí. Spustit tutoriál?": "Your current game will end. Start the tutorial?"
 });
 
 /* ---------- výzvy a kosmetické odměny (js/challenges.js, js/cosmetics.js) ---------- */

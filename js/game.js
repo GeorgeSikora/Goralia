@@ -115,6 +115,7 @@
   let matchOver = true;
   let endWhy = "";
   let ownOutWhy = "";
+  let tutorial = false; // řízená hra pro nové hráče (js/tutorial.js)
 
   // Kamera v art px (levý horní roh viditelné části světa); camF je přesná, cam zaokrouhlená pro kreslení.
   const cam = { x: 0, y: 0 };
@@ -254,6 +255,8 @@
     ownOutWhy = "";
     simMatch = null;
     simAcc = 0;
+    if (tutorial && PK.tutorial) PK.tutorial.stop();
+    tutorial = false;
   }
 
   // Postaví terén mapy (jednou na mapu) a vycentruje kameru na vlastní základnu.
@@ -361,10 +364,14 @@
         const p = players.find(q => q.slot === i);
         return p ? { name: p.name, ai: p.ai } : null;
       });
-      simMatch = new sim.Match(map, roster, { countdown: 0, winter: !!(PK.winter && PK.winter.on) });
+      tutorial = !!cfg.tutorial && !!PK.tutorial;
+      // tutoriál učí základy: bez hrdinů, ať nový hráč nevybere hrdinu místo dělníka
+      simMatch = new sim.Match(map, roster, { countdown: 0, winter: !!(PK.winter && PK.winter.on), heroes: !tutorial });
+      if (tutorial) PK.tutorial.setup(simMatch, me, { touch: usesTouch(), notify: onTutorialReport });
       applySnapshot(simMatch.snapshot(me));
       simMatch.endTick();
-      reportAi("start");
+      // tutoriál se hlásí zvlášť (/api/tutorial) a do her proti AI se nepočítá
+      if (!tutorial) reportAi("start");
     } else {
       online.phase = "countdown";
     }
@@ -449,6 +456,15 @@
       commandMode = false;
       audio.play(state === "win" ? "win" : "lose");
     }
+
+    if (tutorial) {
+      PK.tutorial.finish(state === "win");
+      syncMenu();
+      return;
+    }
+
+    // první odehraný zápas: hlavní menu už nenabízí tutoriál
+    if (!spectator && PK.tutorial) PK.tutorial.markPlayed();
 
     // zápas změněný příkazem správce se do statistik nepočítá
     if (mode === "ai" && simMatch && !simMatch.cheated && !simMatch.reported) {
@@ -1076,6 +1092,12 @@
 
     canvas.setPointerCapture(event.pointerId);
     const point = pointerPosition(event);
+
+    // tlačítko Přeskočit na panelu tutoriálu
+    if (tutorial && !menuOpen && PK.tutorial.hit(point.x / 2, point.y / 2)) {
+      skipTutorial();
+      return;
+    }
 
     if (event.pointerType === "touch" && point.y < mapAreaH() && !PK.hud.minimapHit(point.x, point.y)) {
       touchDown(event, point);
@@ -1719,6 +1741,12 @@
     else statusEl.textContent = `${state === "win" ? "Vítězství!" : state === "lose" ? "Porážka." : "Remíza."} ${endReason()}`;
 
     $("m-play").hidden = started && !live;
+
+    // nový hráč (prohlížeč i účet bez odehraného zápasu): nabídka tutoriálu nahoře v menu
+    const offerTut = !started && !!PK.tutorial && PK.tutorial.offer(account.user);
+    $("m-tutorial").hidden = !offerTut;
+    $("m-tutorial").classList.toggle("glow", offerTut);
+    if (offerTut) statusEl.textContent = tt("Jsi tu poprvé? Za pár minut tě naučíme hrát.");
   }
 
   function openMenu(page = "main") {
@@ -1745,6 +1773,57 @@
     if (settings.autoFullscreen && fsSupported && !isFullscreen()) toggleFullscreen(true);
     if (liveMatch()) closeMenu();
     else openOfflineLobby();
+  }
+
+  /* ======================= tutoriál ======================= */
+  const tt = (s, vars) => (PK.tutorial ? PK.tutorial.t(s, vars) : s);
+  // Texty tutoriálu se řídí posledním vstupem (myš / prst); před prvním dotykem podle zařízení.
+  let lastPointer = window.matchMedia && matchMedia("(hover: none) and (pointer: coarse)").matches ? "touch" : "mouse";
+  canvas.addEventListener("pointerdown", event => { lastPointer = event.pointerType === "touch" ? "touch" : "mouse"; }, true);
+  canvas.addEventListener("pointermove", event => { if (event.pointerType === "mouse") lastPointer = "mouse"; }, true);
+  const usesTouch = () => lastPointer === "touch";
+
+  // Co tutoriál potřebuje vědět o klientu: výběr, rozpracovaná stavba, kamera a převod do obrazovky.
+  function tutorialCtx() {
+    return {
+      match: simMatch,
+      selected,
+      placement,
+      cardHas: PK.hud.cardHas,
+      view,
+      zoom,
+      cam: { x: (cam.x + view.w / zoom / 2) * 2, y: (cam.y + view.mapH / zoom / 2) * 2 },
+      toScreen: (x, y) => ({ x: (x / 2 - cam.x) * zoom, y: (y / 2 - cam.y) * zoom }),
+      touch: usesTouch(),
+      loggedIn: !!account.user
+    };
+  }
+
+  // Server připsal titul Nováček (odměna z výzev): přihlášený účet ho má hned i ve sbírce odměn.
+  function onTutorialReport(res) {
+    if (!res || !res.tutorialDone || !account.user) return;
+    account.user.tutorialDone = true;
+    if (PK.challenges) PK.challenges.reload();
+  }
+
+  function startTutorial() {
+    audio.unlock();
+    if (PK.loader && PK.loader.busy) return;
+    if (liveMatch() && state === "playing" && !tutorial && !window.confirm(tt("Rozehraná hra skončí. Spustit tutoriál?"))) return;
+    if (mode === "online" && started) leaveOnline();
+    if (settings.autoFullscreen && fsSupported && !isFullscreen()) toggleFullscreen(true);
+
+    const next = PK.tutorial.map();
+    const roster = [{ slot: 0, name: "Ty", ai: false }, { slot: 1, name: `AI ${R.TEAM_NAMES[R.TEAMS[1]]}`, ai: true }];
+    prepareMatch(next, [0, 1], () => beginMatch({ mode: "ai", map: next, slot: 0, players: roster, tutorial: true }));
+  }
+
+  function skipTutorial() {
+    PK.tutorial.skip();
+    tutorial = false;
+    leaveOnline();
+    openMenu();
+    statusEl.textContent = tt("Tutoriál přeskočen. Spustíš ho znovu v Nastavení.");
   }
 
   /* ======================= lobby: výběr mapy a hráčů ======================= */
@@ -3177,6 +3256,8 @@
   $("l-back").addEventListener("click", () => goBack("lobby"));
   $("m-restart").addEventListener("click", openOfflineLobby);
   $("m-settings").addEventListener("click", () => showPage("settings"));
+  $("m-tutorial").addEventListener("click", startTutorial);
+  $("s-tutorial").addEventListener("click", startTutorial);
   $("m-help").addEventListener("click", () => showPage("help"));
   $("fs-btn").addEventListener("click", () => toggleFullscreen());
   $("s-fullscreen").addEventListener("click", () => toggleFullscreen());
@@ -3306,7 +3387,11 @@
     show: showPage,
     onChange: user => {
       if (PK.challenges) PK.challenges.reload();
-      if (user) return;
+      syncMenu();
+      if (user) {
+        if (PK.tutorial) PK.tutorial.claim(user);
+        return;
+      }
       if (mode === "online" && started) leaveOnline();
       else leaveLobby();
     },
@@ -4870,6 +4955,7 @@
     PK.hud.draw(g, vm, T, dt);
 
     if (matchOver && started) PK.hud.drawEnd(g, vm, T, endT);
+    if (tutorial && started) PK.tutorial.draw(g, tutorialCtx(), T);
   }
 
   function drawCountdown() {
@@ -5004,6 +5090,7 @@
     if (running) {
       if (started) {
         if (mode === "ai") pumpSim(dt);
+        if (tutorial && simMatch) PK.tutorial.update(tutorialCtx(), dt);
         netUpdate(dt);
         updateCamera(dt);
       }

@@ -1098,3 +1098,16 @@ html body #menu.intro .footer { animation: rise 0.45s ease-out var(--d, 0s) both
 /* miniatura mapy v seznamu (game.js mapThumb): pixelová mapka vlevo, název a popisek vpravo */
 .map-item.has-thumb { grid-template-columns: auto 1fr; column-gap: 10px; align-items: center; }
 .map-item.has-thumb .map-thumb { grid-row: span 2; height: auto; justify-self: center; image-rendering: pixelated; box-shadow: 0 0 0 1px var(--ink), 0 0 0 2px #5a4a3a; background: #15121f; }
+
+/* nabídka tutoriálu pro nového hráče: tlačítko v hlavním menu svítí jantarově */
+.btn.glow {
+  background: #4a3a1c;
+  color: #fff3c4;
+  animation: tut-glow 1.6s ease-in-out infinite alternate;
+}
+.btn.glow:hover { background: #5c4822; }
+@keyframes tut-glow {
+  from { box-shadow: 0 0 0 2px var(--ink), inset 2px 2px 0 #a8823e, inset -2px -2px 0 #2a1f0c, 0 0 0 4px var(--brass-d); }
+  to { box-shadow: 0 0 0 2px var(--ink), inset 2px 2px 0 #e0b45a, inset -2px -2px 0 #2a1f0c, 0 0 0 4px var(--amber), 0 0 14px 2px rgba(255, 191, 69, 0.45); }
+}
+@media (prefers-reduced-motion: reduce) { .btn.glow { animation: none; } }

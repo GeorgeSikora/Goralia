@@ -13,7 +13,7 @@ const MAPS = require("../js/maps.js");
 const SID = "goralia_sid";
 const PLAYER_LIMIT = 1000;
 
-function createApi({ accounts, stats, hall, events, challenges, store, live, traffic, adminMaps, isLocalRequest, publicUrl }) {
+function createApi({ accounts, stats, hall, events, challenges, store, live, traffic, tutorial, adminMaps, isLocalRequest, publicUrl }) {
   const passwordFails = new Limiter(10, 10 * 60 * 1000);
   const beaconIp = new Limiter(120, 10 * 60 * 1000);
   const aiGames = createAiGames({ accounts, stats }); // hry proti AI v prohlížeči
@@ -243,6 +243,18 @@ function createApi({ accounts, stats, hall, events, challenges, store, live, tra
       sendJson(ctx.res, 200, result);
     },
 
+    // Hlášení z prohlížeče o tutoriálu (start, kroky, přeskočení, dokončení); přihlášený účet dostane titul.
+    tutorial(ctx) {
+      if (beaconIp.blocked(ctx.ip)) return sendJson(ctx.res, 202, { ok: false });
+      beaconIp.add(ctx.ip);
+      const result = tutorial ? tutorial.handle(ctx.body, ctx.user) : null;
+      sendJson(ctx.res, result ? 200 : 400, result || { ok: false });
+    },
+
+    adminTutorial(ctx) {
+      sendJson(ctx.res, 200, tutorial ? tutorial.report(clamp(ctx.query.get("days"), 1, 365, 30)) : {});
+    },
+
     /* ---------- administrace ---------- */
     overview(ctx) {
       const mem = process.memoryUsage();
@@ -420,6 +432,8 @@ function createApi({ accounts, stats, hall, events, challenges, store, live, tra
     ["GET", /^\/api\/players\/(\d{1,9})$/, "none", handlers.player],
     ["GET", /^\/api\/matches\/(\d{1,9})$/, "none", handlers.match],
     ["POST", /^\/api\/beacon$/, "none", handlers.beacon],
+    ["POST", /^\/api\/tutorial$/, "none", handlers.tutorial],
+    ["GET", /^\/api\/admin\/tutorial$/, "admin", handlers.adminTutorial],
     ["GET", /^\/api\/mapconfig$/, "none", handlers.mapConfig],
     ["GET", /^\/api\/admin\/overview$/, "admin", handlers.overview],
     ["GET", /^\/api\/admin\/users$/, "admin", handlers.users],

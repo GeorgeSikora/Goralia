@@ -55,7 +55,8 @@ function createHallOfFame(store, accounts, challenges = null) {
     const rows = Object.values(data.users)
       .filter(u => !u.banned)
       .map(u => ({ user: u, ...scoreOf(u, tours[u.id]) }))
-      .filter(r => r.score > 0);
+      // i hráč s nulovým skóre se ukáže, když nosí titul (např. Nováček za tutoriál)
+      .filter(r => r.score > 0 || !!(challenges && challenges.lookOf(r.user).title));
 
     rows.sort((a, b) => b.score - a.score || b.pvpWins - a.pvpWins || b.medals.gold - a.medals.gold || a.user.name.localeCompare(b.user.name));
 

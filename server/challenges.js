@@ -224,7 +224,7 @@ function createChallenges(store, accounts, { random = crypto.randomInt } = {}) {
     if (pick.reward && !owned[pick.reward]) return pick.reward;
     const same = COS.ofRarity(rarity).filter(r => !owned[r.id]);
     if (same.length) return pickOne(same).id;
-    const any = COS.ITEMS.filter(r => !owned[r.id]);
+    const any = COS.ITEMS.filter(r => !owned[r.id] && r.rarity !== "tutorial");
     return any.length ? pickOne(any).id : null;
   }
 

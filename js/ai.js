@@ -347,7 +347,8 @@
     const army = mine.filter(u => u.type !== "worker");
 
     assignWorkers(match, brain, hq, workers);
-    produce(match, brain, hq, workers, army);
+    // slabá AI (tutoriál): jen těží a brání se tím, co má, nic nestaví ani necvičí
+    if (!brain.weak) produce(match, brain, hq, workers, army);
     command(match, brain, hq, army);
   }
 

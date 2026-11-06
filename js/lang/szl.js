@@ -995,7 +995,41 @@ PK.i18n.add("szl", {
   "Dvanáct pevností": "Dvanošče pevnošči",
   "Dvanáct opevněných království. Hradby mají brány jen na cestách, uprostřed stojí hory.": "Dvanošče opevňónych królestv. Mury majóm vrota jyny na cestach, v postřodku stojóm góry.",
   "Údolí potoka": "Dolina potoka",
-  "Klidné údolí rozdělené potokem. Dva brody, hory v rozích a dva doly u každé základny. Rychlý souboj dvou hráčů.": "Spokojno dolina rozdźelóno potokym. Dva brody, góry v rogach a dva doły při každej bazi. Hónym zopas dvóch gročóv."
+  "Klidné údolí rozdělené potokem. Dva brody, hory v rozích a dva doly u každé základny. Rychlý souboj dvou hráčů.": "Spokojno dolina rozdźelóno potokym. Dva brody, góry v rogach a dva doły při každej bazi. Hónym zopas dvóch gročóv.",
+
+  /* ---------- tutoriál pro nové hráče (js/tutorial.js) ---------- */
+  "Naučit se hrát": "Naučič se grač",
+  "Jsi tu poprvé? Za pár minut tě naučíme hrát.": "Žeš je tu pjyrši roz? Za pore minut če naučymy grač.",
+  "Tutoriál": "Tutorial",
+  "Spustit znovu": "Puščič zaš",
+  "TUTORIÁL": "TUTORIAL",
+  "PŘESKOČIT": "PŘESKOČIČ",
+  "HOTOVO!": "FERTIG!",
+  "Nováček": "Nováček",
+  "Titul za dokončený tutoriál": "Titul za fertig tutorial",
+  "Vítej v Goralii! Klikni levým tlačítkem na dělníka u své gminy.": "Vitej v Goralii! Klikni levym kneflym na robotnika při tvoji gmině.",
+  "Vítej v Goralii! Klepni na dělníka u své gminy.": "Vitej v Goralii! Klepni na robotnika při tvoji gmině.",
+  "Dělník těží dřevo. Klikni pravým tlačítkem na strom.": "Robotnik rómbje dřevo. Klikni pravym kneflym na stróm.",
+  "Dělník těží dřevo. Když je vybraný, klepni na strom.": "Robotnik rómbje dřevo. Jak je vybrany, klepni na stróm.",
+  "Teď zlato. Vyber dělníka a klikni pravým tlačítkem na zlatý důl.": "Teraz złoto. Vyběr robotnika a klikni pravym kneflym na złoty dół.",
+  "Teď zlato. Vyber dělníka a klepni na zlatý důl.": "Teraz złoto. Vyběr robotnika a klepni na złoty dół.",
+  "Buda zvedne limit jednotek o 5. Vyber dělníka, klikni na Budu vpravo dole a pak na volné místo.": "Buda podnese limit jednotek o pjynč. Vyběr robotnika, klikni na Budu v pravo na dole a potym na prózdne mjejsce.",
+  "Buda zvedne limit jednotek o 5. Vyber dělníka, klepni na Budu vpravo dole a pak dvakrát na volné místo.": "Buda podnese limit jednotek o pjynč. Vyběr robotnika, klepni na Budu v pravo na dole a potym dvarazy na prózdne mjejsce.",
+  "Kasárna cvičí vojáky. Postav je stejně jako budu.": "V kasarni se cvičóm vojocy. Postav jóm tak samo jak budu.",
+  "Vyber kasárna a vycvič tři vojáky.": "Vyběr kasarňe a vycvič třech vojokóv.",
+  "Vyber gminu a vylepši Nástroje. Dělníci pak těží rychleji.": "Vyběr gmine a vylepš Vercajg. Robotnicy potym robjóm hónij.",
+  "Nepřítel se probudil! Označ vojáky rámečkem a pravým tlačítkem je pošli na jeho strážní věž.": "Vróg se zbudźił! Označ vojokóv rómečkym a pravym kneflym jich pošli na jego strožno věže.",
+  "Nepřítel se probudil! Dvakrát klepni na vojáka, tím vybereš všechny, a pak klepni na jeho strážní věž.": "Vróg se zbudźił! Dvarazy klepni na vojoka, tak vybereš všeckich, a potym klepni na jego strožno věže.",
+  "Věž padla! Teď zboř nepřátelskou gminu a vyhraj.": "Věža padła! Teraz zbuř gmine vroga a vygrej.",
+  "Tutoriál je hotový. Získáváš titul Nováček v síni slávy.": "Tutorial je fertig. Teraz moš titul Nováček v Sali słavy.",
+  "Přihlas se a titul se ti připíše k účtu.": "Přigłoš se a titul se či připiše ku kóntu.",
+  "Dělník nese náklad do gminy.": "Robotnik nese forot do gminy.",
+  "Stavba: {p} %": "Stavba: {p} %",
+  "Vojáci: {n}/3": "Vojocy: {n}/3",
+  "Výzkum běží. Mezitím můžeš cvičit další vojáky.": "Vyzkum běži. Mjyndzy tym možeš cvičič dalši vojokóv.",
+  "Nepřátelská gmina: {p} %": "Gmina vroga: {p} %",
+  "Tutoriál přeskočen. Spustíš ho znovu v Nastavení.": "Tutorial žeš přeskočił. Puščiš go zaš v Naštelovaňu.",
+  "Rozehraná hra skončí. Spustit tutoriál?": "Rozehrano gra se skónči. Puščič tutorial?"
 });
 
 /* ---------- výzvy a kosmetické odměny (js/challenges.js, js/cosmetics.js) ---------- */
