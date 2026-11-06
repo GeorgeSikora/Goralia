@@ -138,6 +138,7 @@
     root.hidden = false;
     root.classList.remove("done", "leaving");
     logo.style.transform = "";
+    logo.closest(".ld-box").style.setProperty("--ld-dy", "0px"); // před zápasem menu pod obrazovkou není
     root.setAttribute("aria-busy", "true");
     open = true;
     setText(text);
@@ -184,6 +185,7 @@
 
     setProgress(1);
     root.setAttribute("aria-busy", "false");
+    removeEventListener("resize", realign);
 
     hideTimer = setTimeout(() => {
       const a = logo.getBoundingClientRect();
@@ -260,6 +262,11 @@
 
   /* ---------- první načtení stránky ---------- */
   let bootCalled = false;
+
+  // logo stojí na místě loga v menu i po změně velikosti okna (jinak se během načítání nehýbe;
+  // případný malý rozdíl po překladu textů menu dorovná na konci plynulý dojezd)
+  const realign = () => { if (PK.alignLoader) PK.alignLoader(); };
+  addEventListener("resize", realign);
 
   function loadScripts() {
     let done = 0;

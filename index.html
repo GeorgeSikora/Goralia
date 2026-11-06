@@ -95,7 +95,7 @@
     <canvas id="menubg" class="menubg" aria-hidden="true"></canvas>
     <div class="panel">
       <h1 class="logo" id="menu-title">
-        <canvas id="logo" role="img" aria-label="Goralia"></canvas>
+        <canvas id="logo" role="img" aria-label="Goralia" width="165" height="148"></canvas>
       </h1>
       <p class="tagline">Postav hrad, shromáždi armádu, dobyj království</p>
 
@@ -413,6 +413,35 @@
   </div>
 </div>
 
+<script>
+  // Logo načítací obrazovky stojí od začátku přesně tam, kde je logo v menu (pod ní), takže při
+  // přechodu do menu se nikam neposouvá. loader.js volá totéž při změně velikosti okna.
+  (function () {
+    var PK = (window.PK = window.PK || {});
+    // svislá poloha podle rozložení (offsetTop), bez rozjetých animací a posunů
+    function top(el) {
+      var y = 0;
+      for (; el; el = el.offsetParent) y += el.offsetTop - (el.offsetParent ? el.offsetParent.scrollTop : 0);
+      return y;
+    }
+    PK.alignLoader = function () {
+      var box = document.querySelector("#loading .ld-box");
+      var logo = document.getElementById("ld-logo");
+      var menu = document.getElementById("menu");
+      var target = document.getElementById("logo");
+      if (!box || !logo) return;
+      var dy = 0;
+      if (menu && target && !menu.hidden && target.offsetParent) {
+        var t = top(target);
+        dy = t - top(logo);
+        // jen když se pod logo vejde i pruh
+        if (top(box) + box.offsetHeight + dy > innerHeight - 8 || t < 0) dy = 0;
+      }
+      box.style.setProperty("--ld-dy", dy + "px");
+    };
+    PK.alignLoader();
+  })();
+</script>
 <script src="js/i18n.js"></script>
 <script src="js/lang/en.js"></script>
 <script src="js/lang/szl.js"></script>

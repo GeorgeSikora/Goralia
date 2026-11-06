@@ -896,6 +896,7 @@ a.btn { display: block; text-align: center; text-decoration: none; }
 
 .ld-box {
   width: min(420px, 100%);
+  transform: translateY(var(--ld-dy, 0px)); /* logo na místě loga v menu (PK.alignLoader v index.html) */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -929,6 +930,10 @@ a.btn { display: block; text-align: center; text-decoration: none; }
 
 @keyframes ld-out { to { opacity: 0; } }
 .loading.leaving .ld-logo { transition: transform 0.6s cubic-bezier(0.45, 0, 0.2, 1); }
+
+/* vlajky jazyka v menu kreslí až game.js: místo pro ně je od začátku, ať se menu (a logo
+ * načítací obrazovky srovnané s logem v menu) během načítání neposune */
+#m-lang:empty { min-height: 47px; }
 
 /* dokud běží načítání, menu pod ním čeká bez loga a obsahu (rámeček panelu je vidět) */
 body.booting #logo { visibility: hidden; }
@@ -1034,7 +1039,7 @@ html body #menu.intro .footer { animation: rise 0.45s ease-out var(--d, 0s) both
 }
 
 @media (max-height: 420px) {
-  .ld-logo { height: 96px; }
+  /* logo zůstává stejně velké jako v menu, jen pruh je blíž */
   .ld-road { margin-top: 80px; }
 }
 

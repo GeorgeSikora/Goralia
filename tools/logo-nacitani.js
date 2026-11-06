@@ -54,7 +54,8 @@ const ROOT = path.join(__dirname, "..");
   patch("index.html", [
     [/(id="ld-logo" src=")data:image\/png;base64,[^"]*(")/, `$1${normal.menu.url}$2`],
     [/(id="ld-logo"[^>]*width=")\d+(" height=")\d+(")/, `$1${normal.menu.w}$2${normal.menu.h}$3`],
-    [/(var WINTER_LOGO = ")data:image\/png;base64,[^"]*(")/, `$1${winter.menu.url}$2`]
+    [/(var WINTER_LOGO = ")data:image\/png;base64,[^"]*(")/, `$1${winter.menu.url}$2`],
+    [/(<canvas id="logo"[^>]*width=")\d+(" height=")\d+(")/, `$1${normal.menu.w}$2${normal.menu.h}$3`]
   ]);
   patch("uvod.html", [
     [/(id="hero-wordmark" src=")data:image\/png;base64,[^"]*(")/, `$1${normal.word.url}$2`],
