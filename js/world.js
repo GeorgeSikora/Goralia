@@ -199,6 +199,8 @@
     // road raster: normalised distance to nearest road
     const nd = new Float32Array(W * H).fill(9);
     const roadId = new Int8Array(W * H).fill(-1);
+    // směr cesty (jednotkový vektor nejbližšího úseku): prkna mostů, nášlapné kameny
+    const rdx = new Float32Array(W * H), rdy = new Float32Array(W * H);
 
     rec.roads.forEach((road, id) => {
       const pad = road.w * 1.6 + 4;
@@ -213,6 +215,7 @@
         const dx = bx - ax;
         const dy = by - ay;
         const len2 = dx * dx + dy * dy;
+        const ln = Math.sqrt(len2) || 1;
 
         for (let y = y0; y <= y1; y++) {
           for (let x = x0; x <= x1; x++) {
@@ -226,6 +229,8 @@
             if (n < nd[y * W + x]) {
               nd[y * W + x] = n;
               roadId[y * W + x] = id;
+              rdx[y * W + x] = dx / ln;
+              rdy[y * W + x] = dy / ln;
             }
           }
         }
@@ -236,9 +241,11 @@
 
     yield 0;
 
-    // river raster: distance to the nearest river centre line and its half-width there
+    // voda: znaménková vzdálenost k hladině (záporná uvnitř) jako sjednocení všech toků, takže se
+    // potok do jezera napojí čistě; k tomu pološířka a směr proudu toku, který je v bodě nejblíž
     const rd = new Float32Array(W * H).fill(1e6);
     const rhw = new Float32Array(W * H);
+    const rfx = new Float32Array(W * H), rfy = new Float32Array(W * H);
 
     for (const river of rec.rivers) {
       if (!river.pts) continue;
@@ -253,16 +260,20 @@
         const y1 = Math.min(H - 1, Math.ceil(Math.max(ay, by) + pad));
         const dx = bx - ax;
         const dy = by - ay;
-        const len2 = dx * dx + dy * dy;
+        const len2 = dx * dx + dy * dy || 1;
+        const ln = Math.sqrt(len2);
 
         for (let y = y0; y <= y1; y++) {
           for (let x = x0; x <= x1; x++) {
             const t = clamp(((x - ax) * dx + (y - ay) * dy) / len2, 0, 1);
             const d = Math.hypot(x - (ax + dx * t), y - (ay + dy * t));
+            const hw = river.hw + 1.3 * Math.sin((x + y) * 0.09);
 
-            if (d < rd[y * W + x]) {
-              rd[y * W + x] = d;
-              rhw[y * W + x] = river.hw + 1.3 * Math.sin((x + y) * 0.09);
+            if (d - hw < rd[y * W + x]) {
+              rd[y * W + x] = d - hw;
+              rhw[y * W + x] = hw;
+              rfx[y * W + x] = dx / ln;
+              rfy[y * W + x] = dy / ln;
             }
           }
         }
@@ -370,9 +381,11 @@
       riv: new Float32Array(N).fill(1e6), rhw,
       mtn: new Float32Array(N).fill(1e6), mr: new Float32Array(N),
       pla: new Float32Array(N).fill(9), plaId: new Int8Array(N).fill(-1),
-      nd, roadId, paved
+      nd, roadId, paved, rdx, rdy, rfx, rfy
     };
     b.F = F;
+    const BI = PK.biomes;
+    BI.prepare(b, F, { rec, map: b.map, W, H, rd, lushAt: (x, y) => lushAt(rec, x, y) });
 
     const topEdge = x => 15 + 4 * fbm(x / 11, 3.3, 5, 2);
     const botEdge = x => H - 5.5 - 2.5 * fbm(x / 9, 8.1, 6, 2);
@@ -399,10 +412,14 @@
         // rozkvetlé paloučky
         F.flw[i] = fbm(x / 15, y / 15, 13, 2);
 
+        let z = Z_GRASS;
         if (!ash) {
           let t = 2.55 + (m - 0.5) * 3.4 + (m2 - 0.5) * 1.1;
           tone = clamp(dither(t, x, y, 0.5), 1, 5);
           col = G[tone];
+          const bc = BI.coarse(i, x, y, t, lf, F, b);
+          if (bc >= 0) col = bc;
+          if (BI.poolArt(i, F, b)) z = Z_BANK; // tůně a louže: kroky šplouchají, kulisy tam nestojí
         } else {
           let t = 1.6 + (m - 0.5) * 3.2 + (m2 - 0.5) * 1.0;
           tone = clamp(dither(t, x, y, 0.5), 0, 4);
@@ -411,19 +428,16 @@
         }
 
         toneMap[i] = tone;
-        let z = Z_GRASS;
 
         /* ---- river + banks ---- */
         let hw = 0;
         let bdx = 1e6;
 
         if (rd[i] < 1e5) {
-          const pd = rd[i] + (vnoise(y / 7, x / 9, 6) - 0.5) * 2.4;
-          F.riv[i] = pd - rhw[i];
-          if (pd - rhw[i] < bdx - hw) {
-            bdx = pd;
-            hw = rhw[i];
-          }
+          const sd = rd[i] + (vnoise(y / 7, x / 9, 6) - 0.5) * 2.4;
+          F.riv[i] = sd;
+          bdx = sd + rhw[i];
+          hw = rhw[i];
         }
 
         if (bdx < hw) {
@@ -446,7 +460,7 @@
           const main = road.main;
 
           if (n < 1) {
-            const inFord = z === Z_WATER || z === Z_BANK;
+            const inFord = bdx < hw + 2.6;
             const wantStone = inFord || (main && paved(x, y));
             z = Z_PATH;
 
@@ -711,7 +725,7 @@
     if (W * H * 4 <= FINE_MAX) {
       b.fine = false;
       PK.hdLater(canvas, () => { b.fine = true; return drain(bakeFineSteps(b)).rawCanvas(); }, false);
-    } else b.F = null;
+    } else { b.F = null; PK.biomes.end(); }
     return canvas;
   }
 
@@ -991,6 +1005,12 @@
       G.map((c, k) => mix(c, k > 3 ? C.a[3] : C.d[3], 0.4))
     ];
 
+    const BI = PK.biomes;
+    BI.fineBegin(b, F, { bank: Z_BANK, grass: Z_GRASS });
+    // sdílený stav bodu pro biomy (bez alokací v hlavní smyčce)
+    const o = { fx: 0, fy: 0, X: 0, Y: 0, ai: 0, na: 0, nb: 0, tone: 0, lush: 1, z: 0, kind: 0, okind: -1, k2: 0, m: 0, bil };
+    const push = (k, x, y, a) => deco.push(k, x, y, a);
+
     for (let fy = 0; fy < FH; fy++) {
       if ((fy & 7) === 7) yield 0.75 * fy / FH;
       r0 = Y0[fy]; r1 = Y1[fy]; wy = WY[fy];
@@ -1022,7 +1042,13 @@
           // u popela je tráva vyprahlá
           const hv = clamp(dither(bil(F.hue, fx) + 2, fx, fy, 0.5), 0, 4);
           col = lush < 0.62 ? DRY[k] : GH[hv][k];
+          // krajinná oblast (biomes.js): podklad, skvrny, lesní půda, zkažená zem
+          o.fx = fx; o.fy = fy; o.X = X; o.Y = Y; o.ai = ai; o.na = na; o.nb = nb; o.tone = tone; o.lush = lush; o.z = z;
+          const bc = BI.fine(o);
+          if (bc >= 0) col = bc;
+          z = o.z;
         } else {
+          o.okind = -1; o.kind = -1;
           tone = 1.6 + (t0 - 2.55) * 0.94 + relief * 0.8;
           col = A[clamp(dither(tone, fx, fy, 0.5), 0, 4)];
         }
@@ -1043,6 +1069,8 @@
             if (rs < 0.45) col = mix(D[1], V[1], 0.35);
             else if (rs < 0.8) col = D[1];
             else if (rs > 2.25) col = ash ? A[1] : G[1];
+            // břeh podle krajiny: písčitý, oblázkový, bahnitý
+            if (!ash) { const bk = BI.bank(ai, rs, fx, fy, na, nb); if (bk >= 0) col = bk; }
           } else if (rs < 3.2 && z === Z_GRASS) {
             col = ash ? A[1] : G[clamp(dither(tone - 1, fx, fy), 1, 4)];
           }
@@ -1056,11 +1084,47 @@
             const id = F.roadId[ai];
             const road = rec.roads[id];
             const main = road && road.main;
-            const inFord = z === Z_WATER || z === Z_BANK;
+            const inFord = rs < 2.6;
             const wantStone = inFord || (main && F.paved(X, Y));
+            const wasWater = z === Z_WATER;
             z = Z_PATH;
+            const ux = F.rdx[ai], uy = F.rdy[ai];
 
-            if (wantStone && n < 0.86 && vnoise(X / 9, Y / 9, 17) > (inFord ? 0.05 : 0.38)) {
+            if (inFord && main && n < 0.97 && rs < 2.3) {
+              // dřevěný most: prkna napříč cestou (3 px dřevo + 1 px spára), po stranách trám se sloupky
+              const u = (X * ux + Y * uy) * 2;
+              const pl = Math.floor(u / 4);
+              const pu = u - pl * 4;
+              if (n > 0.9) col = C.w[0];
+              else if (n > 0.76) {
+                const post = ((pl % 5) + 5) % 5 === 0;
+                col = post ? (pu < 2 ? C.w[4] : C.w[2]) : n < 0.83 ? C.w[4] : C.w[2];
+                if (post && n > 0.86) col = C.w[1];
+              } else if (pu < 1) col = C.w[0];
+              else {
+                const h = hash(pl, F.roadId[ai], 501);
+                let k = 2 + (h > 0.55 ? 1 : 0) + (pu < 2 ? 1 : 0) - (n > 0.62 ? 1 : 0);
+                if (hash(fx, fy, 502) > 0.95) k -= 1; // suky a letokruhy
+                col = C.w[clamp(k, 1, 4)];
+              }
+            } else if (inFord && !main && wasWater) {
+              // nášlapné kameny: oblé kameny po 5 art px, mezi nimi teče voda
+              const u = X * ux + Y * uy;
+              const c0 = Math.round(u / 5) * 5;
+              const du = u - c0;
+              const dv = n * road.w * 0.6;
+              const rr = 1.9 + hash(c0, F.roadId[ai], 503) * 0.6;
+              const dd = (du * du + dv * dv) / (rr * rr);
+              if (dd < 1) {
+                const lit = -(du * 0.6 + (Y - Math.floor(Y)) * 0.2);
+                col = dd > 0.72 ? (du + 0.3 > 0 ? S[1] : S[3]) : S[clamp(dither(3.2 + lit - dd * 0.8 + (na - 0.5), fx, fy, 0.4), 2, 5)];
+              } else if (dd < 1.35 && du > -0.5) {
+                z = Z_WATER; // vlnka za kamenem (pěna) dokreslí voda
+                col = V[3];
+              } else {
+                z = Z_WATER;
+              }
+            } else if (wantStone && n < 0.86 && vnoise(X / 9, Y / 9, 17) > (inFord ? 0.05 : 0.38)) {
               col = cobbleF(fx, fy, 3 + id, S);
               if (inFord && hash(fx, fy, 12) > 0.94) col = V[3];
             } else {
@@ -1072,6 +1136,15 @@
               else if (n > 0.86) k = Math.min(k, 2);
               col = ash ? DA[k] : D[k];
               if (hash(fx, fy, 15) > 0.9965) deco.push(1, fx, fy, 0);
+              if (!ash && !main && road && road.w >= 4 && n < 0.16 && nb > 0.4 && na > 0.3) {
+                // vozová cesta: pruh trávy uprostřed
+                col = G[clamp(dither(2.6 + (na - 0.5) * 2, fx, fy), 2, 4)];
+                if (hash(fx, fy, 16) > 0.9) deco.push(0, fx, fy, 3);
+              } else if (!ash && main && Math.abs(n - 0.46) < 0.07 && BI.wetAt(ai)) {
+                // louže ve vyjetých kolejích
+                const pv = vnoise(X / 6, Y / 6, 18);
+                if (pv > 0.62) col = pv > 0.66 ? (hash(fx, fy, 19) > 0.9 ? V[4] : mix(V[2], D[2], 0.25)) : D[1];
+              }
             }
           } else if (n < 1.22 && z === Z_GRASS) {
             // tráva přerůstá přes okraj, těsně u cesty je tmavší
@@ -1136,7 +1209,10 @@
           const dL = leftE[fy] - X;
           const dR = X - rightE[fy];
 
-          if (dT > 0 || dB > 0 || dL > 0 || dR > 0) {
+          if (rs < 0 && dT > 0 && dT < 4.2 && dT >= dB && dT >= dL && dT >= dR) {
+            // vodopád: řeka přitékající z lesa za mapou padá přes útes (dokreslí ho animace vody)
+            z = Z_WATER;
+          } else if (dT > 0 || dB > 0 || dL > 0 || dR > 0) {
             z = Z_FRAME;
             if (dT >= dB && dT >= dL && dT >= dR && dT < 4.2) {
               // vrstvy útesu pod korunami: římsy s osvětlenou hranou
@@ -1169,6 +1245,23 @@
             const depth = clamp(-ms / r, 0, 1);
             col = ms > -0.6 ? S[0] : ms > -1.1 ? S[1] : rockF(fx, fy, depth);
             if (depth < 0.3 && depth > 0.08 && hash(fx, fy, 37) > 0.97) col = G[2];
+          } else if (ms < 5.5 && z === Z_GRASS && ai >= 3 * W && (() => {
+            // jižní stěna hor: skála se láme svislou stěnou (výška podle toho, jak moc hřbet míří k jihu)
+            const south = clamp((F.mtn[ai] - F.mtn[ai - 3 * W]) / 3, 0, 1);
+            const fh = 5 * south;
+            if (south < 0.35 || ms >= fh) return false;
+            const v = ms / fh;
+            const colx = (fx + ((hash(fx >> 2, 0, 39) * 3) | 0)) >> 1;
+            const crack = hash(colx, (fy + (colx & 3)) >> 2, 40) > 0.78;
+            let k = v < 0.12 ? 4 : 3 - (hash(colx, 1, 41) > 0.6 ? 1 : 0) - (v > 0.62 ? 1 : 0);
+            if (crack) k = 1;
+            else if (hash(colx - 1, (fy + ((colx - 1) & 3)) >> 2, 40) > 0.78) k = Math.min(4, k + 1); // světlá hrana vpravo od praskliny
+            col = v > 0.88 ? S[0] : S[k];
+            if (v > 0.6 && na > 0.72 && nb > 0.5) col = G[1]; // mech u paty
+            z = Z_ROCK;
+            return true;
+          })()) {
+            // stěna nakreslená
           } else if (ms < 5.5 && z === Z_GRASS) {
             // podhůří: suť na trávě, u skály tmavší
             const k = 1 - ms / 5.5;
@@ -1227,9 +1320,11 @@
         put(j, col);
 
         /* ---- drobnosti na volné zemi ---- */
-        if (z === Z_GRASS) {
+        if (z === Z_GRASS || (z === Z_BANK && o.okind >= 100 && rs >= 2.6)) {
           const h = hash(fx, fy, 11);
-          if (!ash) {
+          if (!ash && BI.deco(o, h, push)) {
+            // drobnosti obstarala krajinná oblast
+          } else if (!ash) {
             const dens = 0.035 + clamp(tone - 2, 0, 3) * 0.012;
             const fl = bil(F.flw, fx);
             if (fl > 0.6 && h > 0.982 - (fl - 0.6) * 0.08) deco.push(3, fx, fy, 1 + ((hash((fx / 40) | 0, (fy / 40) | 0, 14) * 4) | 0));
@@ -1249,6 +1344,10 @@
     const getC = (x, y) => d[y * FW + x] & 0xffffff;
     const setIf = (x, y, c, zz) => { if (x >= 0 && y >= 0 && x < FW && y < FH && (zz === undefined || zF[y * FW + x] === zz)) put(y * FW + x, c); };
     const RS = rng(91);
+    const stampApi = {
+      setIf, at, RS, Z: { GRASS: Z_GRASS },
+      getC: (x, y) => getC(clamp(x, 0, FW - 1), clamp(y, 0, FH - 1))
+    };
 
     for (let n = 0; n < deco.length; n += 4) {
       if ((n & 16383) === 16380) yield 0.75 + 0.1 * n / deco.length;
@@ -1304,7 +1403,7 @@
       } else if (kind === 5) {
         // světlá vločka popela s tmavou stopou
         setIf(x, y, A[4]); setIf(x + 1, y + 1, A[1]);
-      }
+      } else BI.stamp(kind, x, y, a, stampApi);
     }
 
     /* ---- žhnoucí pukliny v popelu (jemná čára, žhavé jádro, tmavý lem) ---- */
@@ -1357,14 +1456,15 @@
     }
 
     yield 0.85;
-    b.water = yield* span(buildWaterSteps(b, zF, bil, (fy) => { r0 = Y0[fy]; r1 = Y1[fy]; wy = WY[fy]; }), 0.85, 1);
+    b.water = yield* span(buildWaterSteps(b, zF, bil, (fy) => { r0 = Y0[fy]; r1 = Y1[fy]; wy = WY[fy]; }, (fx, fy) => topE[fx] - fy / 2), 0.85, 1);
     b.F = null; // pole z art průchodu už nejsou potřeba
+    BI.end();
     return P;
   }
 
   /* ---------- voda: 4 animované snímky po dlaždicích 64x64 art px ---------- */
-  function* buildWaterSteps(b, zF, bil, row) {
-    const { W, H } = b;
+  function* buildWaterSteps(b, zF, bil, row, cliff) {
+    const { W, H, F } = b;
     const FW = W * 2;
     const FH = H * 2;
     const CS = 128; // jemných px
@@ -1372,6 +1472,8 @@
     const { a: NA } = noiseTex();
     const V = C.v;
     const ice = PK.winter && PK.winter.on ? PK.winter.iceAt : null; // zamrzlé okraje
+    const TAU = Math.PI * 2;
+    const rec = b.map.terrain;
 
     for (let cy = 0; cy < FH; cy += CS) {
       for (let cx = 0; cx < FW; cx += CS) {
@@ -1390,23 +1492,64 @@
             for (let x = 0; x < w; x++) {
               const fx = cx + x;
               if (zF[fy * FW + fx] !== Z_WATER) continue;
+              const ai = (fy >> 1) * W + (fx >> 1);
               const e = clamp(bil(b.rivE, fx), 0, 1);
+              const ds = Math.max(0, -bil(F.riv, fx)); // vzdálenost od břehu (art px)
+              const hw = F.rhw[ai] || 6;
               const X = fx / 2, Y = fy / 2;
-              let k = clamp(dither(3.3 - e * 2.8, fx, fy, 0.6), 0, 4);
-              // vlnky: krátké světlé hřebeny unášené po proudu, za nimi tmavší důlek
-              const ph = Y * (Math.PI * 2 / 7) + X * 0.42 + vnoise(X / 6, Y / 6, 3) * 4 - f * (Math.PI / 2);
+              const dT = cliff(fx, fy);
+              let c;
+
+              if (dT > 0) {
+                // vodopád: svislé pruhy padající dolů, tmavší kraje proudu, světlá hrana nahoře
+                const off = (hash(fx, 0, 74) * 12) | 0;
+                const ph = ((fy - f * 3 + off) % 12 + 12) % 12;
+                c = ph < 3 ? V[4] : ph < 6 ? V[3] : V[2];
+                if (hash(fx >> 1, (fy - f * 3) >> 2, 75) > 0.8) c = C.white;
+                if (e < 0.16) c = e < 0.08 ? V[0] : V[1];
+                if (dT > 3.6) c = e < 0.2 ? V[1] : V[3];
+                P.set(x, y, c);
+                continue;
+              }
+
+              // hloubka: u břehu mělko (prosvítá dno), uprostřed širokých vod tmavá hlubina
+              const depth = Math.min(e * 1.15, ds / 6);
+              let k = clamp(dither(3.4 - depth * 2.9, fx, fy, 0.6), 0, 4);
+              // vlnky: krátké světlé hřebeny kolmo na proud, unášené po proudu, za nimi tmavší důlek
+              const ux = F.rfx[ai] || 0.0001, uy = F.rfy[ai] || 1;
+              const along = X * ux + Y * uy;
+              const across = -X * uy + Y * ux;
+              const calm = hw > 9 ? 0.06 : 0;
+              const ph = along * (TAU / 7) + across * 0.35 + vnoise(X / 6, Y / 6, 3) * 4 - f * (Math.PI / 2);
               const wv = Math.sin(ph);
               const brk = NA[((fy & 255) << 8) + ((fx + f * 3) & 255)];
-              if (wv > 0.86 && e > 0.1 && brk > 0.42) k = Math.min(4, k + 1);
+              if (wv > 0.86 + calm && e > 0.1 && brk > 0.42) k = Math.min(4, k + 1);
               else if (wv < -0.93 && brk > 0.5) k = Math.max(0, k - 1);
-              let c = V[k];
+              c = V[k];
+              // mělké dno: písek a oblázky prosvítají
+              if (ds < 1.7 && ds > 0.45 && hash(fx >> 1, fy >> 1, 76) > 0.72) c = mix(c, hash(fx >> 1, fy >> 1, 77) > 0.5 ? D[4] : D[2], 0.3);
               // pěna u břehu
               if (e < 0.07 && ((fx + fy + f * 2) % 6) < 3) c = V[4];
               else if (e < 0.14 && ((fx * 3 + fy + f * 2) % 11) === 0) c = V[4];
+              // pěna pod vodopádem
+              if (dT > -3 && hash(fx, fy + f * 5, 78) < 0.55 + dT * 0.15) c = hash(fx, fy, 79 + f) > 0.4 ? C.white : V[4];
               // oblázky na mělkém dně
               if (e < 0.32 && e > 0.08 && hash(fx, fy, 72) > 0.985) c = mix(D[3], V[2], 0.4);
+              // stín mostu (dopadá doprava dolů)
+              if (F.nd[ai] < 1.6 && bil(F.nd, Math.max(0, fx - 3)) < 1.05 && rec.roads[F.roadId[ai]] && rec.roads[F.roadId[ai]].main) c = mix(c, C.shade, 0.5);
               // záblesky na hřebenech
               if (hash(fx + f * 7, fy, 71) > 0.9965) c = C.white;
+              // lekníny v klidné vodě u břehu (nehýbou se)
+              if (ds > 1.3 && ds < 3.2 && hw >= 6) {
+                const gx = (fx / 12) | 0, gy = (fy / 10) | 0;
+                if (hash(gx, gy, 81) > 0.9) {
+                  const lx = gx * 12 + 3 + ((hash(gx, gy, 82) * 6) | 0), ly = gy * 10 + 3 + ((hash(gx, gy, 83) * 4) | 0);
+                  const dx = fx - lx, dy = fy - ly;
+                  const dd = dx * dx / 9 + dy * dy / 4;
+                  if (dd < 1 && !(dx > 0 && dy === 0)) c = dd > 0.55 && dx + dy > 0 ? 0x2e5a3a : dx + dy < -1 ? 0x8ac06a : 0x4e8a4a;
+                  if (hash(gx, gy, 84) > 0.96 && dx === -1 && dy === -1) c = 0xffd0e0;
+                }
+              }
               if (ice) { const ic = ice(e, fx, fy); if (ic) c = ic; }
               P.set(x, y, c);
             }
@@ -1424,32 +1567,42 @@
   }
 
   /* ---------- grass tufts that sway ---------- */
-  function buildTufts() {
+  // trs 7x6 art px v jemné mřížce: sedm stébel různé výšky, ohýbají se od paty ke špičce; G = paleta
+  function tuftSet(G) {
     const frames = [];
-    const G = PK.winter && PK.winter.on ? PK.winter.TUFT : C.g; // v zimě suchá ojíněná tráva
-
-    // trs 7x6 art px v jemné mřížce: sedm stébel různé výšky, ohýbají se od paty ke špičce
     const blades = [[6, 10, 3], [8, 8, 4], [4, 8, 3], [10, 6, 3], [2, 5, 2], [7, 5, 2], [12, 4, 2]];
+    const at = k => G[clamp(k, 0, G.length - 1)];
     for (let f = 0; f < 3; f++) {
       const P = new Pix(14, 12);
       const lean = f - 1;
 
       // stín u paty
-      for (let x = 3; x < 12; x++) P.set(x, 11, x < 10 ? G[1] : G[0]);
+      if (G === C.g || G === (PK.winter && PK.winter.TUFT)) for (let x = 3; x < 12; x++) P.set(x, 11, x < 10 ? at(1) : at(0));
+      else for (let x = 5; x < 10; x++) if (x !== 7) P.set(x, 11, at(1)); // krátký stín, ať trsy netvoří na zemi pruhy
 
       for (const [bx, h, tone] of blades) {
         for (let k = 0; k < h; k++) {
           const bend = lean * (k * k) / (h * h) * 2.2 + (bx < 7 ? -0.3 : 0.3) * k / h;
           const x = Math.round(bx + bend);
-          const c = k >= h - 2 ? G[tone + 2] : k >= h - 4 ? G[tone + 1] : k < 2 ? G[tone - 1] : G[tone];
+          const c = k >= h - 2 ? at(tone + 2) : k >= h - 4 ? at(tone + 1) : k < 2 ? at(tone - 1) : at(tone);
           P.set(x, 10 - k, c);
         }
       }
       // světlé špičky na straně ke světlu
-      P.set(Math.round(6 + lean * 2.2) - 1, 1, G[6]);
+      P.set(Math.round(6 + lean * 2.2) - 1, 1, at(6));
 
       frames.push(PK.fine(P));
     }
+    return frames;
+  }
+
+  function buildTufts(bd) {
+    const G = PK.winter && PK.winter.on ? PK.winter.TUFT : C.g; // v zimě suchá ojíněná tráva
+    const base = tuftSet(G);
+    const BI = PK.biomes;
+    const winter = PK.winter && PK.winter.on;
+    // sady trsů podle krajiny (v zimě všude ojíněná tráva, rákos zůstává)
+    const sets = BI.tuftKinds.map((rp, k) => (k === 0 || winter ? (k === BI.REED ? BI.reedFrames() : base) : k === BI.REED ? BI.reedFrames() : tuftSet(rp)));
 
     const R = rng(311);
     const list = [];
@@ -1460,12 +1613,33 @@
       const y = tf.y + Math.floor(R() * tf.h);
       if (zone[y * W + x] !== Z_GRASS || world.ashMap[y * W + x]) continue;
       if (world.toneMap[y * W + x] < 2) continue;
-      list.push({ x, y, ph: R() * 6.28 });
+      list.push({ x, y, ph: R() * 6.28, k: BI.tuftKind(bd, y * W + x) });
+    }
+
+    // rákos na březích a u tůní: shluky po dvou až čtyřech, nikdy ve vodě
+    const reeds = Math.round(tf.n * 0.45);
+    let placed = 0;
+    for (let k = 0; k < tf.tries * 3 && placed < reeds; k++) {
+      const x = 6 + Math.floor(R() * (W - 12));
+      const y = 24 + Math.floor(R() * (H - 32));
+      const i = y * W + x;
+      if (zone[i] !== Z_BANK || world.ashMap[i]) continue;
+      if (zone[i + W] === Z_WATER || zone[i + 2 * W] === Z_WATER) continue; // pata rákosu nesmí stát ve vodě
+      if (list.some(t => t.k === BI.REED && Math.abs(t.x - x) < 9 && Math.abs(t.y - y) < 6)) continue;
+      const n = 2 + Math.floor(R() * 3);
+      for (let r = 0; r < n; r++) {
+        const rx = x + Math.round((R() - 0.5) * 8);
+        const ry = y + Math.round((R() - 0.5) * 3);
+        const ri = ry * W + rx;
+        if (rx < 4 || rx > W - 4 || zone[ri] === Z_WATER || zone[ri] === Z_PATH || zone[ri + W] === Z_WATER) continue;
+        list.push({ x: rx, y: ry, ph: R() * 6.28, k: BI.REED });
+      }
+      placed++;
     }
 
     list.sort((a, b) => a.y - b.y);
     world.tufts = list;
-    return frames;
+    return sets;
   }
 
   /* ---------- doodad scatter ---------- */
@@ -1825,7 +1999,7 @@
     // jemný terén (a s ním vodu) upéct hned při načtení mapy, ne v prvním snímku
     PK.hdOf(world.terrain);
     world.water = b.water || [];
-    world.tuftFrames = buildTufts();
+    world.tuftFrames = buildTufts(b);
     placeDoodads(layoutOf(map));
     if (!world.clouds) world.clouds = buildClouds();
     if (!world.mist) world.mist = buildMist();
@@ -1959,10 +2133,11 @@
     const frames = world.tuftFrames;
 
     for (const t of world.tufts) {
-      if (t.x < sx - 4 || t.x > ex + 4 || t.y < sy - 2 || t.y > ey + 6) continue;
+      if (t.x < sx - 4 || t.x > ex + 4 || t.y < sy - 2 || t.y > ey + 11) continue;
       const s = Math.sin(T * 1.7 + t.ph + t.x * 0.04);
       const f = s > 0.45 ? 2 : s < -0.45 ? 0 : 1;
-      g.drawImage(frames[f], t.x - 3, t.y - 5);
+      const set = frames[t.k] || frames[0];
+      g.drawImage(set[f], t.x - 3, t.k === PK.biomes.REED ? t.y - 10 : t.y - 5);
     }
   }
 

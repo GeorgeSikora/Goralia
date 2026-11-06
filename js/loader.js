@@ -14,7 +14,7 @@
 
   const SCRIPTS = [
     "rules", "cosmetics", "maps", "nav", "ai", "sim", "admincmd", "audio", "music", "pixel", "shaders", "font", "keys",
-    "units", "fame", "buildings", "props", "halloween", "winter", "icons", "world", "fx", "hud", "net", "menubg",
+    "units", "fame", "buildings", "props", "halloween", "winter", "icons", "biomes", "world", "fx", "hud", "net", "menubg",
     "custommaps", "charts", "matchview", "account", "events", "challenges", "voice", "chat", "voicechat", "adminbar", "game"
   ];
 
