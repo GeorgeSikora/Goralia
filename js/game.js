@@ -3913,11 +3913,47 @@
     return c;
   }
 
-  const HB_TOP = {
-    worker: 25, soldier: 28, archer: 29, hero: 33, raider: 29, ghoul: 24, skeleton: 27, abomination: 30, banshee: 30, lich: 31, monk: 28, knight: 32, catapult: 24,
-    spearman: 31, crossbow: 29, scout: 31, hound: 19, necromancer: 30, plague: 26
-  };
+  /*
+   * Co je nad hlavou jednotky, se skládá odspodu podle skutečné výšky postavy:
+   * hlava (nejvyšší pixel snímků klidu a chůze dané varianty), nad ní šipky
+   * veterána, nad nimi pruh zdraví (hrdina má vpravo od pruhu hvězdu s úrovní),
+   * úplně nahoře jméno postavy kampaně. Dřív to byly ručně psané výšky, které
+   * po překreslení jednotek a hrdinů neseděly (pruh visel i 16 px nad rytířem).
+   */
+  const headCache = new Map();
+  function headTop(u) {
+    const v = variantOf(u);
+    const key = `${u.type}|${v}`;
+    let h = headCache.get(key);
+    if (h === undefined) {
+      let top = U.AY * HD;
+      for (const anim of ["idle", "walk"]) {
+        for (let i = 0; i < U.frameCount(anim); i++) {
+          const P = U.frame(u.type, u.team, anim, i, v).pix;
+          const lim = Math.min(top, P.h) * P.w;
+          for (let k = 0; k < lim; k++) if (P.d[k] >>> 24) { top = Math.floor(k / P.w); break; }
+        }
+      }
+      h = (U.AY * HD - top) / HD;
+      headCache.set(key, h);
+    }
+    return h;
+  }
+  // každé patro má mezi sebou a tím pod ním 1 jemný px
+  function overhead(u, footY) {
+    const head = footY - headTop(u);
+    const rank = u.hero ? 0 : (u.st >> 6) & 3;
+    const chev = head - 1.5; // řádek konců šipek (drawChevrons), spodní obrys je o 1 px níž
+    const below = rank ? chev - 2 - (rank - 1) * 1.5 : head; // horní obrys nejvyšší šipky, jinak hlava
+    const bar = below - 2; // horní hrana náplně pruhu; obrys pruhu sahá 0,5 px nad ni a 1,5 px pod ni
+    const badge = bar - 9; // hrdina: hvězda s úrovní (8 px) nad pruhem, uprostřed, ať nezasahuje k sousedům
+    return { head, rank, chev, bar, badge, top: u.hero ? badge : bar - 0.5 };
+  }
+  const barW = u => (u.hero ? 16 : 12);
+
   const BIG = { hero: 16, abomination: 19, lich: 17, knight: 24, catapult: 26, scout: 24, hound: 20, plague: 17 };
+  // poloměr prstence výběru podle šířky stínu: velké jednotky (jezdci, katapult, pes) ho mají širší
+  const ringRx = u => Math.round((BIG[u.type] || 13) / 2 + 2.5);
 
   // Varianta vzhledu jednotky (pleť, vlasy, helma, znak...) podle id: stejná u všech hráčů, sousedi se liší.
   const variantOf = u => (Math.imul(u.id, 2654435761) >>> 16) % U.variants(u.type);
@@ -4035,7 +4071,7 @@
       ringPx(footX, footY + 0.5, u.type === "hero" ? 9 : 7, 0.35, "#ff8f4a", 10, clock * 2);
       g.globalAlpha = 1 - ph;
       g.fillStyle = "#ffd27a";
-      g.fillRect(footX - 0.5, footY - (HB_TOP[u.type] || 28) - 4 - Math.round(ph * 6) / 2, 0.5, 0.5);
+      g.fillRect(footX - 0.5, footY - headTop(u) - 2 - Math.round(ph * 6) / 2, 0.5, 0.5);
       g.globalAlpha = 1;
       world.light(g, footX, footY - 6, 9, 0xff8f4a, 0.22, 6);
     }
@@ -4090,13 +4126,16 @@
       world.light(g, hx, hy, meta.halo[2] ? 16 : 8, 0xffe9a0, meta.halo[2] ? 0.7 : 0.3, footY - hy, false, 0.45);
     }
 
-    const rank = (u.st >> 6) & 3;
-    if (rank && !u.hero && !reflecting) drawChevrons(footX, footY - (HB_TOP[u.type] || 28) + 7, rank, u);
+    if (reflecting) return;
+    const oh = overhead(u, footY);
+    if (oh.rank) drawChevrons(footX, oh.chev, oh.rank, u);
 
-    if (u.hero && !reflecting) {
-      const top = u.type === "lich" ? 44 : 41;
-      g.drawImage(PK.icons.small.star, footX - 8, footY - top);
-      PK.text(g, String(u.level), footX + 2, footY - top + 1, 0xffe08a, { font: "3", outline: C.ink, shadow: null });
+    if (u.hero) {
+      // hvězda s úrovní nad pruhem zdraví, dvojice hvězda + číslo vystředěná nad postavou
+      const sx = Math.round(footX - 6);
+      const sy = Math.round(oh.badge);
+      g.drawImage(PK.icons.small.star, sx, sy);
+      PK.text(g, String(u.level), sx + 9, sy + 1, 0xffe08a, { font: "3", outline: C.ink, shadow: null });
     }
   }
 
@@ -4516,8 +4555,11 @@
   function drawOverlays() {
     for (const u of units) {
       if (u.hp >= u.maxHp && !selected.includes(u) && !(u.hb && u.hb.trail > u.hb.shown)) { if (u.hb) u.hb.seen = 0; continue; }
-      const w = u.type === "hero" ? 16 : 12;
-      drawBar(Math.round(u.x / 2) - (w >> 1), Math.round(u.y / 2) + 6 - HB_TOP[u.type] - (u.type === "hero" ? 6 : 0), w, u.hp / u.maxHp, u.team, u);
+      // stejné zaokrouhlení jako postava v drawUnit (jemná mřížka), jinak pruh proti ní poskakuje o půl px
+      const footX = Math.round(u.x / 2 * HD) / HD;
+      const footY = Math.round(u.y / 2 * HD) / HD + 6;
+      const w = barW(u);
+      drawBar(footX - (w >> 1), overhead(u, footY).bar, w, u.hp / u.maxHp, u.team, u);
     }
 
     for (const b of buildings) {
@@ -4543,10 +4585,12 @@
     for (const [id, name] of campaign.dir.names) {
       const u = unitMap.get(id);
       if (!u || !alive(u) || (u !== pointed && !selected.includes(u))) continue;
-      const top = HB_TOP[u.type] || 28;
+      // nad pruhem zdraví (vybraná jednotka ho ukazuje vždy); písmo 5 jemných px + obrys
+      const footX = Math.round(u.x / 2 * HD) / HD;
+      const top = overhead(u, Math.round(u.y / 2 * HD) / HD + 6).top;
       // poloviční velikost: písmo v jemné mřížce (1 bod písma = 1 jemný px)
       g.save();
-      g.translate(Math.round(u.x / 2), Math.round(u.y / 2) + 6 - top - (u.type === "hero" ? 14 : 8));
+      g.translate(footX, top - 4);
       g.scale(1 / HD, 1 / HD);
       PK.text(g, name, 0, 0, PK.TEAM[u.team].ui, { align: "center", alpha: 0.9 });
       g.restore();
@@ -4578,7 +4622,7 @@
 
     if (e.kind === "unit") {
       const footY = Math.round(e.y / 2) + 6;
-      const rx = e.type === "hero" ? 11 : 9;
+      const rx = ringRx(e);
       const ry = 4;
       const pulse = 0.75 + 0.25 * Math.sin(clock * 5);
       g.globalAlpha = pulse;
@@ -4802,7 +4846,7 @@
     // faint team rings keep factions readable at a glance
     for (const u of units) {
       if (u === speaker) continue;
-      const rx = u.type === "hero" ? 10 : 8;
+      const rx = ringRx(u) - 1;
       g.globalAlpha = u.team === me ? 0.4 : 0.55;
       g.drawImage(ellipseRing(rx, 3, PK.TEAM[PK.skin(u.team)].ui), Math.round(u.x / 2) - rx - 1, Math.round(u.y / 2) + 6 - 4);
     }
