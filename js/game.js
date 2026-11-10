@@ -551,7 +551,9 @@
   };
 
   // Rozkazy jdou stejnou cestou v obou režimech: na server, nebo přímo do místní simulace.
-  function sendCmd(cmd) {
+  // hunting = rozkaz lovu zvěře (critters.js); každý jiný rozkaz jednotkám jejich lov ukončí
+  function sendCmd(cmd, hunting) {
+    if (!hunting && cmd.ids && PK.critters) PK.critters.unhunt(cmd.ids);
     if (mode === "online") net.send({ t: "cmd", ...cmd });
     else if (simMatch) simMatch.command(me, cmd);
   }
@@ -966,6 +968,8 @@
     const enemy = enemyAt(x, y);
     const resource = resourceAt(x, y);
     const gift = !enemy && !resource ? giftAt(x, y) : null;
+    const prey = !enemy && !resource && !gift && PK.critters && huntsWith(selected) ? PK.critters.at(x, y) : null;
+    if (prey) return huntOrder(prey);
     if (gift) { x = gift.x; y = gift.y; }
     let ordered = false;
     let kind = "move";
@@ -1009,6 +1013,17 @@
       speak(selected, "order");
     }
 
+    commandMode = false;
+  }
+
+  // Pravý klik na zvíře: vybrané jednotky (kromě mnicha a katapultu) ho jdou ulovit.
+  function huntOrder(a) {
+    const ids = selected.filter(u => u.kind === "unit" && alive(u) && !NO_HUNT.has(u.type)).map(u => u.id);
+    PK.critters.hunt(a, ids);
+    sendCmd({ c: "order", k: "move", ids, target: 0, x: Math.round(a.x * 2), y: Math.round(a.y * 2) }, true);
+    fx.ping(a.x * 2, a.y * 2 + 4, "attack");
+    audio.play("order", { x: a.x * 2 });
+    speak(selected, "order");
     commandMode = false;
   }
 
@@ -2688,6 +2703,7 @@
         }
 
         hitVisuals(attacker, target, e.n, { silent: !!e.s, delay: e.d || 0 }, !!e.k);
+        if (PK.critters) PK.critters.scare(target.x, target.y); // zvěř z okolí boje uteče
         if (e.c && attacker.type === "knight") fx.text(attacker.x, attacker.y - 50, "NÁPOR!", 0xffd27a);
         else if (e.c) fx.later(e.d || 0, () => fx.bonus(target.x, target.y, target.x < attacker.x ? -1 : 1));
         break;
@@ -2701,7 +2717,10 @@
         cat.facing = e.x < cat.x ? -1 : 1;
         fx.boulder(cat.x + cat.facing * 4, cat.y - 40, e.x, e.y + 4, R.CATAPULT.flight);
         audio.play("hitHeavy", { x: cat.x, vol: 0.5 });
-        fx.later(R.CATAPULT.flight, () => audio.play("explosion", { x: e.x }));
+        fx.later(R.CATAPULT.flight, () => {
+          audio.play("explosion", { x: e.x });
+          if (PK.critters) PK.critters.blast(e.x, e.y, R.CATAPULT.radius);
+        });
         break;
       }
 
@@ -2889,7 +2908,10 @@
       case "fireball":
         fx.fireball(hero.x + hero.facing * 14, hero.y - 6, e.x, e.y + 8, ab.unitR);
         audio.play("fireCast", { x: hero.x });
-        fx.later(0.3, () => audio.play("explosion", { x: e.x }));
+        fx.later(0.3, () => {
+          audio.play("explosion", { x: e.x });
+          if (PK.critters) PK.critters.blast(e.x, e.y + 8, ab.unitR);
+        });
         break;
       case "summon":
         for (const u of allies) {
@@ -3682,6 +3704,40 @@
     }
   }
 
+  /*
+   * Lov zvěře (critters.js): zvířata žijí jen na klientu, takže simulace o lovu neví.
+   * Jednotky za zvířetem chodí obyčejnými rozkazy pohybu (jsou v síti i v záznamu
+   * stejné jako každý jiný rozkaz) a rána je jen efekt na klientu.
+   */
+  const NO_HUNT = new Set(["monk", "catapult"]);
+  const huntCtx = {
+    get me() { return me; },
+    stats(u) {
+      const s = !NO_HUNT.has(u.type) && R.UNITS[u.type];
+      return s ? { range: s.range, damage: s.damage, delay: s.delay, ranged: RANGED.has(u.type) } : null;
+    },
+    order(ids, x, y) { sendCmd({ c: "order", k: "move", ids, target: 0, x: Math.round(x), y: Math.round(y) }, true); },
+    strike(u, a, s, done) {
+      const tx = a.x * 2;
+      const ty = a.y * 2 - (PK.critters.BODY[a.type] || 2) * 2;
+      const dir = u.x <= tx ? 1 : -1;
+      u.atk = 0.3;
+      u.facing = dir;
+      if (s.ranged) {
+        const fn = BOLTS.has(u.type) ? fx.bolt : fx.arrow;
+        const wait = fn(u.x + dir * 14, u.y - 14, tx, ty, null);
+        u.fireT = 0.2;
+        audio.play(BOLTS.has(u.type) ? "tower" : "arrow", { x: u.x, vol: 0.6 });
+        fx.later(wait, done);
+      } else {
+        fx.slash(tx, ty, dir);
+        audio.play("slash", { x: u.x, vol: 0.6 });
+        done();
+      }
+    }
+  };
+  const huntsWith = list => list.some(u => u.kind === "unit" && alive(u) && !NO_HUNT.has(u.type));
+
   /* ======================= schopnosti: stav na jednotkách ======================= */
   const ST = sim.ST;
 
@@ -3842,7 +3898,7 @@
     }
 
     emitAmbient(dt);
-    if (PK.critters) PK.critters.update(dt, units);
+    if (PK.critters) PK.critters.update(dt, units, huntCtx);
     fx.update(dt);
   }
 
@@ -4810,8 +4866,9 @@
       findEntity(hoverWorld.x, hoverWorld.y, buildings.filter(b => b.team === me), 42);
     const enemy = enemyAt(hoverWorld.x, hoverWorld.y);
     const res = resourceAt(hoverWorld.x, hoverWorld.y);
+    const prey = !friend && !enemy && !res && PK.critters && huntsWith(selected) ? PK.critters.at(hoverWorld.x, hoverWorld.y) : null;
 
-    hover = { friend, enemy, res };
+    hover = { friend, enemy, res, prey };
   }
 
   let cursorName = "";
@@ -4821,7 +4878,7 @@
 
     if (!hoverWorld || !hover) name = "default";
     else if (placement || spellMode || commandMode) name = "target";
-    else if (hover.enemy && selected.some(s => s.kind === "unit")) name = "attack";
+    else if ((hover.enemy && selected.some(s => s.kind === "unit")) || hover.prey) name = "attack";
     else if (hover.res && selected.some(s => s.type === "worker")) name = "gather";
     else if (hover.friend && hover.friend.kind === "building" && hover.friend.progress >= 1 &&
       hover.friend.hp < hover.friend.maxHp && selected.some(s => s.type === "worker")) name = "repair";
@@ -4852,6 +4909,15 @@
     }
 
     g.globalAlpha = 1;
+
+    if (hover && hover.prey && !placement && !spellMode) {
+      // zvíře pod kurzorem jde ulovit: oranžový kroužek jako u nepřítele
+      const a = hover.prey;
+      const rx = a.type === "deer" ? 8 : 4;
+      g.globalAlpha = 0.6;
+      g.drawImage(ellipseRing(rx, a.type === "deer" ? 3 : 2, 0xff8f4a), Math.round(a.x) - rx - 1, Math.round(a.y) - 2);
+      g.globalAlpha = 1;
+    }
 
     if (hover && !placement && !spellMode) {
       const e = hover.enemy || hover.friend;

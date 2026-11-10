@@ -1,7 +1,12 @@
 /*
  * Zvířátka na mapě: zajíci, vrabci, vrány, motýli, žáby, kachny, srnky,
- * včely a ryby. Jsou jen na ozdobu: žijí na klientu, simulaci ani síť
- * neovlivňují a dají se rozplašit jen tím, že k nim dojde jednotka.
+ * včely a ryby. Žijí jen na klientu, simulaci ani síť neovlivňují.
+ *
+ * Jsou plaché: utíkají od jednotek (od vojáků dál než od dělníků),
+ * před boji a výbuchy. Zajíc, srnka, vrabec, žába a kachna mají vlastní
+ * životy: hráč na ně může poslat jednotky (pravý klik), ty je doženou
+ * běžnými rozkazy pohybu a ulovené zvíře padne a po čase se rozplyne.
+ * Ulovení nic nedává, je to jen kus živého světa.
  *
  * Sprity v jemné mřížce (PK.HD = 2) s tmavým obrysem a stínováním
  * (Jiří chce u zvířat výrazný obrys a detail). Malí tvorové jsou
@@ -26,9 +31,19 @@
     const Q = new Pix(P.w + 2, P.h + 2);
     Q.stamp(P, 1, 1);
     Q.outline(C.ink, ol);
-    const out = { r: PK.fine(Q), l: PK.fine(Q.flipX()), w: Q.w / HD, h: Q.h / HD };
+    const out = { r: PK.fine(Q), l: PK.fine(Q.flipX()), w: Q.w / HD, h: Q.h / HD, P: Q };
     cache.set(key, out);
     return out;
+  }
+
+  // Odvozené snímky spritu: bílý záblesk zásahu ("w") a rozpad těla po bodech ("d0".."d7").
+  function look(spr, k) {
+    if (!spr.v) spr.v = {};
+    if (!spr.v[k]) {
+      const P = k === "w" ? spr.P.tint(C.white, 0.85) : spr.P.dissolve(Number(k.slice(1)) / 8);
+      spr.v[k] = { r: PK.fine(P), l: PK.fine(P.flipX()), w: spr.w, h: spr.h };
+    }
+    return spr.v[k];
   }
 
   const FUR = { a: mix(C.d[4], C.d[5], 0.3), b: C.d[3], c: C.d[2], d: C.d[1], w: C.white, e: C.ink, p: C.cap[2], n: C.cap[1], s: C.bone[0] };
@@ -83,6 +98,17 @@
       ".cbbbbbbbbs..",
       "..ccbbbbccc..",
       "..dd.dd.ad...",
+    ],
+    // ulovený: leží na boku, uši sklopené, oko zavřené, nožky natažené po zemi
+    dead: [
+      "..........cbp.",
+      "....bbbbbbcbbp",
+      "..bbbaaaabbbab",
+      ".wbbbbbabbbddn",
+      "wwbbbbbbbbbbs.",
+      ".cbbbbbbbbbc..",
+      "..cccccccccdd.",
+      ".dd.......dd..",
     ]
   };
 
@@ -119,6 +145,13 @@
       ".ccbabcc.",
       "cb..d..bc",
       "c.......c",
+    ],
+    dead: [
+      "..ccc...",
+      ".cbbbcd.",
+      "dcbabbby",
+      ".dcbbkd.",
+      "...y.y..",
     ]
   };
 
@@ -189,6 +222,14 @@
       ".babbbbab",
       "dbcabbcbd",
       "dd......dd",
+    ],
+    // na zádech, nožky nahoru, světlé bříško
+    dead: [
+      "d.d....d.d",
+      ".dd....dd.",
+      ".bcyyyycb.",
+      "bcyyyyyycb",
+      ".ebbbbbbe.",
     ]
   };
 
@@ -212,6 +253,14 @@
       "..kfggsg....",
       ".kkffggjh...",
       "..kkkkkhhyy.",
+    ],
+    // leží na hladině, krk a hlava položené na vodě
+    dead: [
+      "............",
+      "..fgggrr....",
+      ".kfggsggrr..",
+      "kkffffggfjhh",
+      ".kkkkkkkhkhyy",
     ]
   };
 
@@ -274,7 +323,70 @@
       P.set(hx - 1, hy - 6, C.bone[0]);
     }
     P.outline(C.ink, 0.66);
-    const out = { r: PK.fine(P), l: PK.fine(P.flipX()), w: W / HD, h: H / HD };
+    const out = { r: PK.fine(P), l: PK.fine(P.flipX()), w: W / HD, h: H / HD, P };
+    cache.set(key, out);
+    return out;
+  }
+
+  /*
+   * Ulovená srnka: pose 1 = podlomené nohy (tělo klesá), 2 = leží na boku,
+   * nohy natažené před sebe, hlava na zemi a zavřené oko. Stejné barvy a
+   * stínování jako živá srnka, ať se nepere s ostatními sprity.
+   */
+  function deerDown(pose, buck) {
+    const key = `deer|down|${pose}|${buck ? 1 : 0}`;
+    if (cache.has(key)) return cache.get(key);
+    const W = 34;
+    const H = 30;
+    const P = new Pix(W, H);
+    const FURD = [mix(C.w[1], C.shade, 0.2), C.w[2], mix(C.w[3], C.r[2], 0.18), mix(C.d[3], C.r[3], 0.15), mix(C.d[4], C.a[1], 0.2), C.d[5]];
+    const by = pose === 1 ? 20 : 22; // střed těla
+    const ry = pose === 1 ? 4.4 : 3.6;
+    const ground = 28;
+    // nohy: při pádu krátké a pokrčené, vleže natažené šikmo dopředu po zemi
+    const legs = pose === 1 ? [[9, 1], [11, 2], [19, 1], [21, 2]] : [[8, 1], [11, 2], [18, 1], [21, 2]];
+    for (const [x, tone] of legs) {
+      if (pose === 1) {
+        for (let y = Math.round(by + 3); y < ground; y++) P.set(x + (y - by > 5 ? 1 : 0), y, FURD[tone]);
+        P.set(x + 2, ground - 1, C.ink);
+      } else {
+        // od břicha šikmo dolů a dopředu, kopýtko na konci
+        const y0 = Math.round(by + ry - 1);
+        for (let i = 0; i <= 6; i++) P.set(x + i, Math.min(ground - 1, y0 + Math.round(i * 0.45)), FURD[i === 3 ? tone - 1 : tone]);
+        P.set(x + 7, Math.min(ground - 1, y0 + 3), C.ink);
+      }
+    }
+    // tělo (vleže trochu zploštělé)
+    P.disc(15, by, 9.5, ry, (x, y) => {
+      const nx = (x + 0.5 - 15) / 9.5;
+      const ny = (y + 0.5 - by) / ry;
+      let v = 3.6 - nx * 0.7 - ny * 1.6;
+      if (ny > 0.45) v = 4.6;
+      if (hash(x, y, 4) > 0.9 && ny < 0.3) v -= 0.6;
+      return FURD[Math.max(0, Math.min(5, Math.round(v)))];
+    });
+    P.disc(6, by - 1, 2, 2.2, C.bone[0]);
+    for (const [x, y] of [[11, by - 3], [15, by - 3.5], [19, by - 3]]) P.set(x, Math.round(y), mix(FURD[4], C.bone[0], 0.5));
+    // krk a hlava: při pádu skloněná, vleže položená na zemi před tělem
+    const hx = pose === 1 ? 26 : 28;
+    const hy = pose === 1 ? 20 : 25;
+    for (let i = 0; i <= 6; i++) {
+      const t = i / 6;
+      const x = Math.round(22 + (hx - 22) * t);
+      const y = Math.round(by - 1 + (hy - by + 1) * t);
+      P.set(x, y, FURD[4]);
+      P.set(x, y + 1, FURD[3]);
+      P.set(x - 1, y, FURD[3]);
+    }
+    P.disc(hx + 1, hy, 2.6, 2, (x, y) => FURD[(x + 0.5 - hx) < 0 ? 4 : 3]);
+    P.set(hx + 3, hy + 1, FURD[3]); P.set(hx + 4, hy + 1, C.ink);
+    // zavřené oko: krátká tmavá čárka
+    P.set(hx, hy - 1, C.ink); P.set(hx + 1, hy - 1, C.ink);
+    // uši sklopené dozadu
+    P.set(hx - 2, hy - 1, FURD[2]); P.set(hx - 3, hy - 1, FURD[3]); P.set(hx - 2, hy - 2, C.cap[2]);
+    if (buck) for (const [x, y] of [[hx - 1, hy - 2], [hx - 2, hy - 3], [hx - 3, hy - 3], [hx - 3, hy - 4]]) P.set(x, y, C.bone[1]);
+    P.outline(C.ink, 0.66);
+    const out = { r: PK.fine(P), l: PK.fine(P.flipX()), w: W / HD, h: H / HD, P };
     cache.set(key, out);
     return out;
   }
@@ -327,7 +439,7 @@
       if (type === "sparrow") { for (let j = 0; j < 3; j++) add("sparrow", [x + (R() - 0.5) * 12, y + (R() - 0.5) * 6], { flock: 100 + Math.round(x) }); return; }
       return add(type, [x, y]);
     };
-    const add = (type, p, o = {}) => p && state.list.push({ type, x: p[0], y: p[1], hx: p[0], hy: p[1], t: R() * 4, ph: R() * 6.28, face: R() < 0.5 ? 1 : -1, st: "idle", z: 0, ...o });
+    const add = (type, p, o = {}) => p && state.list.push({ type, x: p[0], y: p[1], hx: p[0], hy: p[1], t: R() * 4, ph: R() * 6.28, face: R() < 0.5 ? 1 : -1, st: "idle", z: 0, hp: HP[type] || 0, stam: 1, wary: 0, ...o });
 
     // zvířata z editoru map: stojí přesně tam, kam je autor dal
     for (const [type, x, y] of w.critterSpots || []) placed(type, x, y);
@@ -376,35 +488,231 @@
   }
 
   /* ======================= chování ======================= */
-  // nejbližší jednotka (art px): plaší se před ní
-  function nearUnit(units, x, y, r) {
+  // Životy zvířat, která se dají ulovit (ostatní jsou jen kulisa). Poškození je stejné jako od jednotek.
+  const HP = { rabbit: 14, deer: 45, sparrow: 4, frog: 5, duck: 10 };
+  // výška těla nad patou (art px): kam míří šípy a kde se ukáže krev
+  const BODY = { rabbit: 3, deer: 8, sparrow: 2, frog: 2, duck: 3 };
+  const huntable = a => !!HP[a.type] && a.st !== "dead" && a.st !== "rip" && a.st !== "gone";
+
+  // Jak moc jednotka plaší: vojáci a jezdci z dálky, dělník až zblízka, kdo jde, plaší víc než kdo stojí.
+  function fright(u) {
+    let k = u.type === "worker" ? 0.8 : u.type === "knight" || u.type === "scout" || u.type === "hound" || u.type === "catapult" ? 1.6 : 1.4;
+    if (u.moveT > 0) k *= 1.2;
+    return k;
+  }
+
+  // nejbližší jednotka (art px), před kterou zvíře uteče; r = plachost zvířete před stojícím dělníkem
+  function nearUnit(units, a, r) {
     let best = null;
-    let bd = r * r;
+    let bd = 1;
+    const wary = a.wary > 0 ? 1.35 : 1;
     for (const u of units) {
-      const dx = u.x / 2 - x;
-      const dy = (u.y / 2 - y) * 1.4;
-      const d = dx * dx + dy * dy;
+      if (!(u.hp > 0)) continue;
+      const dx = u.x / 2 - a.x;
+      const dy = (u.y / 2 - a.y) * 1.4;
+      const rr = r * fright(u) * wary;
+      const d = (dx * dx + dy * dy) / (rr * rr);
       if (d < bd) { bd = d; best = u; }
     }
     return best;
   }
 
-  function update(dt, units) {
+  // Cíl útěku: přímo od nebezpečí (art px), a když tam je voda nebo les, zkusí se odbočit.
+  function fleeFrom(a, fx, fy, dist, ok) {
+    let dx = a.x - fx;
+    let dy = (a.y - fy) * 1.4;
+    const d = Math.hypot(dx, dy) || 1;
+    dx /= d; dy /= d;
+    if (Math.abs(dx) < 0.25) dx = (dx < 0 ? -1 : 1) * 0.25 + (Math.random() - 0.5) * 0.1;
+    for (const turn of [0, 0.45, -0.45, 0.9, -0.9, 1.35, -1.35]) {
+      const c = Math.cos(turn);
+      const s = Math.sin(turn);
+      const vx = dx * c - dy * s;
+      const vy = (dx * s + dy * c) * 0.6;
+      const tx = a.x + vx * dist;
+      const ty = a.y + vy * dist;
+      if (ok(a.x + vx * dist * 0.35, a.y + vy * dist * 0.35) && ok(tx, ty)) {
+        a.tx = tx; a.ty = ty; a.face = vx > 0 ? 1 : -1;
+        return true;
+      }
+    }
+    a.tx = a.x + dx * dist * 0.5; a.ty = a.y; a.face = dx > 0 ? 1 : -1;
+    return false;
+  }
+
+  // Polekání: zvíře začne utíkat od bodu (art px). Lovené a raněné zvíře se postupně unaví.
+  function startle(a, fx, fy, w) {
+    if (!huntable(a) && a.type !== "sparrow") return;
+    a.wary = 8;
+    if (a.type === "rabbit" || a.type === "deer") {
+      if (a.st === "flee" && a.t < 0.6) return;
+      a.st = "flee"; a.t = 0;
+      if (a.hunt || a.hp < HP[a.type]) a.stam = Math.max(0.3, a.stam - 0.22);
+      fleeFrom(a, fx, fy, a.type === "deer" ? 70 : 30 + Math.random() * 20, w.grassOk);
+    } else if (a.type === "sparrow" && a.st !== "fly" && a.st !== "dead" && a.st !== "rip") {
+      for (const b of state.list) {
+        if (b.type !== "sparrow" || b.flock !== a.flock || b.st === "fly" || b.st === "dead" || b.st === "rip") continue;
+        b.st = "fly"; b.t = 0; b.face = fx > b.x ? -1 : 1; b.vx = b.face * (40 + Math.random() * 20); b.vz = 30 + Math.random() * 14;
+      }
+    } else if (a.type === "frog" && a.st === "idle") {
+      a.st = "jump"; a.t = 0; a.face = fx > a.x ? -1 : 1;
+    } else if (a.type === "duck" && a.st !== "dead") {
+      a.st = "dip"; a.t = -1.5; // potopí se a chvíli zůstane pod hladinou
+    }
+  }
+
+  const ctxWorld = () => {
+    const w = PK.world;
+    const Z = w.Z;
+    return { grassOk: (x, y) => { const z = zoneAt(w, x, y); return z === Z.GRASS || z === Z.PATH || z === Z.PLAZA; } };
+  };
+
+  /*
+   * Zásah zvířete (dmg životů, z bodu fx, fy v art px). Krev nebo peří přes fx.js,
+   * při nule zvíře padne. Vrací true, když zásah zvíře zabil.
+   */
+  function hurt(a, dmg, fx, fy) {
+    if (!huntable(a)) return false;
+    const dir = fx <= a.x ? 1 : -1;
+    const by = a.y - a.z - (BODY[a.type] || 2);
+    a.hp -= dmg;
+    a.flashT = 0.12;
+    if (PK.fx) {
+      if (a.type === "sparrow" || a.type === "duck") PK.fx.puff(a.x * 2, by * 2, 3, FEATHER, 6);
+      PK.fx.hit(a.x * 2, by * 2, false, "flesh", dir);
+    }
+    if (a.hp > 0) {
+      startle(a, fx, fy, ctxWorld());
+      return false;
+    }
+    a.st = "dead"; a.t = 0; a.hunt = null; a.vzd = 0;
+    return true;
+  }
+  const FEATHER = [0xf7f1df, 0xd8cfb8, 0xa59b88].map(c => PK.css ? PK.css(c) : "#" + c.toString(16));
+
+  // Výbuch (katapult, ohnivá koule) v logických souřadnicích: zabíjí v okruhu r, plaší v širším.
+  function blast(x, y, r, dmg = 60) {
+    const w = ctxWorld();
+    for (const a of state.list) {
+      const d = Math.hypot(a.x - x / 2, (a.y - y / 2) * 1.3);
+      if (d < r / 2) hurt(a, dmg, x / 2, y / 2);
+      else if (d < r * 2) startle(a, x / 2, y / 2, w);
+    }
+  }
+
+  // Hluk boje (logické souřadnice): zvířata v okolí utečou.
+  function scare(x, y, r = 160) {
+    const w = ctxWorld();
+    for (const a of state.list) if (Math.hypot(a.x - x / 2, a.y - y / 2) < r / 2) startle(a, x / 2, y / 2, w);
+  }
+
+  // Zvíře, které jde ulovit, pod bodem (logické souřadnice) nebo null.
+  function at(x, y, r = 16) {
+    let best = null;
+    let bd = r;
+    for (const a of state.list) {
+      if (!huntable(a) || a.st === "jump") continue;
+      if (a.type === "sparrow" && a.st === "fly") continue;
+      const d = Math.hypot(a.x - x / 2, a.y - a.z - (BODY[a.type] || 2) - y / 2);
+      if (d < bd) { bd = d; best = a; }
+    }
+    return best;
+  }
+
+  // Lov: jednotky ids (vlastní) jdou za zvířetem. Rozkazy pohybu a výstřely posílá game.js přes ctx.
+  function hunt(a, ids) {
+    for (const b of state.list) if (b.hunt) for (const id of ids) b.hunt.ids.delete(id);
+    a.hunt = { ids: new Set(ids), t: 0, re: 0.8, ox: a.x, oy: a.y, sent: true }; // první rozkaz už poslal game.js
+  }
+  function unhunt(ids) {
+    for (const a of state.list) if (a.hunt) for (const id of ids) a.hunt.ids.delete(id);
+  }
+
+  /*
+   * ctx (z game.js): me, stats(u) -> {range, damage, delay, ranged} nebo null,
+   * order(ids, x, y) = obyčejný rozkaz pohybu, strike(u, a, s, done) = animace
+   * útoku a projektil; done() se zavolá v okamžiku zásahu.
+   */
+  function huntStep(a, dt, byId, ctx) {
+    const h = a.hunt;
+    h.t += dt;
+    h.re -= dt;
+    const hunters = [];
+    for (const id of h.ids) {
+      const u = byId.get(id);
+      if (u && u.hp > 0 && u.team === ctx.me) hunters.push(u); else h.ids.delete(id);
+    }
+    if (!hunters.length || h.t > 45) { a.hunt = null; return; }
+    const ax = a.x * 2;
+    const ay = a.y * 2;
+    const chase = [];
+    const stop = [];
+    for (const u of hunters) {
+      const s = ctx.stats(u);
+      if (!s) continue;
+      u.huntCd = Math.max(0, (u.huntCd || 0) - dt);
+      const d = Math.hypot(u.x - ax, u.y - ay);
+      // na vodu (kachny) dosáhnou jen střelci
+      const reach = a.type === "duck" && !s.ranged ? -1 : s.range + (s.ranged ? 0 : 10);
+      if (d <= reach) {
+        if (s.ranged && u.moveT > 0) stop.push(u);
+        if (u.huntCd <= 0) {
+          u.huntCd = s.delay;
+          const ux = u.x / 2;
+          const uy = u.y / 2;
+          ctx.strike(u, a, s, () => {
+            // ulovené: kdo ještě běží, zastaví se, ať nedupe po těle
+            if (hurt(a, s.damage, ux, uy)) for (const v of hunters) if (v.hp > 0 && v.moveT > 0) ctx.order([v.id], v.x, v.y);
+          });
+        }
+      } else if (reach > 0) chase.push(u);
+    }
+    if (h.re <= 0 && (chase.length || stop.length)) {
+      h.re = 0.8;
+      for (const u of stop) ctx.order([u.id], u.x, u.y);
+      const moved = Math.hypot(a.x - h.ox, a.y - h.oy) > 8;
+      const idle = chase.filter(u => !(u.moveT > 0));
+      if (chase.length && (moved || idle.length || !h.sent)) {
+        h.sent = true; h.ox = a.x; h.oy = a.y;
+        ctx.order(chase.map(u => u.id), ax, ay);
+      }
+    }
+  }
+
+  function update(dt, units, ctx) {
     const w = PK.world;
     if (!w || !w.ready || !w.zone) return;
     if (state.for !== w.doodads) { state.for = w.doodads; spawn(w); }
     state.clock += dt;
     const Z = w.Z;
     const grassOk = (x, y) => { const z = zoneAt(w, x, y); return z === Z.GRASS || z === Z.PATH || z === Z.PLAZA; };
+    const W = { grassOk };
+    let byId = null;
 
     for (const a of state.list) {
       a.t += dt;
+      if (a.flashT > 0) a.flashT -= dt;
+      if (a.wary > 0) a.wary -= dt;
+      if (a.stam < 1 && a.st !== "flee") a.stam = Math.min(1, a.stam + dt * 0.04);
+      // ulovené: ptáček dopadne na zem, tělo chvíli leží a pak se rozplyne
+      if (a.st === "dead") {
+        if (a.z > 0) a.z = Math.max(0, a.z - (a.vzd = (a.vzd || 0) + 140 * dt) * dt);
+        if (a.t > 14) a.st = "rip";
+        continue;
+      }
+      if (a.st === "rip") continue;
+      if (a.hunt && ctx) {
+        if (!byId) byId = new Map(units.map(u => [u.id, u]));
+        huntStep(a, dt, byId, ctx);
+      }
+      // lovené nebo raněné zvíře je pomalejší (unaví se), aby se dalo dohnat
+      const tired = a.hp < (HP[a.type] || 0) ? Math.min(a.stam, 0.75) : a.stam;
       if (a.type === "rabbit") {
-        const u = nearUnit(units, a.x, a.y, 26);
-        if (u && a.st !== "flee") { a.st = "flee"; a.t = 0; a.face = u.x / 2 > a.x ? -1 : 1; a.tx = a.x + a.face * (30 + Math.random() * 20); a.ty = a.y + (Math.random() - 0.5) * 20; }
+        const u = nearUnit(units, a, 26);
+        if (u && (a.st !== "flee" || a.t > 1.2)) startle(a, u.x / 2, u.y / 2, W);
         if (a.st === "idle" && a.t > 2 + hash(a.ph * 9, 1, 3) * 4) { a.st = "hop"; a.t = 0; a.face = Math.random() < 0.5 ? 1 : -1; a.tx = a.hx + (Math.random() - 0.5) * 40; a.ty = a.hy + (Math.random() - 0.5) * 18; a.face = a.tx > a.x ? 1 : -1; }
         if (a.st === "hop" || a.st === "flee") {
-          const sp = a.st === "flee" ? 46 : 16;
+          const sp = a.st === "flee" ? 46 * tired : 16;
           const dx = a.tx - a.x;
           const dy = a.ty - a.y;
           const d = Math.hypot(dx, dy);
@@ -420,11 +728,9 @@
         }
       } else if (a.type === "sparrow") {
         if (a.st !== "fly") {
-          const u = nearUnit(units, a.x, a.y, 30);
-          if (u) {
-            // celé hejno vzlétne najednou
-            for (const b of state.list) if (b.type === "sparrow" && b.flock === a.flock && b.st !== "fly") { b.st = "fly"; b.t = 0; b.face = u.x / 2 > b.x ? -1 : 1; b.vx = b.face * (40 + Math.random() * 20); b.vz = 30 + Math.random() * 14; }
-          } else if (a.t > 0.4 + hash(a.ph, a.t | 0, 5) * 1.2) {
+          const u = nearUnit(units, a, 30);
+          if (u) startle(a, u.x / 2, u.y / 2, W);
+          else if (a.t > 0.4 + hash(a.ph, a.t | 0, 5) * 1.2) {
             a.t = 0;
             a.st = Math.random() < 0.55 ? "peck" : "idle";
             if (Math.random() < 0.3) { const nx = a.x + (Math.random() - 0.5) * 6; if (grassOk(nx, a.y)) { a.face = nx > a.x ? 1 : -1; a.x = nx; } }
@@ -433,16 +739,15 @@
           a.x += a.vx * dt;
           a.z += a.vz * dt;
           a.vz = Math.max(6, a.vz - 10 * dt);
-          // po čase přistanou jinde na trávě
+          // po čase přistanou jinde na trávě, ale ne vedle jednotek
           if (a.t > 5 + hash(a.ph, 3, 1) * 3) {
-            const p = [a.x, a.y];
-            if (grassOk(p[0], p[1]) && p[0] > 10 && p[0] < w.W - 10) { a.st = "idle"; a.z = 0; a.t = 0; a.hx = a.x; }
+            if (grassOk(a.x, a.y) && a.x > 10 && a.x < w.W - 10 && !nearUnit(units, a, 40)) { a.st = "idle"; a.z = 0; a.t = 0; a.hx = a.x; }
             else if (a.t > 14) { a.x = a.hx; a.z = 0; a.st = "idle"; a.t = 0; }
           }
         }
       } else if (a.type === "frog") {
-        const u = nearUnit(units, a.x, a.y, 22);
-        if (u && a.st === "idle") { a.st = "jump"; a.t = 0; a.face = u.x / 2 > a.x ? -1 : 1; }
+        const u = nearUnit(units, a, 22);
+        if (u && a.st === "idle") startle(a, u.x / 2, u.y / 2, W);
         if (a.st === "jump") {
           a.z = Math.sin(Math.min(1, a.t / 0.45) * Math.PI) * 4;
           a.y += 18 * dt;
@@ -452,24 +757,25 @@
             if (PK.fx && PK.fx.footstep) PK.fx.footstep(a.x * 2, a.y * 2, true);
             a.st = "gone"; a.t = 0; a.z = 0;
           }
-        } else if (a.st === "gone" && a.t > 6 && !nearUnit(units, a.hx, a.hy, 30)) {
+        } else if (a.st === "gone" && a.t > 6 && !nearUnit(units, { x: a.hx, y: a.hy, wary: 1 }, 30)) {
           a.st = "idle"; a.x = a.hx; a.y = a.hy; a.t = 0;
         }
       } else if (a.type === "duck") {
-        // pomalé kroužení po vodě, občas se potopí hlavou
+        // pomalé kroužení po vodě, občas se potopí hlavou; před jednotkou na břehu se potopí taky
         const ang = state.clock * 0.08 + a.ph;
         const nx = a.hx + Math.sin(ang) * 16;
         const ny = a.hy + Math.sin(ang * 1.3) * 5;
         if (zoneAt(w, nx, ny) === Z.WATER) { a.face = nx > a.x ? 1 : -1; a.x = nx; a.y = ny; }
+        if (a.st === "idle" && nearUnit(units, a, 14)) startle(a, a.x, a.y, W);
         if (a.st === "idle" && Math.random() < dt * 0.12) { a.st = "dip"; a.t = 0; }
         if (a.st === "dip" && a.t > 1.6) a.st = "idle";
       } else if (a.type === "deer") {
-        const u = nearUnit(units, a.x, a.y, 48);
-        if (u && a.st !== "flee") { a.st = "flee"; a.t = 0; a.face = u.x / 2 > a.x ? -1 : 1; a.tx = a.x + a.face * 70; a.ty = a.y + (Math.random() - 0.5) * 30; }
+        const u = nearUnit(units, a, 48);
+        if (u && (a.st !== "flee" || a.t > 1.5)) startle(a, u.x / 2, u.y / 2, W);
         if (a.st === "idle" && a.t > 4) { a.st = Math.random() < 0.5 ? "walk" : "graze"; a.t = 0; a.tx = a.hx + (Math.random() - 0.5) * 40; a.ty = a.hy + (Math.random() - 0.5) * 16; }
         if (a.st === "graze" && a.t > 5) { a.st = "idle"; a.t = 0; }
         if (a.st === "walk" || a.st === "flee") {
-          const sp = a.st === "flee" ? 52 : 9;
+          const sp = a.st === "flee" ? 52 * tired : 9;
           const dx = a.tx - a.x;
           const dy = a.ty - a.y;
           const d = Math.hypot(dx, dy);
@@ -489,19 +795,51 @@
   // Položky do seřazeného seznamu (game.js): k = 6, y = pata.
   function collect(list, visible) {
     for (const a of state.list) {
-      if (a.st === "gone" || a.type === "fish" || a.type === "crow" || a.type === "bee") continue;
+      if (a.st === "gone" || a.st === "rip" || a.type === "fish" || a.type === "crow" || a.type === "bee") continue;
       if (visible(a.x, a.y)) list.push({ y: a.y, k: 6, o: a });
     }
   }
 
+  let flashing = false; // kreslí se zásah: blit použije bílý snímek
   function blit(g, spr, a, ox, oy, dirRight) {
+    if (flashing && spr.P) spr = look(spr, "w");
     const img = dirRight ? spr.r : spr.l;
     const x = dirRight ? ox : -ox - spr.w;
     g.drawImage(img, snap(a.x + x), snap(a.y - a.z + oy));
   }
 
+  // Ulovené zvíře: krátký záblesk, pád, pak leží a nakonec se po bodech rozplyne (jako padlé jednotky).
+  // ležící tělo (srnka i s mezisnímkem pádu podle a.t)
+  function deadSprite(a) {
+    if (a.type === "deer") return a.t < 0.12 ? deerSprite(0, false, a.buck) : deerDown(a.t < 0.3 ? 1 : 2, a.buck);
+    if (a.type === "rabbit") return rows("rabbit|dead", RABBIT.dead, FUR);
+    if (a.type === "sparrow") return rows("sp|dead", SPARROW.dead, BIRD);
+    if (a.type === "frog") return rows("frog|dead", FROG.dead, FROGC);
+    if (a.type === "duck") return rows(`duck|${a.male ? 1 : 0}|dead`, DUCK.dead, a.male ? DUCKC : DUCKF);
+    return null;
+  }
+
+  function drawDead(g, a, reflecting) {
+    const right = a.face > 0;
+    let s = deadSprite(a);
+    const oy = a.type === "duck" ? 1.5 : 0.5;
+    if (!s) return;
+    if (a.t < 0.12) s = look(s, "w");
+    else if (a.t > 8) s = look(s, "d" + Math.max(0, 7 - Math.floor((a.t - 8) / 0.75)));
+    if (!reflecting && a.z <= 0 && a.type !== "duck") shadow(g, a.x, a.y, a.type === "deer" ? 7.5 : a.type === "rabbit" ? 3.6 : 2, a.t > 8 ? 0.14 : 0.24);
+    blit(g, s, a, -s.w / 2, -s.h + oy + (a.type === "deer" ? 1 : 0), right);
+  }
+
   function draw(g, a, T, reflecting) {
     const right = a.face > 0;
+    if (a.st === "dead") return drawDead(g, a, reflecting);
+    // zásah: bílý záblesk stejného snímku (blit přes look)
+    flashing = a.flashT > 0;
+    drawAlive(g, a, T, reflecting, right);
+    flashing = false;
+  }
+
+  function drawAlive(g, a, T, reflecting, right) {
     if (a.type === "rabbit") {
       if (!reflecting) shadow(g, a.x, a.y, 3.2);
       let fr = "sit";
@@ -634,5 +972,5 @@
     return ir ? rows(`icon|${type}`, ir[0], ir[1]) : null;
   }
 
-  PK.critters = { update, collect, draw, drawAir, icon, reset: () => { state.for = null; }, get list() { return state.list; }, rows, deerSprite };
+  PK.critters = { update, collect, draw, drawAir, icon, reset: () => { state.for = null; }, get list() { return state.list; }, rows, deerSprite, deerDown, deadSprite, at, hunt, unhunt, hurt, blast, scare, HP, BODY };
 })();
